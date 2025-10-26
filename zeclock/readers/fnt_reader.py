@@ -1,6 +1,6 @@
 """
 Lecteur de fonts bitmap DotClk (.fnt)
-Format: en-têtes + bitmap des glyphes
+Format: Version + FontNameLen + FontName + CntFontInfo + FontCharInfo[] + bitmap data
 """
 from pathlib import Path
 from typing import Dict, Tuple
@@ -14,99 +14,160 @@ class DotClkFont:
     def __init__(self, fnt_path: Path):
         self.path = fnt_path
         self.name = ""
-        self.char_width = 0
-        self.char_height = 0
-        self.spacing = 0
+        self.char_height = 16  # DotClk standard height
         self.glyphs: Dict[str, Image.Image] = {}
+        self.char_info = {}
         self._load()
     
     def _load(self):
-        """Charge le fichier .fnt"""
+        """Charge le fichier .fnt selon le format DotClk"""
         with open(self.path, 'rb') as f:
             data = f.read()
         
-        # Format DotClk .fnt (dérivé du format Windows FNT)
-        # Structure simplifiée basée sur l'analyse
-        if len(data) < 88:
-            raise ValueError(f"Invalid FNT file: {self.path}")
+        offset = 0
         
-        # Header (88 bytes minimum)
-        header = struct.unpack('<H', data[0:2])[0]  # Face ID
-        size = struct.unpack('<H', data[2:4])[0]     # Point size
+        # Read header
+        version = struct.unpack('<H', data[offset:offset+2])[0]
+        offset += 2
         
-        # Nom de la fonte (32 bytes, null-terminated)
-        name_bytes = data[4:36]
-        self.name = name_bytes.split(b'\x00')[0].decode('ascii', errors='ignore')
+        font_name_len = struct.unpack('<B', data[offset:offset+1])[0]
+        offset += 1
         
-        # Caractéristiques
-        first_char = struct.unpack('<H', data[36:38])[0]
-        last_char = struct.unpack('<H', data[38:40])[0]
-        self.char_height = struct.unpack('<H', data[82:84])[0]
+        self.name = data[offset:offset+font_name_len].decode('ascii', errors='ignore')
+        offset += font_name_len
         
-        # Width (fixed ou variable)
-        self.char_width = struct.unpack('<H', data[52:54])[0]
-        self.spacing = 1  # Default spacing
+        cnt_font_info = struct.unpack('<H', data[offset:offset+2])[0]
+        offset += 2
         
-        # Offset vers les données bitmap
-        font_data_offset = struct.unpack('<I', data[76:80])[0]
-        form_width_bytes = struct.unpack('<H', data[80:82])[0]
+        # Read character info
+        for i in range(cnt_font_info):
+            ascii_char = struct.unpack('<B', data[offset:offset+1])[0]
+            offset += 1
+            width = struct.unpack('<H', data[offset:offset+2])[0]
+            offset += 2
+            kerning = struct.unpack('<H', data[offset:offset+2])[0]
+            offset += 2
+            
+            char = chr(ascii_char)
+            self.char_info[char] = {'width': width, 'kerning': kerning}
         
-        # Charger les bitmaps de caractères
-        self._load_glyphs(
-            data[font_data_offset:],
-            first_char,
-            last_char,
-            form_width_bytes
-        )
+        # Read bitmap data (DotClk format: 4 bits per pixel, 2 pixels per byte)
+        bitmap_data = data[offset:]
+        self._parse_dotclk_bitmap(bitmap_data)
     
-    def _load_glyphs(self, bitmap_data: bytes, first: int, last: int, width_bytes: int):
-        """Extrait les glyphes depuis les données bitmap"""
-        chars_count = last - first + 1
+    def _parse_dotclk_bitmap(self, bitmap_data: bytes):
+        """Parse DotClk bitmap format with dotmap header"""
+        if len(bitmap_data) < 8:
+            return
+            
+        offset = 0
         
-        for i in range(chars_count):
-            char_code = first + i
-            char = chr(char_code)
-            
-            # Position dans le bitmap (simplifié)
-            x_offset = i * self.char_width
-            
-            # Créer l'image du glyphe
-            glyph = Image.new('1', (self.char_width, self.char_height))
-            pixels = glyph.load()
-            
-            for y in range(self.char_height):
-                for x in range(self.char_width):
-                    # Calcul de l'offset dans les données
-                    bit_index = (y * width_bytes * 8) + x_offset + x
-                    byte_index = bit_index // 8
-                    bit_pos = 7 - (bit_index % 8)
+        # Read dotmap header
+        dots_width = struct.unpack('<H', bitmap_data[offset:offset+2])[0]
+        offset += 2
+        dots_height = struct.unpack('<H', bitmap_data[offset:offset+2])[0]
+        offset += 2
+        dots_bpp = struct.unpack('<H', bitmap_data[offset:offset+2])[0]
+        offset += 2
+        has_mask = struct.unpack('<H', bitmap_data[offset:offset+2])[0]
+        offset += 2
+        
+        # Update font height from dotmap
+        self.char_height = dots_height
+        
+        # Calculate bitmap dimensions
+        width_bytes_dots = (dots_width // 2) + (1 if dots_width % 2 else 0)
+        dots_size = width_bytes_dots * dots_height
+        
+        # Read dots data
+        dots_data = bitmap_data[offset:offset + dots_size]
+        offset += dots_size
+        
+        # Skip mask data if present
+        if has_mask:
+            width_bytes_mask = (dots_width // 8) + (1 if dots_width % 8 else 0)
+            mask_size = width_bytes_mask * dots_height
+            offset += mask_size
+        
+        # Create bitmap image (preserve 4-bit grayscale)
+        bitmap_img = Image.new('L', (dots_width, dots_height))  # 'L' for grayscale
+        pixels = bitmap_img.load()
+        
+        # Parse bitmap data (4 bits per pixel, 2 pixels per byte)
+        for y in range(dots_height):
+            for x in range(dots_width):
+                byte_idx = (x // 2) + (y * width_bytes_dots)
+                if byte_idx < len(dots_data):
+                    byte_val = dots_data[byte_idx]
+                    if x % 2 == 0:
+                        # Even column: lower 4 bits
+                        pixel_val = byte_val & 0x0F
+                    else:
+                        # Odd column: upper 4 bits
+                        pixel_val = (byte_val >> 4) & 0x0F
                     
-                    if byte_index < len(bitmap_data):
-                        bit = (bitmap_data[byte_index] >> bit_pos) & 1
-                        pixels[x, y] = 255 if bit else 0
-            
-            self.glyphs[char] = glyph
+                    # Map 4-bit values with better shadow visibility
+                    if pixel_val == 0:
+                        pixels[x, y] = 0      # Black
+                    elif pixel_val == 1:
+                        pixels[x, y] = 64     # Visible shadow
+                    else:
+                        pixels[x, y] = pixel_val * 17  # Linear for other values
+        
+        # Extract individual character glyphs
+        x_offset = 0
+        for char, info in self.char_info.items():
+            width = info['width']
+            if x_offset + width <= dots_width:
+                # Extract character glyph
+                glyph = bitmap_img.crop((x_offset, 0, x_offset + width, dots_height))
+                self.glyphs[char] = glyph
+                x_offset += width
     
     def render_text(self, text: str, width: int = 128, height: int = 32) -> Image.Image:
         """Rend du texte avec cette police"""
-        img = Image.new('1', (width, height))
+        img = Image.new('L', (width, height))  # Grayscale for 4-bit support
         
-        x_pos = 0
+        # Calculate total text width (with kerning)
+        text_width = 0
+        for i, char in enumerate(text):
+            if char in self.char_info:
+                text_width += self.char_info[char]['width']
+                if i < len(text) - 1:  # Not the last character
+                    text_width -= self.char_info[char]['kerning']
+        
+        # Center the text
+        x_pos = (width - text_width) // 2
         y_pos = (height - self.char_height) // 2
         
-        for char in text:
+        for i, char in enumerate(text):
             if char in self.glyphs:
                 glyph = self.glyphs[char]
                 img.paste(glyph, (x_pos, y_pos))
-                x_pos += self.char_width + self.spacing
+                x_pos += self.char_info[char]['width']
+                if i < len(text) - 1:  # Apply kerning except for last character
+                    x_pos -= self.char_info[char]['kerning']
             else:
-                x_pos += self.char_width  # Espace pour caractères manquants
+                # Space for missing characters
+                x_pos += 8
         
         return img
     
     def get_text_width(self, text: str) -> int:
-        """Calcule la largeur d'un texte"""
-        return len(text) * (self.char_width + self.spacing)
+        """Calcule la largeur d'un texte avec kerning"""
+        if not text:
+            return 0
+        
+        width = 0
+        for i, char in enumerate(text):
+            if char in self.char_info:
+                width += self.char_info[char]['width']
+                if i < len(text) - 1:  # Apply kerning except for last character
+                    width -= self.char_info[char]['kerning']
+            else:
+                width += 8  # Default width for missing chars
+        
+        return width
 
 
 def load_font(fnt_path: Path) -> DotClkFont:

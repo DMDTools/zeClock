@@ -1,20 +1,14 @@
 """
 Client Python pour communiquer avec dmdserver (libdmdutil)
-Protocole : StreamHeader + RGB24 data
+Protocole : StreamHeader + RGB565 data (big-endian)
 """
 import socket
-import struct
 from typing import Optional, Tuple
 from PIL import Image
 
 
 class DMDServerClient:
-    """Client pour envoyer des frames RGB24 à dmdserver"""
-    
-    # Modes supportés
-    MODE_DATA = 1    # Mode natif libdmdutil (complexe)
-    MODE_RGB24 = 2   # RGB888 - 3 bytes par pixel (R, G, B)
-    MODE_RGB16 = 3   # RGB565 - 2 bytes par pixel
+    """Client pour envoyer des frames RGB565 à dmdserver"""
     
     def __init__(self, host: str = "localhost", port: int = 6789):
         self.host = host
@@ -28,7 +22,6 @@ class DMDServerClient:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.sock.connect((self.host, self.port))
             self.connected = True
-            print(f"✅ Connected to dmdserver at {self.host}:{self.port}")
             return True
         except Exception as e:
             print(f"❌ Failed to connect to dmdserver: {e}")
@@ -40,154 +33,61 @@ class DMDServerClient:
         if self.sock:
             self.sock.close()
             self.connected = False
-            print("Disconnected from dmdserver")
     
-    def send_rgb24_frame(
-        self,
-        image: Image.Image,
-        buffered: bool = False,
-        disconnect_others: bool = False
-    ) -> bool:
-        """
-        Envoie une frame RGB24 au DMDServer
-        
-        Args:
-            image: Image PIL (sera convertie en RGB si nécessaire)
-            buffered: Si True, la frame est bufferisée (affichée après déconnexion)
-            disconnect_others: Si True, déconnecte les autres clients
-        
-        Returns:
-            True si succès
-        """
+    def send_frame(self, image: Image.Image, buffered: bool = True) -> bool:
+        """Envoie une frame RGB565 au DMDServer"""
         if not self.connected:
             if not self.connect():
                 return False
         
-        # Convertir en RGB si nécessaire
         if image.mode != 'RGB':
             image = image.convert('RGB')
         
         width, height = image.size
         
-        # Préparer le header (structure C)
-        header = self._create_stream_header(
-            mode=self.MODE_RGB24,
-            width=width,
-            height=height,
-            buffered=buffered,
-            disconnect_others=disconnect_others
-        )
+        # Convert to RGB565
+        rgb565_data = self._rgb_to_rgb565(image)
         
-        # Préparer les données RGB24
-        rgb_data = image.tobytes()  # Format RGB24 natif PIL
+        # Create header (big-endian like dmd-simulator)
+        header = bytearray("DMDStream", "utf-8") + b'\x00'
+        header += (1).to_bytes(1, 'big')                    # version
+        header += (3).to_bytes(4, 'big')                    # mode RGB565
+        header += width.to_bytes(2, 'big')                  # width
+        header += height.to_bytes(2, 'big')                 # height
+        header += (1 if buffered else 0).to_bytes(1, 'big') # buffered
+        header += (1).to_bytes(1, 'big')                    # disconnectOthers
+        header += len(rgb565_data).to_bytes(4, 'big')       # length
         
         try:
-            # Envoyer header puis data
-            self.sock.sendall(header)
-            self.sock.sendall(rgb_data)
+            msg = header + rgb565_data
+            self.sock.sendall(msg)
             return True
         except Exception as e:
             print(f"❌ Error sending frame: {e}")
             self.connected = False
             return False
     
-    def send_monochrome_frame(
-        self,
-        image: Image.Image,
-        color: Tuple[int, int, int] = (255, 128, 0),  # Orange DMD classique
-        buffered: bool = False
-    ) -> bool:
-        """
-        Envoie une frame monochrome (1-bit) colorisée
+    def _rgb_to_rgb565(self, image: Image.Image) -> bytearray:
+        """Convert RGB image to RGB565 format (big-endian)"""
+        rgb565_data = bytearray()
+        pixels = image.load()
         
-        Args:
-            image: Image PIL en mode '1' (bitmap) ou 'L' (grayscale)
-            color: Couleur RGB à appliquer aux pixels allumés
-            buffered: Si True, la frame est bufferisée
+        for y in range(image.height):
+            for x in range(image.width):
+                r, g, b = pixels[x, y]
+                # Convert to RGB565: 5 bits red, 6 bits green, 5 bits blue
+                r565 = (r >> 3) & 0x1F
+                g565 = (g >> 2) & 0x3F  
+                b565 = (b >> 3) & 0x1F
+                rgb565 = (r565 << 11) | (g565 << 5) | b565
+                # Big-endian 16-bit
+                rgb565_data.extend(rgb565.to_bytes(2, 'big'))
         
-        Returns:
-            True si succès
-        """
-        # Convertir en RGB colorisé
-        if image.mode == '1':
-            # Image bitmap : pixels 0 ou 255
-            rgb_image = Image.new('RGB', image.size)
-            px_src = image.load()
-            px_dst = rgb_image.load()
-            
-            for y in range(image.height):
-                for x in range(image.width):
-                    if px_src[x, y]:
-                        px_dst[x, y] = color
-                    else:
-                        px_dst[x, y] = (0, 0, 0)
-        
-        elif image.mode == 'L':
-            # Grayscale : appliquer couleur proportionnellement
-            rgb_image = Image.new('RGB', image.size)
-            px_src = image.load()
-            px_dst = rgb_image.load()
-            
-            for y in range(image.height):
-                for x in range(image.width):
-                    intensity = px_src[x, y] / 255.0
-                    px_dst[x, y] = (
-                        int(color[0] * intensity),
-                        int(color[1] * intensity),
-                        int(color[2] * intensity)
-                    )
-        else:
-            # Déjà en couleur
-            rgb_image = image.convert('RGB')
-        
-        return self.send_rgb24_frame(rgb_image, buffered=buffered)
-    
-    def _create_stream_header(
-        self,
-        mode: int,
-        width: int,
-        height: int,
-        buffered: bool = False,
-        disconnect_others: bool = False
-    ) -> bytes:
-        """
-        Crée le StreamHeader selon la spec libdmdutil
-        
-        Structure (total 23 bytes):
-        - char[10] header = "DMDStream\0"
-        - uint8_t version = 1
-        - uint32_t mode (little-endian)
-        - uint16_t width (little-endian)
-        - uint16_t height (little-endian)
-        - uint8_t buffered
-        - uint8_t disconnectOthers
-        - uint32_t length (little-endian)
-        """
-        # Calcul de la taille des données
-        if mode == self.MODE_RGB24:
-            data_length = width * height * 3
-        elif mode == self.MODE_RGB16:
-            data_length = width * height * 2
-        else:
-            data_length = 0
-        
-        # Construction du header
-        header = b"DMDStream\x00"  # 10 bytes (string + null terminator)
-        header += struct.pack('<B', 1)  # version: uint8_t
-        header += struct.pack('<I', mode)  # mode: uint32_t (little-endian)
-        header += struct.pack('<H', width)  # width: uint16_t
-        header += struct.pack('<H', height)  # height: uint16_t
-        header += struct.pack('<B', 1 if buffered else 0)  # buffered: uint8_t
-        header += struct.pack('<B', 1 if disconnect_others else 0)  # disconnect: uint8_t
-        header += struct.pack('<I', data_length)  # length: uint32_t
-        
-        return header
+        return rgb565_data
     
     def __enter__(self):
-        """Support context manager"""
         self.connect()
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Support context manager"""
         self.disconnect()

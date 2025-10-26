@@ -6,9 +6,7 @@ Transformez votre bureau en salle d'arcade avec une horloge DMD qui affiche l'he
 
 ![zeClock Demo](https://via.placeholder.com/640x160/1a1a1a/ff8000?text=zeClock+Demo)
 
----
-
-## ✨ Fonctionnalités
+## Fonctionnalités
 
 - 🎮 **Animations DotClk natives** : Lecture directe des fichiers `.scn` (2300+ animations disponibles)
 - 🔤 **Fonts bitmap DotClk** : Support des polices `.fnt` originales
@@ -19,36 +17,28 @@ Transformez votre bureau en salle d'arcade avec une horloge DMD qui affiche l'he
 - 🚀 **API REST** : Contrôle à distance (changement d'affichage, notifications)
 - 📦 **Installation simple** : Scripts automatisés pour tout installer
 
----
-
-## 🎯 Prérequis
+## Prérequis
 
 - **Python 3.9+**
 - **ZeDMD** (128x32 ou 256x64) connecté en USB ou WiFi
 - **Linux** (Raspberry Pi, Ubuntu, WSL), **macOS**, ou **Windows** (Git Bash/WSL)
 
----
+## Installation
 
-## 📦 Installation rapide
-
-### 1. Cloner le projet
+**1. Cloner le projet**
 
 ```bash
-git clone https://github.com/votre-username/zeclock.git
+git clone https://github.com/DMDTools/zeclock.git
 cd zeclock
 ```
 
-### 2. Installer zeClock
+**2. Installer zeClock**
 
 ```bash
 pip install -e .
 ```
 
-### 3. Installer les dépendances (automatique)
-
-Les scripts suivants téléchargent et installent automatiquement :
-
-#### a) Installer libdmdutil (dmdserver)
+**3. Installer libdmdutil (dmdserver)**
 
 ```bash
 ./scripts/install_libdmdutil.sh
@@ -61,7 +51,7 @@ Cela installe :
 - Bibliothèques : `libdmdutil`, `libzedmd`, `libserum`, etc.
 - Configuration par défaut : `~/.zeclock/config/dmdserver.ini`
 
-#### b) Installer les ressources DotClk (animations + fonts)
+**4. Installer les ressources DotClk (animations + fonts)**
 
 ```bash
 ./scripts/install_dotclk_resources.sh
@@ -71,17 +61,15 @@ Cela télécharge depuis [sigmafx/DotClk-Resources](https://github.com/sigmafx/D
 - **2300+ animations** `.scn` (pinball, classiques, vacances...)
 - **Fonts bitmap** `.fnt` DotClk originales
 
----
+## Démarrage
 
-## 🚀 Démarrage
-
-### Lancer dmdserver (terminal 1)
+**Lancer dmdserver (terminal 1)**
 
 ```bash
-dmdserver -a 0.0.0.0 -p 6789 -w -l
+~/.zeclock/bin/dmdserver -c ./config/dmdserver.ini -l -v
 ```
 
-**Options :**
+Options :
 - `-a 0.0.0.0` : Écoute sur toutes les interfaces
 - `-p 6789` : Port TCP (défaut)
 - `-w` : Ne pas quitter si aucun display connecté
@@ -90,10 +78,10 @@ dmdserver -a 0.0.0.0 -p 6789 -w -l
 Ou avec fichier de config :
 
 ```bash
-dmdserver -c ~/.zeclock/config/dmdserver.ini -w -l
+~/.zeclock/bin/dmdserver -c ~/.zeclock/config/dmdserver.ini -w -l
 ```
 
-### Lancer zeClock (terminal 2)
+**Lancer zeClock (terminal 2)**
 
 ```bash
 python -m zeclock.clock
@@ -105,11 +93,9 @@ Ou avec l'exemple d'animation :
 python examples/zeclock_demo.py
 ```
 
----
+## Exemples d'utilisation
 
-## 🎨 Exemples d'utilisation
-
-### Horloge simple
+**Horloge simple**
 
 ```python
 from zeclock.clock import ZeClock
@@ -119,7 +105,7 @@ clock = ZeClock()
 asyncio.run(clock.run())
 ```
 
-### Horloge avec animation DotClk
+**Horloge avec animation DotClk**
 
 ```python
 from pathlib import Path
@@ -147,11 +133,9 @@ for frame in scene:
     time.sleep(0.04)  # 25 FPS
 ```
 
----
+## Configuration
 
-## ⚙️ Configuration
-
-### Variables d'environnement
+**Variables d'environnement**
 
 ```bash
 # Dossier des ressources
@@ -162,7 +146,7 @@ export DMDSERVER_HOST="192.168.1.100"
 export DMDSERVER_PORT="6789"
 ```
 
-### Fichier de configuration dmdserver
+**Fichier de configuration dmdserver**
 
 Éditer `~/.zeclock/config/dmdserver.ini` :
 
@@ -182,9 +166,7 @@ Enabled = 1
 WiFiAddr = 192.168.1.100    # IP de votre ZeDMD WiFi
 ```
 
----
-
-## 📁 Structure du projet
+## Structure du projet
 
 ```
 zeclock/
@@ -214,7 +196,7 @@ zeclock/
 └── README.md
 ```
 
-### Ressources installées
+**Ressources installées**
 
 ```
 ~/.zeclock/
@@ -238,11 +220,9 @@ zeclock/
         └── Holiday/
 ```
 
----
+## Développement
 
-## 🔧 Développement
-
-### Installation en mode développement
+**Installation en mode développement**
 
 ```bash
 git clone https://github.com/votre-username/zeclock.git
@@ -250,24 +230,22 @@ cd zeclock
 pip install -e ".[dev]"
 ```
 
-### Tests
+**Tests**
 
 ```bash
 pytest tests/
 ```
 
-### Linter
+**Linter**
 
 ```bash
 black zeclock/
 flake8 zeclock/
 ```
 
----
+## Dépannage
 
-## 🐛 Dépannage
-
-### dmdserver ne démarre pas
+**dmdserver ne démarre pas**
 
 ```bash
 # Vérifier que les bibliothèques sont bien installées
@@ -280,7 +258,7 @@ chmod +x ~/.zeclock/bin/dmdserver
 dmdserver -v
 ```
 
-### ZeDMD non détecté
+**ZeDMD non détecté**
 
 ```bash
 # Lister les ports série
@@ -291,7 +269,7 @@ ls /dev/ttyUSB* /dev/ttyACM* /dev/cu.usbserial*
 Device = /dev/ttyUSB0
 ```
 
-### Animations ne s'affichent pas
+**Animations ne s'affichent pas**
 
 ```bash
 # Vérifier que les ressources sont installées
@@ -301,7 +279,7 @@ ls ~/.zeclock/resources/animations/
 ./scripts/install_dotclk_resources.sh
 ```
 
-### Performance / FPS bas
+**Performance / FPS bas**
 
 ```python
 # Réduire la résolution ou le FPS
@@ -312,9 +290,7 @@ scene = load_scene("animation.scn")
 frames = list(scene)  # Force le chargement
 ```
 
----
-
-## 🎮 Fonctionnalités avancées (roadmap)
+## Roadmap
 
 - [ ] **API REST** : Contrôle via HTTP (changement de clock, notifications)
 - [ ] **MQTT** : Intégration domotique (Jeedom, Home Assistant)
@@ -327,9 +303,7 @@ frames = list(scene)  # Force le chargement
 - [ ] **Interface web** : Configuration via navigateur
 - [ ] **Galaga Clock** : Animation où Galaga tire sur les chiffres qui changent
 
----
-
-## 📚 Références
+## Références
 
 - **DotClk** (inspiration) : [sigmafx/DotClk](https://github.com/sigmafx/DotClk)
 - **DotClk Resources** : [sigmafx/DotClk-Resources](https://github.com/sigmafx/DotClk-Resources)
@@ -337,24 +311,18 @@ frames = list(scene)  # Force le chargement
 - **ZeDMD** : [PPUC/ZeDMD](https://github.com/PPUC/ZeDMD)
 - **ZeDMD OS** : [PPUC/zedmdos](https://github.com/PPUC/zedmdos)
 
----
-
-## 📄 Licence
+## Licence
 
 MIT License - voir [LICENSE](LICENSE)
 
----
-
-## 🙏 Remerciements
+## Remerciements
 
 - **SigmaFX** pour le projet DotClk original et ses magnifiques animations
 - **vpinball** pour libdmdutil et dmdserver
 - **PPUC** pour le hardware ZeDMD
 - La communauté **pinball virtuel** pour l'écosystème DMD
 
----
-
-## 💬 Support
+## Support
 
 - **Issues** : [GitHub Issues](https://github.com/votre-username/zeclock/issues)
 - **Discussions** : [GitHub Discussions](https://github.com/votre-username/zeclock/discussions)

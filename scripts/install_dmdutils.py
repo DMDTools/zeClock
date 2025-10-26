@@ -48,7 +48,9 @@ def get_latest_version():
 def download_release(platform_id, version):
     """Télécharge la release correspondante"""
     extension = "zip" if "win" in platform_id else "tar.gz"
-    filename = f"libdmdutil-{version}-{platform_id}.{extension}"
+    # Remove 'v' prefix from version for filename
+    version_clean = version.lstrip('v')
+    filename = f"libdmdutil-{version_clean}-{platform_id}.{extension}"
     url = f"https://github.com/{GITHUB_REPO}/releases/download/{version}/{filename}"
     
     print(f"🌐 Platform: {platform_id}")
