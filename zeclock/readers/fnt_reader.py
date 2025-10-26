@@ -1,5 +1,5 @@
 """
-Lecteur de fonts bitmap DotClk (.fnt)
+Lecteur de fonts bitmap (.fnt)
 Format: Version + FontNameLen + FontName + CntFontInfo + FontCharInfo[] + bitmap data
 """
 from pathlib import Path
@@ -8,19 +8,19 @@ from PIL import Image
 import struct
 
 
-class DotClkFont:
-    """Représente une police bitmap DotClk"""
+class BitmapFont:
+    """Représente une police bitmap"""
     
     def __init__(self, fnt_path: Path):
         self.path = fnt_path
         self.name = ""
-        self.char_height = 16  # DotClk standard height
+        self.char_height = 16  # Standard height
         self.glyphs: Dict[str, Image.Image] = {}
         self.char_info = {}
         self._load()
     
     def _load(self):
-        """Charge le fichier .fnt selon le format DotClk"""
+        """Charge le fichier .fnt"""
         with open(self.path, 'rb') as f:
             data = f.read()
         
@@ -51,12 +51,12 @@ class DotClkFont:
             char = chr(ascii_char)
             self.char_info[char] = {'width': width, 'kerning': kerning}
         
-        # Read bitmap data (DotClk format: 4 bits per pixel, 2 pixels per byte)
+        # Read bitmap data (4 bits per pixel, 2 pixels per byte)
         bitmap_data = data[offset:]
-        self._parse_dotclk_bitmap(bitmap_data)
+        self._parse_bitmap(bitmap_data)
     
-    def _parse_dotclk_bitmap(self, bitmap_data: bytes):
-        """Parse DotClk bitmap format with dotmap header"""
+    def _parse_bitmap(self, bitmap_data: bytes):
+        """Parse bitmap format with dotmap header"""
         if len(bitmap_data) < 8:
             return
             
@@ -181,6 +181,6 @@ class DotClkFont:
         return width
 
 
-def load_font(fnt_path: Path) -> DotClkFont:
-    """Charge une police DotClk depuis un fichier .fnt"""
-    return DotClkFont(fnt_path)
+def load_font(fnt_path: Path) -> BitmapFont:
+    """Charge une police depuis un fichier .fnt"""
+    return BitmapFont(fnt_path)

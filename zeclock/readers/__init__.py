@@ -1,7 +1,7 @@
 """
-Readers pour les formats DotClk
+Readers pour les formats d'animation et de police
 """
-from .fnt_reader import DotClkFont, load_font
-from .scn_reader import DotClkScene, load_scene
+from .fnt_reader import BitmapFont, load_font
+from .scn_reader import Scene, load_scene
 
-__all__ = ['DotClkFont', 'load_font', 'DotClkScene', 'load_scene']
+__all__ = ['BitmapFont', 'load_font', 'Scene', 'load_scene']

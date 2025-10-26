@@ -2,33 +2,29 @@ from PIL import Image
 import numpy as np
 
 def overlay_or(base: Image.Image, overlay: Image.Image) -> Image.Image:
-    """Combine images using DotClk DotBlt logic: base first, then overlay with mask"""
-    base_array = np.array(base.convert("L") if base.mode != "L" else base)
-    overlay_array = np.array(overlay.convert("L") if overlay.mode != "L" else overlay)
-    
-    # Start with base (like DotClk frame)
-    merged_array = base_array.copy()
+    """Combine images using overlay logic: base first, then overlay with mask"""
+    # Fast path: direct array access without conversion checks
+    base_array = np.asarray(base)
+    overlay_array = np.asarray(overlay)
     
     # Check if overlay has mask data
     if hasattr(overlay, 'mask_data') and overlay.mask_data:
-        # Use DotClk DotBlt logic with correct bit ordering
+        # Vectorized mask processing
         height, width = overlay_array.shape
         mask_bytes = np.frombuffer(overlay.mask_data, dtype=np.uint8)
         
-        # Apply DotBlt logic: mask=0 means use overlay, mask=1 means keep base
-        for y in range(height):
-            for x in range(width):
-                byte_idx = (x // 8) + (y * overlay.mask_width_bytes)
-                if byte_idx < len(mask_bytes):
-                    bit_pos = x % 8
-                    mask_val = bool(mask_bytes[byte_idx] & (1 << bit_pos))
-                    if mask_val:  # mask=1: keep base pixel
-                        pass  # Already copied base
-                    else:  # mask=0: use overlay pixel (including black!)
-                        merged_array[y, x] = overlay_array[y, x]
+        # Create mask array using vectorized operations
+        y_indices, x_indices = np.mgrid[0:height, 0:width]
+        byte_indices = (x_indices // 8) + (y_indices * overlay.mask_width_bytes)
+        bit_positions = x_indices % 8
+        
+        # Vectorized mask extraction
+        valid_mask = byte_indices < len(mask_bytes)
+        mask_vals = np.zeros((height, width), dtype=bool)
+        mask_vals[valid_mask] = (mask_bytes[byte_indices[valid_mask]] >> bit_positions[valid_mask]) & 1
+        
+        # Apply mask: where mask=0 use overlay, where mask=1 use base
+        return Image.fromarray(np.where(mask_vals, base_array, overlay_array), 'L')
     else:
-        # No mask: fonts should overlay completely (including black pixels)
-        # For fonts, treat all pixels as opaque - use overlay where it exists
-        merged_array = overlay_array
-    
-    return Image.fromarray(merged_array, 'L')
+        # No mask: direct overlay (fastest path)
+        return overlay

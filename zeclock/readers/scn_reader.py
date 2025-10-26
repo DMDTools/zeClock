@@ -1,5 +1,5 @@
 """
-Lecteur d'animations DotClk (.scn)
+Lecteur d'animations (.scn)
 Format: Scene header + dotmap frames (4-bit per pixel)
 """
 from pathlib import Path
@@ -8,8 +8,8 @@ from PIL import Image
 import struct
 
 
-class DotClkScene:
-    """Représente une animation DotClk"""
+class Scene:
+    """Représente une animation"""
     
     def __init__(self, scn_path: Path, width: int = 128, height: int = 32):
         self.path = scn_path
@@ -18,7 +18,7 @@ class DotClkScene:
         self.frames: List[Image.Image] = []
         self.frame_count = 0
         
-        # Storyboard data (DotClk format)
+        # Storyboard data
         self.first_frame_delay = 0
         self.first_frame_layer = 0
         self.first_blank = 0
@@ -34,7 +34,7 @@ class DotClkScene:
         self._load()
     
     def _load(self):
-        """Charge le fichier .scn selon le format DotClk"""
+        """Charge le fichier .scn"""
         with open(self.path, 'rb') as f:
             data = f.read()
         
@@ -92,7 +92,7 @@ class DotClkScene:
         
         self.frame_count = cnt_item_dotmap
         
-        # Frame state management (like DotClk)
+        # Frame state management
         self.do_first = 1 if self.first_frame_delay > 0 else 0  # TODO=1, NA=0
         self.do_last = 1 if self.last_frame_delay > 0 else 0
         self.current_frame = 0
@@ -184,7 +184,7 @@ class DotClkScene:
 
 
     def next_frame(self):
-        """Advance to next frame (DotClk logic)"""
+        """Advance to next frame"""
         if self.current_frame < len(self.frames):
             self.current_frame += 1
     
@@ -200,6 +200,6 @@ class DotClkScene:
         return self.current_frame >= len(self.frames)
 
 
-def load_scene(scn_path: Path, width: int = 128, height: int = 32) -> DotClkScene:
-    """Charge une animation DotClk depuis un fichier .scn"""
-    return DotClkScene(scn_path, width, height)
+def load_scene(scn_path: Path, width: int = 128, height: int = 32) -> Scene:
+    """Charge une animation depuis un fichier .scn"""
+    return Scene(scn_path, width, height)

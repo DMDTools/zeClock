@@ -31,7 +31,7 @@ class ZeClock:
         # Client DMDServer
         self.dmd_client = DMDServerClient(dmdserver_host, dmdserver_port)
         
-        # Animation state (aligned with DotClk)
+        # Animation state
         if test_mode:
             test_scenes = ["RD1245.scn", "RD1893.scn", "RD1719.scn"]
             all_scenes = list(Path.home().glob(".zeclock/resources/animations/**/*.scn"))
@@ -45,10 +45,10 @@ class ZeClock:
         self.cur_scene = 0
         self.scene_start = 0
         self.scene_duration = 0
-        self.cfg_clock_delay_value = 5000  # 5 seconds like DotClk default
+        self.cfg_clock_delay_value = 5000  # 5 seconds default
         self.animation_playing = False
         
-        # DotClk state machine
+        # State machine
         self.do_first = 0  # 0=NA, 1=TODO, 2=INPROC, 3=DONE
         self.do_last = 0
         self.frame_start_time = 0
@@ -58,17 +58,17 @@ class ZeClock:
         self.last_clock_time = ""
         self.current_clock_style = 0  # Track current clock style
         
-        # Load DotClk font
+        # Load font
         self.dotclk_font = None
-        dotclk_font_path = Path.home() / ".zeclock" / "resources" / "Fonts" / "STANDARD.fnt"
-        if dotclk_font_path.exists():
+        font_path = Path.home() / ".zeclock" / "resources" / "Fonts" / "STANDARD.fnt"
+        if font_path.exists():
             try:
-                self.dotclk_font = load_font(dotclk_font_path)
-                print(f"✅ Loaded DotClk font: {self.dotclk_font.name}")
+                self.dotclk_font = load_font(font_path)
+                print(f"✅ Loaded font: {self.dotclk_font.name}")
             except Exception as e:
-                print(f"⚠️ Failed to load DotClk font: {e}")
+                print(f"⚠️ Failed to load font: {e}")
         else:
-            print("❌ No DotClk font found")
+            print("❌ No font found")
         
         # Load first scene if available
         if self.scene_files:
@@ -136,14 +136,14 @@ class ZeClock:
             self.dmd_client.disconnect()
     
     def create_dmd_frame(self) -> Image.Image:
-        """Create a DMD frame with current time and optional animation - aligned with DotClk logic"""
+        """Create a DMD frame with current time and optional animation"""
         # Generate clock with 500ms blink timing
         milliseconds = int(time.time() * 1000)
         blink_state = (milliseconds // 500) % 2
         cache_key = f"{time.strftime('%H:%M:%S')}_{blink_state}"
         
         if cache_key != self.last_clock_time:
-            # Second beat - alternate colon display every 500ms like DotClk
+            # Second beat - alternate colon display every 500ms
             if blink_state == 0:
                 # Show the colon dots
                 display_time = time.strftime("%H:%M")
@@ -153,7 +153,7 @@ class ZeClock:
             
             # Generate clock dotmap based on current clock style (set at animation start)
             if self.current_clock_style == 1:  # ClockStyleCustom
-                # Custom positioning - remove AM/PM like DotClk does
+                # Custom positioning - remove AM/PM
                 if len(display_time) > 5:
                     display_time = display_time[:5]  # Truncate AM/PM
                 
@@ -182,12 +182,12 @@ class ZeClock:
         
         clock_frame = self.cached_clock_frame
         
-        # Get animation frame if playing (matches DotClk frame processing)
+        # Get animation frame if playing
         animation_frame = None
         show_blank_frame = False
         
         if self.animation_playing and self.current_scene and len(self.current_scene.frames) > 0:
-            # DotClk state machine logic for first/last frame handling
+            # State machine logic for first/last frame handling
             if self.do_first == 1:  # TODO
                 self.do_first = 2  # INPROC
                 self.frame_start_time = time.time()
@@ -205,8 +205,12 @@ class ZeClock:
                         show_blank_frame = True
                     else:
                         animation_frame = self.current_scene.frames[0] if len(self.current_scene.frames) > 0 else None
-            elif self.scene_frame_index >= len(self.current_scene.frames):
-                # Check for last frame
+            elif self.scene_frame_index < len(self.current_scene.frames):
+                # Normal frame playback
+                animation_frame = self.current_scene.frames[self.scene_frame_index]
+                self.scene_frame_index += 1
+            else:
+                # All frames played - check for last frame handling
                 if self.do_last == 1:  # TODO
                     self.do_last = 2  # INPROC
                     self.frame_start_time = time.time()
@@ -234,35 +238,31 @@ class ZeClock:
                     self.current_clock_style = 0  # Reset to standard
                     self.last_clock_time = ""  # Force clock regeneration
                     self.scene_end_time = time.time()  # Record when scene ended
-            else:
-                # Normal frame playback
-                animation_frame = self.current_scene.frames[self.scene_frame_index]
-                self.scene_frame_index += 1
         
-        # Create final frame following DotClk logic exactly
+        # Create final frame
         if show_blank_frame:
             # During blank periods, show clock with blank animation
             merged_frame = clock_frame
         elif animation_frame:
-            # Animation is active - apply DotClk layering logic
+            # Animation is active - apply layering logic
             if hasattr(self.current_scene, 'frame_layer') and self.current_scene.frame_layer == 1:
                 # Clock sits above the animation frame (frame_layer == 1)
-                # DotBlt order: animation first, then clock on top
+                # Layer order: animation first, then clock on top
                 merged_frame = overlay_or(animation_frame, clock_frame)
             else:
                 # Clock sits behind the animation frame (frame_layer == 0, default)
-                # DotBlt order: clock first, then animation on top
+                # Layer order: clock first, then animation on top
                 merged_frame = overlay_or(clock_frame, animation_frame)
         else:
-            # No animation - show only clock (matches DotClk between-animations behavior)
+            # No animation - show only clock
             merged_frame = clock_frame
         
-        # Convert to RGB with orange color mapping (matches DotClk color scheme)
+        # Convert to RGB with orange color mapping
         import numpy as np
         gray_array = np.array(merged_frame)
         rgb_array = np.zeros((self.height, self.width, 3), dtype=np.uint8)
         
-        # Map grayscale to orange tones like DotClk
+        # Map grayscale to orange tones
         intensity = gray_array / 255.0
         rgb_array[:, :, 0] = (255 * intensity).astype(np.uint8)  # Red
         rgb_array[:, :, 1] = (128 * intensity).astype(np.uint8)  # Green  
@@ -282,11 +282,11 @@ class ZeClock:
                 if len(self.current_scene.frames) == 1:
                     self.single_frame_start = time.time()
                 
-                # Initialize DotClk state machine
+                # Initialize state machine
                 self.do_first = self.current_scene.do_first
                 self.do_last = self.current_scene.do_last
                 
-                # Set clock style at animation start (matches DotClk logic)
+                # Set clock style at animation start
                 self.current_clock_style = self.current_scene.clock_style
                 # Force clock regeneration with new style
                 self.last_clock_time = ""
