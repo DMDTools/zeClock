@@ -68,22 +68,21 @@ class DMDServerClient:
             return False
     
     def _rgb_to_rgb565(self, image: Image.Image) -> bytearray:
-        """Convert RGB image to RGB565 format (big-endian)"""
-        rgb565_data = bytearray()
-        pixels = image.load()
+        """Convert RGB image to RGB565 format (big-endian) - optimized"""
+        import numpy as np
         
-        for y in range(image.height):
-            for x in range(image.width):
-                r, g, b = pixels[x, y]
-                # Convert to RGB565: 5 bits red, 6 bits green, 5 bits blue
-                r565 = (r >> 3) & 0x1F
-                g565 = (g >> 2) & 0x3F  
-                b565 = (b >> 3) & 0x1F
-                rgb565 = (r565 << 11) | (g565 << 5) | b565
-                # Big-endian 16-bit
-                rgb565_data.extend(rgb565.to_bytes(2, 'big'))
+        # Convert to numpy array for vectorized operations
+        rgb_array = np.array(image)
         
-        return rgb565_data
+        # Vectorized RGB565 conversion
+        r = (rgb_array[:, :, 0] >> 3).astype(np.uint16)
+        g = (rgb_array[:, :, 1] >> 2).astype(np.uint16) 
+        b = (rgb_array[:, :, 2] >> 3).astype(np.uint16)
+        
+        rgb565 = (r << 11) | (g << 5) | b
+        
+        # Convert to big-endian bytes
+        return rgb565.astype('>u2').tobytes()
     
     def __enter__(self):
         self.connect()

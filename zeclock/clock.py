@@ -20,7 +20,8 @@ class ZeClock:
         height: int = 32,
         fps: int = 25,
         dmdserver_host: str = "localhost",
-        dmdserver_port: int = 6789
+        dmdserver_port: int = 6789,
+        test_mode: bool = False
     ):
         self.width = width
         self.height = height
@@ -30,14 +31,34 @@ class ZeClock:
         # Client DMDServer
         self.dmd_client = DMDServerClient(dmdserver_host, dmdserver_port)
         
-        # Animation state
-        self.scene_files = list(Path.home().glob(".zeclock/resources/animations/*.scn"))
+        # Animation state (aligned with DotClk)
+        if test_mode:
+            test_scenes = ["RD1245.scn", "RD1893.scn", "RD1719.scn"]
+            all_scenes = list(Path.home().glob(".zeclock/resources/animations/**/*.scn"))
+            self.scene_files = [s for s in all_scenes if s.name in test_scenes]
+        else:
+            self.scene_files = list(Path.home().glob(".zeclock/resources/animations/**/*.scn"))
         self.current_scene = None
         self.scene_frame_index = 0
-        self.last_scene_change = 0
-        self.scene_duration = 10.0  # 10 seconds per scene
+        self.millis_scene_start = 0
+        self.millis_scene_frame_delay = 0
+        self.cur_scene = 0
+        self.scene_start = 0
+        self.scene_duration = 0
+        self.cfg_clock_delay_value = 5000  # 5 seconds like DotClk default
+        self.animation_playing = False
         
-        # Load DotClk font first, fallback to TTF
+        # DotClk state machine
+        self.do_first = 0  # 0=NA, 1=TODO, 2=INPROC, 3=DONE
+        self.do_last = 0
+        self.frame_start_time = 0
+        
+        # Clock caching
+        self.cached_clock_frame = None
+        self.last_clock_time = ""
+        self.current_clock_style = 0  # Track current clock style
+        
+        # Load DotClk font
         self.dotclk_font = None
         dotclk_font_path = Path.home() / ".zeclock" / "resources" / "Fonts" / "STANDARD.fnt"
         if dotclk_font_path.exists():
@@ -46,21 +67,19 @@ class ZeClock:
                 print(f"✅ Loaded DotClk font: {self.dotclk_font.name}")
             except Exception as e:
                 print(f"⚠️ Failed to load DotClk font: {e}")
-        
-        # Fallback TTF font
-        if not self.dotclk_font:
-            self.font_path = Path(__file__).parent / "resources" / "fonts" / "default.ttf"
-            if self.font_path.exists():
-                self.font = ImageFont.truetype(str(self.font_path), 16)
-            else:
-                self.font = ImageFont.load_default()
+        else:
+            print("❌ No DotClk font found")
         
         # Load first scene if available
         if self.scene_files:
             print(f"🎬 Found {len(self.scene_files)} scene files")
-            self._load_new_scene()
+            self.scene_end_time = time.time()
+            # Initialize with standard clock style
+            self.current_clock_style = 0
         else:
             print("⚠️ No scene files found")
+            # Initialize with standard clock style
+            self.current_clock_style = 0
     
     async def run(self):
         """Boucle principale asynchrone"""
@@ -68,32 +87,20 @@ class ZeClock:
             print("❌ Cannot start: dmdserver not available")
             return
         
-        # Use scene-specific timing if available, otherwise default FPS
-        if self.current_scene and hasattr(self.current_scene, 'frame_delay_ms'):
-            frame_time = self.current_scene.frame_delay_ms / 1000.0  # Convert ms to seconds
-            actual_fps = 1000.0 / self.current_scene.frame_delay_ms
-            print(f"🕒 Starting zeClock with scene timing: {self.current_scene.frame_delay_ms}ms ({actual_fps:.1f} FPS)")
-        else:
-            frame_time = 1 / self.fps
-            print(f"🕒 Starting zeClock at {self.fps} FPS")
+        frame_time = 1 / self.fps
+        print(f"🕒 Starting zeClock at {self.fps} FPS")
         
         try:
             while self.running:
                 t0 = time.monotonic()
                 
-                # Check if we need to change scene (every 10 seconds)
+                # Check if we need to start new animation (5s after last one ended)
                 now = time.time()
-                if now - self.last_scene_change >= self.scene_duration:
-                    self._load_new_scene()
-                    self.last_scene_change = now
-                    # Update frame timing for new scene
-                    if self.current_scene and hasattr(self.current_scene, 'frame_delay_ms'):
-                        frame_time = self.current_scene.frame_delay_ms / 1000.0
-                        actual_fps = 1000.0 / self.current_scene.frame_delay_ms
-                        print(f"🎬 New scene timing: {self.current_scene.frame_delay_ms}ms ({actual_fps:.1f} FPS)")
+                if not self.animation_playing and now - self.scene_end_time >= 5:
+                    self._start_new_animation()
                 
                 # Create clock frame
-                frame = self.create_clock_frame()
+                frame = self.create_dmd_frame()
                 
                 # Send to DMD
                 success = self.dmd_client.send_frame(frame)
@@ -106,6 +113,17 @@ class ZeClock:
                         print("❌ Cannot reconnect to dmdserver")
                         break
                 
+                # Use scene-specific timing with DotClk state machine
+                if self.animation_playing and self.current_scene:
+                    if self.do_first == 2:  # INPROC
+                        frame_time = self.current_scene.first_frame_delay / 1000.0
+                    elif self.do_last == 2:  # INPROC
+                        frame_time = self.current_scene.last_frame_delay / 1000.0
+                    else:
+                        frame_time = self.current_scene.frame_delay_ms / 1000.0
+                else:
+                    frame_time = 1 / self.fps
+                
                 # Frame timing
                 elapsed = time.monotonic() - t0
                 sleep_time = max(0, frame_time - elapsed)
@@ -117,71 +135,184 @@ class ZeClock:
         finally:
             self.dmd_client.disconnect()
     
-    def create_clock_frame(self) -> Image.Image:
-        """Create a clock frame with current time and optional animation"""
-        current_time = time.strftime("%H:%M")
+    def create_dmd_frame(self) -> Image.Image:
+        """Create a DMD frame with current time and optional animation - aligned with DotClk logic"""
+        # Generate clock with 500ms blink timing
+        milliseconds = int(time.time() * 1000)
+        blink_state = (milliseconds // 500) % 2
+        cache_key = f"{time.strftime('%H:%M:%S')}_{blink_state}"
         
-        # Check if we need to change scene (every 10 seconds)
-        now = time.time()
-        if now - self.last_scene_change >= self.scene_duration:
-            self._load_new_scene()
-            self.last_scene_change = now
-        
-        # Get animation frame if available
-        animation_frame = None
-        if self.current_scene and len(self.current_scene.frames) > 0:
-            animation_frame = self.current_scene.frames[self.scene_frame_index % len(self.current_scene.frames)]
-            self.scene_frame_index += 1
-        
-        # Create clock overlay
-        if self.dotclk_font:
-            clock_overlay = self.dotclk_font.render_text(current_time, self.width, self.height)
-            
-            # Combine animation and clock if both exist
-            if animation_frame:
-                try:
-                    merged_frame = overlay_or(animation_frame, clock_overlay)
-                except Exception as e:
-                    print(f"⚠️ Overlay error: {e}")
-                    merged_frame = clock_overlay
+        if cache_key != self.last_clock_time:
+            # Second beat - alternate colon display every 500ms like DotClk
+            if blink_state == 0:
+                # Show the colon dots
+                display_time = time.strftime("%H:%M")
             else:
-                merged_frame = clock_overlay
+                # Hide the colon dots (use space)
+                display_time = time.strftime("%H %M")
             
-            # Fast RGB conversion using numpy-style operations
-            import numpy as np
-            gray_array = np.array(merged_frame)
+            # Generate clock dotmap based on current clock style (set at animation start)
+            if self.current_clock_style == 1:  # ClockStyleCustom
+                # Custom positioning - remove AM/PM like DotClk does
+                if len(display_time) > 5:
+                    display_time = display_time[:5]  # Truncate AM/PM
+                
+                # Use menu font for custom style (smaller font)
+                text_width = self.dotclk_font.get_text_width(display_time)
+                text_height = self.dotclk_font.char_height
+                
+                # Calculate position from custom coordinates (center at custom point)
+                x_pos = self.current_scene.custom_x - (text_width // 2) if self.current_scene else 64
+                y_pos = self.current_scene.custom_y - (text_height // 2) if self.current_scene else 16
+                
+                # Create blank canvas and paste text at custom position
+                self.cached_clock_frame = Image.new('L', (self.width, self.height), 0)
+                text_img = self.dotclk_font.render_text(display_time, text_width, text_height)
+                
+                # Ensure position is within bounds
+                x_pos = max(0, min(x_pos, self.width - text_width))
+                y_pos = max(0, min(y_pos, self.height - text_height))
+                
+                self.cached_clock_frame.paste(text_img, (x_pos, y_pos))
+            else:
+                # ClockStyleStd (0) - Standard centered positioning
+                self.cached_clock_frame = self.dotclk_font.render_text(display_time, self.width, self.height)
             
-            # Create RGB array with orange color mapping
-            rgb_array = np.zeros((self.height, self.width, 3), dtype=np.uint8)
-            mask = gray_array > 0
-            intensity = gray_array[mask] / 255.0
-            
-            rgb_array[mask, 0] = (255 * intensity).astype(np.uint8)  # Red
-            rgb_array[mask, 1] = (128 * intensity).astype(np.uint8)  # Green
-            rgb_array[mask, 2] = 0  # Blue
-            
-            return Image.fromarray(rgb_array, 'RGB')
+            self.last_clock_time = cache_key
         
-        # Fallback to TTF font (no animation support)
-        img = Image.new('RGB', (self.width, self.height), (0, 0, 0))
-        draw = ImageDraw.Draw(img)
+        clock_frame = self.cached_clock_frame
         
-        bbox = draw.textbbox((0, 0), current_time, font=self.font)
-        text_width = bbox[2] - bbox[0]
-        text_height = bbox[3] - bbox[1]
+        # Get animation frame if playing (matches DotClk frame processing)
+        animation_frame = None
+        show_blank_frame = False
         
-        x = (self.width - text_width) // 2
-        y = (self.height - text_height) // 2
+        if self.animation_playing and self.current_scene and len(self.current_scene.frames) > 0:
+            # DotClk state machine logic for first/last frame handling
+            if self.do_first == 1:  # TODO
+                self.do_first = 2  # INPROC
+                self.frame_start_time = time.time()
+                if self.current_scene.first_blank:
+                    show_blank_frame = True
+                else:
+                    animation_frame = self.current_scene.frames[0] if len(self.current_scene.frames) > 0 else None
+            elif self.do_first == 2:  # INPROC
+                # First frame delay period
+                if time.time() - self.frame_start_time >= self.current_scene.first_frame_delay / 1000.0:
+                    self.do_first = 3  # DONE
+                    self.scene_frame_index = 0
+                else:
+                    if self.current_scene.first_blank:
+                        show_blank_frame = True
+                    else:
+                        animation_frame = self.current_scene.frames[0] if len(self.current_scene.frames) > 0 else None
+            elif self.scene_frame_index >= len(self.current_scene.frames):
+                # Check for last frame
+                if self.do_last == 1:  # TODO
+                    self.do_last = 2  # INPROC
+                    self.frame_start_time = time.time()
+                    if self.current_scene.last_blank:
+                        show_blank_frame = True
+                    else:
+                        animation_frame = self.current_scene.frames[-1] if len(self.current_scene.frames) > 0 else None
+                elif self.do_last == 2:  # INPROC
+                    # Last frame delay period
+                    if time.time() - self.frame_start_time >= self.current_scene.last_frame_delay / 1000.0:
+                        self.animation_playing = False
+                        self.current_scene = None
+                        self.current_clock_style = 0
+                        self.last_clock_time = ""
+                        self.scene_end_time = time.time()
+                    else:
+                        if self.current_scene.last_blank:
+                            show_blank_frame = True
+                        else:
+                            animation_frame = self.current_scene.frames[-1] if len(self.current_scene.frames) > 0 else None
+                else:
+                    # Animation finished - reset to standard clock style
+                    self.animation_playing = False
+                    self.current_scene = None
+                    self.current_clock_style = 0  # Reset to standard
+                    self.last_clock_time = ""  # Force clock regeneration
+                    self.scene_end_time = time.time()  # Record when scene ended
+            else:
+                # Normal frame playback
+                animation_frame = self.current_scene.frames[self.scene_frame_index]
+                self.scene_frame_index += 1
         
-        draw.text((x, y), current_time, font=self.font, fill=(255, 128, 0))
+        # Create final frame following DotClk logic exactly
+        if show_blank_frame:
+            # During blank periods, show clock with blank animation
+            merged_frame = clock_frame
+        elif animation_frame:
+            # Animation is active - apply DotClk layering logic
+            if hasattr(self.current_scene, 'frame_layer') and self.current_scene.frame_layer == 1:
+                # Clock sits above the animation frame (frame_layer == 1)
+                # DotBlt order: animation first, then clock on top
+                merged_frame = overlay_or(animation_frame, clock_frame)
+            else:
+                # Clock sits behind the animation frame (frame_layer == 0, default)
+                # DotBlt order: clock first, then animation on top
+                merged_frame = overlay_or(clock_frame, animation_frame)
+        else:
+            # No animation - show only clock (matches DotClk between-animations behavior)
+            merged_frame = clock_frame
         
-        return img
+        # Convert to RGB with orange color mapping (matches DotClk color scheme)
+        import numpy as np
+        gray_array = np.array(merged_frame)
+        rgb_array = np.zeros((self.height, self.width, 3), dtype=np.uint8)
+        
+        # Map grayscale to orange tones like DotClk
+        intensity = gray_array / 255.0
+        rgb_array[:, :, 0] = (255 * intensity).astype(np.uint8)  # Red
+        rgb_array[:, :, 1] = (128 * intensity).astype(np.uint8)  # Green  
+        rgb_array[:, :, 2] = 0  # Blue
+        
+        return Image.fromarray(rgb_array, 'RGB')
     
-    def _load_new_scene(self):
-        """Load a random scene"""
+    def _start_new_animation(self):
+        """Start a new animation"""
         if self.scene_files:
             scene_path = random.choice(self.scene_files)
+            print(f"🎯 Testing scene: {scene_path.name}")
             try:
+                self.current_scene = load_scene(scene_path, self.width, self.height)
+                self.scene_frame_index = 0
+                self.animation_playing = True
+                if len(self.current_scene.frames) == 1:
+                    self.single_frame_start = time.time()
+                
+                # Initialize DotClk state machine
+                self.do_first = self.current_scene.do_first
+                self.do_last = self.current_scene.do_last
+                
+                # Set clock style at animation start (matches DotClk logic)
+                self.current_clock_style = self.current_scene.clock_style
+                # Force clock regeneration with new style
+                self.last_clock_time = ""
+                
+                # Show timing info with clock style
+                fps = 1000.0 / self.current_scene.frame_delay_ms if self.current_scene.frame_delay_ms > 0 else 0
+                clock_style_name = ["Standard", "Custom"][min(self.current_scene.clock_style, 1)]
+                print(f"🎬 Testing animation: {scene_path.name} ({len(self.current_scene.frames)} frames, {self.current_scene.frame_delay_ms}ms, {fps:.1f} FPS, Clock: {clock_style_name})")
+                print(f"   Frame layer: {'Above' if getattr(self.current_scene, 'frame_layer', 0) == 1 else 'Behind'} animation")
+                if self.current_scene.clock_style == 1:
+                    print(f"   Custom clock position: ({self.current_scene.custom_x}, {self.current_scene.custom_y})")
+                if hasattr(self.current_scene, 'frame_layer'):
+                    layer_name = "Behind" if self.current_scene.frame_layer == 0 else "Above"
+                    print(f"   Clock layer: {layer_name} animation")
+                
+                # Show blank frame info from storyboard
+                blank_info = []
+                if self.current_scene.first_blank:
+                    blank_info.append("First")
+                if self.current_scene.last_blank:
+                    blank_info.append("Last")
+                if blank_info:
+                    print(f"   Blank frames: {', '.join(blank_info)}")
+            except Exception as e:
+                print(f"⚠️ Failed to load scene {scene_path.name}: {e}")
+                self.current_scene = None
                 self.current_scene = load_scene(scene_path, self.width, self.height)
                 self.scene_frame_index = 0
                 print(f"🎬 Loaded scene: {scene_path.name} ({len(self.current_scene.frames)} frames)")

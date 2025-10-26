@@ -17,7 +17,20 @@ class DotClkScene:
         self.height = height
         self.frames: List[Image.Image] = []
         self.frame_count = 0
+        
+        # Storyboard data (DotClk format)
+        self.first_frame_delay = 0
+        self.first_frame_layer = 0
+        self.first_blank = 0
         self.frame_delay_ms = 40  # Default 25 FPS
+        self.frame_layer = 0
+        self.last_frame_delay = 0
+        self.last_frame_layer = 0
+        self.last_blank = 0
+        self.clock_style = 0
+        self.custom_x = 0
+        self.custom_y = 0
+        
         self._load()
     
     def _load(self):
@@ -39,27 +52,38 @@ class DotClkScene:
         
         # Read storyboard data to get timing information
         if cnt_item_storyboard > 0:
-            # Read first storyboard item for timing
-            first_frame_delay = struct.unpack('<H', data[offset:offset+2])[0]
+            # Read first storyboard item for timing (all uint16_t except clock fields)
+            self.first_frame_delay = struct.unpack('<H', data[offset:offset+2])[0]
             offset += 2
-            first_frame_layer = struct.unpack('<H', data[offset:offset+2])[0]
+            self.first_frame_layer = struct.unpack('<H', data[offset:offset+2])[0]
             offset += 2
-            first_blank = struct.unpack('<H', data[offset:offset+2])[0]
-            offset += 2
-            
-            frame_delay = struct.unpack('<H', data[offset:offset+2])[0]
-            offset += 2
-            frame_layer = struct.unpack('<H', data[offset:offset+2])[0]
+            self.first_blank = struct.unpack('<H', data[offset:offset+2])[0]
             offset += 2
             
-            # Use the frame delay from storyboard (in milliseconds)
-            if frame_delay > 0:
-                self.frame_delay_ms = frame_delay
+            self.frame_delay_ms = struct.unpack('<H', data[offset:offset+2])[0]
+            offset += 2
+            self.frame_layer = struct.unpack('<H', data[offset:offset+2])[0]
+            offset += 2
             
-            # Skip rest of first storyboard item
-            offset += 2 + 2 + 2 + 1 + 1 + 1 + 17  # lastFrameDelay, lastFrameLayer, lastBlank, clockStyle, customX, customY, space[17]
+            self.last_frame_delay = struct.unpack('<H', data[offset:offset+2])[0]
+            offset += 2
+            self.last_frame_layer = struct.unpack('<H', data[offset:offset+2])[0]
+            offset += 2
+            self.last_blank = struct.unpack('<H', data[offset:offset+2])[0]
+            offset += 2
             
-            # Skip remaining storyboard items
+            # Clock fields are bytes
+            self.clock_style = struct.unpack('<B', data[offset:offset+1])[0]
+            offset += 1
+            self.custom_x = struct.unpack('<B', data[offset:offset+1])[0]
+            offset += 1
+            self.custom_y = struct.unpack('<B', data[offset:offset+1])[0]
+            offset += 1
+            
+            # Skip the 17 bytes for future features
+            offset += 17
+            
+            # Skip remaining storyboard items (each is 36 bytes total)
             remaining_storyboards = cnt_item_storyboard - 1
             offset += remaining_storyboards * 36
         else:
@@ -67,6 +91,11 @@ class DotClkScene:
             pass
         
         self.frame_count = cnt_item_dotmap
+        
+        # Frame state management (like DotClk)
+        self.do_first = 1 if self.first_frame_delay > 0 else 0  # TODO=1, NA=0
+        self.do_last = 1 if self.last_frame_delay > 0 else 0
+        self.current_frame = 0
         
         # Read each frame as a dotmap structure
         for i in range(cnt_item_dotmap):
@@ -106,34 +135,39 @@ class DotClkScene:
         dots_data = data[offset:offset + dots_size]
         offset += dots_size
         
-        # Skip mask data if present
+        # Read mask data if present
+        mask_data = None
         if has_mask:
+            mask_data = data[offset:offset + mask_size]
             offset += mask_size
         
         # Create image from dots data
         img = Image.new('L', (dots_width, dots_height))
         pixels = img.load()
         
-        # Parse 4-bit data (2 pixels per byte)
+        # Parse 4-bit data (2 pixels per byte) - preserve original values
         for y in range(dots_height):
             for x in range(dots_width):
                 byte_idx = (x // 2) + (y * width_bytes_dots)
                 if byte_idx < len(dots_data):
                     byte_val = dots_data[byte_idx]
                     if x % 2 == 0:
-                        # Even column: lower 4 bits (corrected from conversation summary)
                         pixel_val = byte_val & 0x0F
                     else:
-                        # Odd column: upper 4 bits (corrected from conversation summary)
                         pixel_val = (byte_val >> 4) & 0x0F
                     
                     # Map 4-bit values with better shadow visibility
                     if pixel_val == 0:
-                        pixels[x, y] = 0      # Black
+                        pixels[x, y] = 0
                     elif pixel_val == 1:
-                        pixels[x, y] = 64     # Visible shadow
+                        pixels[x, y] = 64
                     else:
-                        pixels[x, y] = pixel_val * 17  # Linear for other values
+                        pixels[x, y] = pixel_val * 17
+        
+        # Store mask data for overlay use
+        if mask_data:
+            img.mask_data = mask_data
+            img.mask_width_bytes = width_bytes_mask
         
         return (img, offset)
     
@@ -147,6 +181,23 @@ class DotClkScene:
     def get_frame(self, index: int) -> Image.Image:
         """Récupère une frame spécifique"""
         return self.frames[index % self.frame_count]
+
+
+    def next_frame(self):
+        """Advance to next frame (DotClk logic)"""
+        if self.current_frame < len(self.frames):
+            self.current_frame += 1
+    
+
+    def get_current_frame(self) -> Image.Image:
+        """Get current frame dotmap"""
+        if self.current_frame < len(self.frames):
+            return self.frames[self.current_frame]
+        return None
+    
+    def eof(self) -> bool:
+        """Check if at end of scene"""
+        return self.current_frame >= len(self.frames)
 
 
 def load_scene(scn_path: Path, width: int = 128, height: int = 32) -> DotClkScene:

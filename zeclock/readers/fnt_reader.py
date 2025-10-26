@@ -123,29 +123,40 @@ class DotClkFont:
                 glyph = bitmap_img.crop((x_offset, 0, x_offset + width, dots_height))
                 self.glyphs[char] = glyph
                 x_offset += width
+        
+        # Add space character with same properties as colon for consistent blinking
+        if ':' in self.char_info and ' ' not in self.char_info:
+            self.char_info[' '] = self.char_info[':'].copy()
+            self.glyphs[' '] = Image.new('L', self.glyphs[':'].size, 0)
     
     def render_text(self, text: str, width: int = 128, height: int = 32) -> Image.Image:
-        """Rend du texte avec cette police"""
+        """Rend du texte avec cette police (optimized)"""
         img = Image.new('L', (width, height))  # Grayscale for 4-bit support
         
-        # Calculate total text width (with kerning)
+        # Calculate total text width (with kerning) and validate chars in one pass
         text_width = 0
+        valid_chars = []
         for i, char in enumerate(text):
             if char in self.char_info:
+                valid_chars.append(char)
                 text_width += self.char_info[char]['width']
                 if i < len(text) - 1:  # Not the last character
                     text_width -= self.char_info[char]['kerning']
+            else:
+                valid_chars.append(None)
+                text_width += 8  # Space for missing characters
         
         # Center the text
         x_pos = (width - text_width) // 2
         y_pos = (height - self.char_height) // 2
         
-        for i, char in enumerate(text):
-            if char in self.glyphs:
+        # Render characters
+        for i, char in enumerate(valid_chars):
+            if char and char in self.glyphs:
                 glyph = self.glyphs[char]
                 img.paste(glyph, (x_pos, y_pos))
                 x_pos += self.char_info[char]['width']
-                if i < len(text) - 1:  # Apply kerning except for last character
+                if i < len(valid_chars) - 1:  # Apply kerning except for last character
                     x_pos -= self.char_info[char]['kerning']
             else:
                 # Space for missing characters
