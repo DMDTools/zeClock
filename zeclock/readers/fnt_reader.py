@@ -83,10 +83,13 @@ class BitmapFont:
         dots_data = bitmap_data[offset:offset + dots_size]
         offset += dots_size
         
-        # Skip mask data if present
+        # Read mask data if present
+        mask_data = None
+        width_bytes_mask = 0
         if has_mask:
             width_bytes_mask = (dots_width // 8) + (1 if dots_width % 8 else 0)
             mask_size = width_bytes_mask * dots_height
+            mask_data = bitmap_data[offset:offset + mask_size]
             offset += mask_size
         
         # Create bitmap image (preserve 4-bit grayscale)
@@ -114,6 +117,11 @@ class BitmapFont:
                     else:
                         pixels[x, y] = pixel_val * 17  # Linear for other values
         
+        # Store mask data on bitmap for later use
+        if mask_data:
+            bitmap_img.mask_data = mask_data
+            bitmap_img.mask_width_bytes = width_bytes_mask
+        
         # Extract individual character glyphs
         x_offset = 0
         for char, info in self.char_info.items():
@@ -121,6 +129,13 @@ class BitmapFont:
             if x_offset + width <= dots_width:
                 # Extract character glyph
                 glyph = bitmap_img.crop((x_offset, 0, x_offset + width, dots_height))
+                
+                # Copy mask data for this glyph
+                if mask_data:
+                    glyph.mask_data = mask_data
+                    glyph.mask_width_bytes = width_bytes_mask
+                    glyph.mask_x_offset = x_offset
+                
                 self.glyphs[char] = glyph
                 x_offset += width
         
@@ -132,6 +147,10 @@ class BitmapFont:
     def render_text(self, text: str, width: int = 128, height: int = 32) -> Image.Image:
         """Rend du texte avec cette police (optimized)"""
         img = Image.new('L', (width, height))  # Grayscale for 4-bit support
+        
+        # Create mask for the rendered text
+        import numpy as np
+        mask_array = np.zeros((height, width), dtype=np.uint8)
         
         # Calculate total text width (with kerning) and validate chars in one pass
         text_width = 0
@@ -155,12 +174,33 @@ class BitmapFont:
             if char and char in self.glyphs:
                 glyph = self.glyphs[char]
                 img.paste(glyph, (x_pos, y_pos))
+                
+                # Copy mask for this glyph
+                if hasattr(glyph, 'mask_data') and glyph.mask_data:
+                    glyph_x_offset = getattr(glyph, 'mask_x_offset', 0)
+                    for gy in range(glyph.size[1]):
+                        for gx in range(glyph.size[0]):
+                            src_x = glyph_x_offset + gx
+                            byte_idx = (src_x // 8) + (gy * glyph.mask_width_bytes)
+                            bit_pos = src_x % 8
+                            if byte_idx < len(glyph.mask_data):
+                                mask_bit = (glyph.mask_data[byte_idx] >> bit_pos) & 1
+                                dest_x = x_pos + gx
+                                dest_y = y_pos + gy
+                                if 0 <= dest_x < width and 0 <= dest_y < height:
+                                    mask_array[dest_y, dest_x] = mask_bit
+                
                 x_pos += self.char_info[char]['width']
                 if i < len(valid_chars) - 1:  # Apply kerning except for last character
                     x_pos -= self.char_info[char]['kerning']
             else:
                 # Space for missing characters
                 x_pos += 8
+        
+        # Store mask on image
+        if np.any(mask_array):
+            img.mask_data = mask_array.tobytes()
+            img.mask_width_bytes = (width // 8) + (1 if width % 8 else 0)
         
         return img
     

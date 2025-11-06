@@ -3,7 +3,6 @@ import numpy as np
 
 def overlay_or(base: Image.Image, overlay: Image.Image) -> Image.Image:
     """Combine images using overlay logic: base first, then overlay with mask"""
-    # Fast path: direct array access without conversion checks
     base_array = np.asarray(base)
     overlay_array = np.asarray(overlay)
     
@@ -23,8 +22,8 @@ def overlay_or(base: Image.Image, overlay: Image.Image) -> Image.Image:
         mask_vals = np.zeros((height, width), dtype=bool)
         mask_vals[valid_mask] = (mask_bytes[byte_indices[valid_mask]] >> bit_positions[valid_mask]) & 1
         
-        # Apply mask: where mask=0 use overlay, where mask=1 use base
+        # Apply mask: where mask=1 preserve base, where mask=0 use overlay (preserving all values)
         return Image.fromarray(np.where(mask_vals, base_array, overlay_array), 'L')
     else:
-        # No mask: direct overlay (fastest path)
-        return overlay
+        # No mask: use overlay where it's non-zero, otherwise base
+        return Image.fromarray(np.where(overlay_array > 0, overlay_array, base_array), 'L')

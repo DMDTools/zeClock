@@ -21,25 +21,48 @@ class ZeClock:
         fps: int = 25,
         dmdserver_host: str = "localhost",
         dmdserver_port: int = 6789,
-        test_mode: bool = False
+        test_mode: bool = False,
+        color: str = "orange"
     ):
         self.width = width
         self.height = height
         self.fps = fps
         self.running = True
         
+        # Color mapping
+        self.colors = [
+            (255, 128, 0),   # orange
+            (0, 128, 255),   # blue
+            (255, 0, 0),     # red
+            (255, 0, 255),   # purple
+            (0, 255, 128),   # green
+            (255, 255, 0),   # yellow
+            (0, 255, 255),   # cyan
+            (255, 64, 128)   # pink
+        ]
+        color_map = {"orange": 0, "blue": 1, "red": 2, "purple": 3, "green": 4, "yellow": 5, "cyan": 6, "pink": 7}
+        self.color_mode = color
+        if color == "auto":
+            self.color = self.colors[0]
+            self.last_color_change = time.time()
+        else:
+            self.color = self.colors[color_map.get(color, 0)]
+        
         # Client DMDServer
         self.dmd_client = DMDServerClient(dmdserver_host, dmdserver_port)
         
         # Animation state
         if test_mode:
-            test_scenes = ["RD1245.scn", "RD1893.scn", "RD1719.scn"]
+            test_scenes = ["RD1084.scn"] #, "RD1245.scn", "RD1893.scn", "RD1719.scn"]
             all_scenes = list(Path.home().glob(".zeclock/resources/animations/**/*.scn"))
             self.scene_files = [s for s in all_scenes if s.name in test_scenes]
         else:
             self.scene_files = list(Path.home().glob(".zeclock/resources/animations/**/*.scn"))
         self.current_scene = None
         self.scene_frame_index = 0
+        self.precomputed_frames = []
+        self.precomputed_frames_noblink = []
+        self.precomputing = False
         self.millis_scene_start = 0
         self.millis_scene_frame_delay = 0
         self.cur_scene = 0
@@ -96,10 +119,16 @@ class ZeClock:
                 
                 # Check if we need to start new animation (5s after last one ended)
                 now = time.time()
-                if not self.animation_playing and now - self.scene_end_time >= 5:
-                    self._start_new_animation()
+                if not self.animation_playing and not self.precomputing and now - self.scene_end_time >= 5:
+                    asyncio.create_task(self._precompute_animation())
                 
-                # Create clock frame
+                # Change color every minute if auto mode
+                if self.color_mode == "auto" and now - self.last_color_change >= 60:
+                    self.color = self.colors[int(now // 60) % len(self.colors)]
+                    self.last_color_change = now
+                    self.last_clock_time = ""  # Force refresh
+                
+                # Create DMD frame (clock + animation)
                 frame = self.create_dmd_frame()
                 
                 # Send to DMD
@@ -113,16 +142,11 @@ class ZeClock:
                         print("❌ Cannot reconnect to dmdserver")
                         break
                 
-                # Use scene-specific timing with DotClk state machine
+                # Use scene-specific timing
                 if self.animation_playing and self.current_scene:
-                    if self.do_first == 2:  # INPROC
-                        frame_time = self.current_scene.first_frame_delay / 1000.0
-                    elif self.do_last == 2:  # INPROC
-                        frame_time = self.current_scene.last_frame_delay / 1000.0
-                    else:
-                        frame_time = self.current_scene.frame_delay_ms / 1000.0
+                    frame_time = (self.current_scene.frame_delay_ms if self.current_scene.frame_delay_ms > 0 else 40) / 1000.0
                 else:
-                    frame_time = 1 / self.fps
+                    frame_time = 0.5  # Rafraîchir toutes les 500ms pour le blink
                 
                 # Frame timing
                 elapsed = time.monotonic() - t0
@@ -137,6 +161,25 @@ class ZeClock:
     
     def create_dmd_frame(self) -> Image.Image:
         """Create a DMD frame with current time and optional animation"""
+        # Si animation pré-calculée disponible, l'utiliser directement
+        if self.animation_playing and self.precomputed_frames:
+            if self.scene_frame_index < len(self.precomputed_frames):
+                # Alterner entre blink/noblink toutes les 500ms
+                elapsed_ms = int((time.time() - self.animation_start_time) * 1000)
+                blink_state = (elapsed_ms // 500) % 2
+                frame = self.precomputed_frames[self.scene_frame_index] if blink_state == 0 else self.precomputed_frames_noblink[self.scene_frame_index]
+                self.scene_frame_index += 1
+                return frame
+            else:
+                # Animation terminée
+                self.animation_playing = False
+                self.precomputed_frames = []
+                self.precomputed_frames_noblink = []
+                self.current_scene = None
+                self.current_clock_style = 0
+                self.last_clock_time = ""
+                self.scene_end_time = time.time()
+        
         # Generate clock with 500ms blink timing
         milliseconds = int(time.time() * 1000)
         blink_state = (milliseconds // 500) % 2
@@ -262,13 +305,125 @@ class ZeClock:
         gray_array = np.array(merged_frame)
         rgb_array = np.zeros((self.height, self.width, 3), dtype=np.uint8)
         
-        # Map grayscale to orange tones
+        # Map grayscale to color
         intensity = gray_array / 255.0
-        rgb_array[:, :, 0] = (255 * intensity).astype(np.uint8)  # Red
-        rgb_array[:, :, 1] = (128 * intensity).astype(np.uint8)  # Green  
-        rgb_array[:, :, 2] = 0  # Blue
+        rgb_array[:, :, 0] = (self.color[0] * intensity).astype(np.uint8)
+        rgb_array[:, :, 1] = (self.color[1] * intensity).astype(np.uint8)
+        rgb_array[:, :, 2] = (self.color[2] * intensity).astype(np.uint8)
         
         return Image.fromarray(rgb_array, 'RGB')
+    
+    async def _precompute_animation(self):
+        """Pré-calcule toutes les frames DMD d'une animation en arrière-plan"""
+        if not self.scene_files:
+            return
+        
+        self.precomputing = True
+        scene_path = random.choice(self.scene_files)
+        
+        print(f"🎯 Loading scene: {scene_path.name}")
+        try:
+            scene = load_scene(scene_path, self.width, self.height)
+        except Exception as e:
+            print(f"⚠️ Failed to load scene {scene_path.name}: {e}")
+            self.precomputing = False
+            return
+        
+        print(f"⚙️ Pre-computing {len(scene.frames)} frames...")
+        print(f"   📊 Storyboard: first_delay={scene.first_frame_delay}ms, frame_delay={scene.frame_delay_ms}ms, last_delay={scene.last_frame_delay}ms")
+        print(f"   🎭 Blank frames: first={scene.first_blank}, last={scene.last_blank}")
+        print(f"   🔧 State machine: do_first={scene.do_first}, do_last={scene.do_last}")
+        print(f"   🎨 Frame layer: {scene.frame_layer} (0=clock behind, 1=clock above)")
+        
+        import numpy as np
+        precomputed_blink = []
+        precomputed_noblink = []
+        
+        # Helper pour créer une frame
+        def create_frame(animation_frame, display_time, debug=False):
+            if scene.clock_style == 1:
+                text_width = self.dotclk_font.get_text_width(display_time)
+                text_height = self.dotclk_font.char_height
+                x_pos = max(0, min(scene.custom_x - (text_width // 2), self.width - text_width))
+                y_pos = max(0, min(scene.custom_y - (text_height // 2), self.height - text_height))
+                clock_frame = Image.new('L', (self.width, self.height), 0)
+                text_img = self.dotclk_font.render_text(display_time, text_width, text_height)
+                clock_frame.paste(text_img, (x_pos, y_pos))
+                # Copy mask
+                if hasattr(text_img, 'mask_data'):
+                    clock_frame.mask_data = text_img.mask_data
+                    clock_frame.mask_width_bytes = text_img.mask_width_bytes
+            else:
+                clock_frame = self.dotclk_font.render_text(display_time, self.width, self.height)
+            
+
+            
+            if hasattr(scene, 'frame_layer') and scene.frame_layer == 1:
+                merged_frame = overlay_or(animation_frame, clock_frame)
+            else:
+                merged_frame = overlay_or(clock_frame, animation_frame)
+            
+            gray_array = np.array(merged_frame)
+            rgb_array = np.zeros((self.height, self.width, 3), dtype=np.uint8)
+            intensity = gray_array / 255.0
+            rgb_array[:, :, 0] = (self.color[0] * intensity).astype(np.uint8)
+            rgb_array[:, :, 1] = (self.color[1] * intensity).astype(np.uint8)
+            rgb_array[:, :, 2] = (self.color[2] * intensity).astype(np.uint8)
+            return Image.fromarray(rgb_array, 'RGB')
+        
+        # Debug clock mask and pixels
+        test_clock = self.dotclk_font.render_text(time.strftime("%H:%M"), self.width, self.height)
+        has_clock_mask = hasattr(test_clock, 'mask_data') and test_clock.mask_data is not None
+        clock_arr = np.array(test_clock)
+        unique_vals = np.unique(clock_arr)
+        print(f"   🔤 Clock mask: present={has_clock_mask}")
+        print(f"   🎨 Clock pixel values: {unique_vals.tolist()}")
+        print(f"   🎨 Clock pixels with value 64: {np.count_nonzero(clock_arr == 64)}")
+        if has_clock_mask:
+            mask_bits = np.frombuffer(test_clock.mask_data, dtype=np.uint8)
+            print(f"   🔤 Clock mask: {np.count_nonzero(mask_bits)} non-zero bytes")
+        
+        # Pré-calculer 2 versions de chaque frame
+        for frame_idx, animation_frame in enumerate(scene.frames):
+            if frame_idx == 0:
+                has_mask = hasattr(animation_frame, 'mask_data') and animation_frame.mask_data is not None
+                anim_array = np.array(animation_frame)
+                non_zero = np.count_nonzero(anim_array)
+                print(f"   🖼️ Frame 0: size={animation_frame.size}, has_mask={has_mask}, non_zero_pixels={non_zero}")
+            
+            precomputed_blink.append(create_frame(animation_frame, time.strftime("%H:%M")))
+            precomputed_noblink.append(create_frame(animation_frame, time.strftime("%H %M")))
+            
+            if frame_idx % 10 == 0:
+                await asyncio.sleep(0)
+        
+        # Ajouter first/last delay frames
+        frame_delay = scene.frame_delay_ms if scene.frame_delay_ms > 0 else 40
+        
+        if scene.first_frame_delay > 0:
+            first_frame_count = int(scene.first_frame_delay / frame_delay)
+            precomputed_blink = [precomputed_blink[0]] * first_frame_count + precomputed_blink
+            precomputed_noblink = [precomputed_noblink[0]] * first_frame_count + precomputed_noblink
+        
+        if scene.last_frame_delay > 0:
+            last_frame_count = int(scene.last_frame_delay / frame_delay)
+            precomputed_blink = precomputed_blink + [precomputed_blink[-1]] * last_frame_count
+            precomputed_noblink = precomputed_noblink + [precomputed_noblink[-1]] * last_frame_count
+        
+        # Activer l'animation
+        self.precomputed_frames = precomputed_blink
+        self.precomputed_frames_noblink = precomputed_noblink
+        self.current_scene = scene
+        self.scene_frame_index = 0
+        self.animation_playing = True
+        self.animation_start_time = time.time()
+        self.current_clock_style = scene.clock_style
+        self.last_clock_time = ""
+        self.precomputing = False
+        
+        fps = 1000.0 / scene.frame_delay_ms if scene.frame_delay_ms > 0 else 25.0
+        total_duration = len(precomputed_blink) * (scene.frame_delay_ms if scene.frame_delay_ms > 0 else 40) / 1000.0
+        print(f"✅ Animation ready: {scene_path.name} ({len(precomputed_blink)} total frames, {fps:.1f} FPS, {total_duration:.1f}s total)")
     
     def _start_new_animation(self):
         """Start a new animation"""
@@ -327,7 +482,12 @@ class ZeClock:
 
 def main():
     """Point d'entrée principal"""
-    clock = ZeClock()
+    import argparse
+    parser = argparse.ArgumentParser(description="zeClock - Animated DMD clock")
+    parser.add_argument("--color", choices=["orange", "blue", "red", "purple", "green", "yellow", "cyan", "pink"], default="auto", help="Clock color (default: auto-rotate every minute)")
+    args = parser.parse_args()
+    
+    clock = ZeClock(color=args.color)
     asyncio.run(clock.run())
 
 
