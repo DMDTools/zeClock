@@ -34,14 +34,15 @@ class DMDServerClient:
             self.sock.close()
             self.connected = False
     
-    def send_frame(self, image: Image.Image, buffered: bool = True) -> bool:
+    def send_frame(self, image: Image.Image, buffered: bool = True, color: Tuple[int, int, int] = (255, 128, 0)) -> bool:
         """Envoie une frame RGB565 au DMDServer"""
         if not self.connected:
             if not self.connect():
                 return False
         
         if image.mode != 'RGB':
-            image = image.convert('RGB')
+            # Convert grayscale to RGB using color palette
+            image = self._grayscale_to_rgb(image, color)
         
         width, height = image.size
         
@@ -66,6 +67,19 @@ class DMDServerClient:
             print(f"❌ Error sending frame: {e}")
             self.connected = False
             return False
+    
+    def _grayscale_to_rgb(self, image: Image.Image, color: Tuple[int, int, int]) -> Image.Image:
+        """Convert grayscale DMD image to RGB using color palette"""
+        import numpy as np
+        
+        gray_array = np.asarray(image)
+        rgb_array = np.zeros((image.height, image.width, 3), dtype=np.uint8)
+        
+        # Apply color with brightness from grayscale value
+        for i in range(3):
+            rgb_array[:, :, i] = (gray_array * color[i]) // 255
+        
+        return Image.fromarray(rgb_array, 'RGB')
     
     def _rgb_to_rgb565(self, image: Image.Image) -> bytearray:
         """Convert RGB image to RGB565 format (big-endian) - optimized"""

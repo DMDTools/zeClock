@@ -109,11 +109,11 @@ class BitmapFont:
                         # Odd column: upper 4 bits
                         pixel_val = (byte_val >> 4) & 0x0F
                     
-                    # Map 4-bit values with better shadow visibility
+                    # Map 4-bit values: 0=outline, 1=shadow, 2-15=brightness
                     if pixel_val == 0:
-                        pixels[x, y] = 0      # Black
+                        pixels[x, y] = 2      # Black outline (value 2 to distinguish from background)
                     elif pixel_val == 1:
-                        pixels[x, y] = 64     # Visible shadow
+                        pixels[x, y] = 64     # Shadow (3D effect)
                     else:
                         pixels[x, y] = pixel_val * 17  # Linear for other values
         
@@ -197,10 +197,12 @@ class BitmapFont:
                 # Space for missing characters
                 x_pos += 8
         
-        # Store mask on image
+        # Store mask on image (pack bits: 8 pixels per byte)
         if np.any(mask_array):
-            img.mask_data = mask_array.tobytes()
-            img.mask_width_bytes = (width // 8) + (1 if width % 8 else 0)
+            mask_width_bytes = (width // 8) + (1 if width % 8 else 0)
+            mask_packed = np.packbits(mask_array.reshape(-1, width), axis=1, bitorder='little')
+            img.mask_data = mask_packed.tobytes()
+            img.mask_width_bytes = mask_width_bytes
         
         return img
     

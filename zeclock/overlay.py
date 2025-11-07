@@ -2,8 +2,8 @@ from PIL import Image
 import numpy as np
 
 def overlay_or(base: Image.Image, overlay: Image.Image) -> Image.Image:
-    """Combine images using overlay logic: base first, then overlay with mask"""
-    base_array = np.asarray(base)
+    """Combine images using DotClk DotBlt logic: mask=1 preserves dest, mask=0 copies source"""
+    base_array = np.asarray(base).copy()
     overlay_array = np.asarray(overlay)
     
     # Check if overlay has mask data
@@ -22,8 +22,12 @@ def overlay_or(base: Image.Image, overlay: Image.Image) -> Image.Image:
         mask_vals = np.zeros((height, width), dtype=bool)
         mask_vals[valid_mask] = (mask_bytes[byte_indices[valid_mask]] >> bit_positions[valid_mask]) & 1
         
-        # Apply mask: where mask=1 preserve base, where mask=0 use overlay (preserving all values)
-        return Image.fromarray(np.where(mask_vals, base_array, overlay_array), 'L')
+        # DotClk DotBlt logic: 
+        # - mask=0: copy overlay (even if 0)
+        # - mask=1: keep base
+        result = np.where(~mask_vals, overlay_array, base_array)
+        return Image.fromarray(result, 'L')
     else:
-        # No mask: use overlay where it's non-zero, otherwise base
-        return Image.fromarray(np.where(overlay_array > 0, overlay_array, base_array), 'L')
+        # No mask: treat as fully opaque (mask=0 everywhere)
+        # Copy all overlay pixels, even zeros
+        return Image.fromarray(overlay_array, 'L')

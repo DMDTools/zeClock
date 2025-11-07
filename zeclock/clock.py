@@ -53,7 +53,7 @@ class ZeClock:
         
         # Animation state
         if test_mode:
-            test_scenes = ["RD1084.scn"] #, "RD1245.scn", "RD1893.scn", "RD1719.scn"]
+            test_scenes = ["RD1500.scn"] #, "RD1245.scn", "RD1893.scn", "RD1719.scn"]
             all_scenes = list(Path.home().glob(".zeclock/resources/animations/**/*.scn"))
             self.scene_files = [s for s in all_scenes if s.name in test_scenes]
         else:
@@ -217,6 +217,17 @@ class ZeClock:
                 y_pos = max(0, min(y_pos, self.height - text_height))
                 
                 self.cached_clock_frame.paste(text_img, (x_pos, y_pos))
+                
+                # Reposition mask to full canvas
+                if hasattr(text_img, 'mask_data'):
+                    import numpy as np
+                    full_mask = np.zeros((self.height, self.width), dtype=np.uint8)
+                    text_mask_bytes = np.frombuffer(text_img.mask_data, dtype=np.uint8)
+                    text_mask = np.unpackbits(text_mask_bytes, bitorder='little').reshape(text_height, -1)[:, :text_width]
+                    full_mask[y_pos:y_pos+text_height, x_pos:x_pos+text_width] = text_mask
+                    mask_packed = np.packbits(full_mask.reshape(-1, self.width), axis=1, bitorder='little')
+                    self.cached_clock_frame.mask_data = mask_packed.tobytes()
+                    self.cached_clock_frame.mask_width_bytes = (self.width // 8) + (1 if self.width % 8 else 0)
             else:
                 # ClockStyleStd (0) - Standard centered positioning
                 self.cached_clock_frame = self.dotclk_font.render_text(display_time, self.width, self.height)
@@ -339,7 +350,7 @@ class ZeClock:
         precomputed_blink = []
         precomputed_noblink = []
         
-        # Helper pour créer une frame
+        # Helper pour créer une frame  
         def create_frame(animation_frame, display_time, debug=False):
             if scene.clock_style == 1:
                 text_width = self.dotclk_font.get_text_width(display_time)
@@ -349,10 +360,15 @@ class ZeClock:
                 clock_frame = Image.new('L', (self.width, self.height), 0)
                 text_img = self.dotclk_font.render_text(display_time, text_width, text_height)
                 clock_frame.paste(text_img, (x_pos, y_pos))
-                # Copy mask
+                # Reposition mask to full canvas
                 if hasattr(text_img, 'mask_data'):
-                    clock_frame.mask_data = text_img.mask_data
-                    clock_frame.mask_width_bytes = text_img.mask_width_bytes
+                    full_mask = np.zeros((self.height, self.width), dtype=np.uint8)
+                    text_mask_bytes = np.frombuffer(text_img.mask_data, dtype=np.uint8)
+                    text_mask = np.unpackbits(text_mask_bytes, bitorder='little').reshape(text_height, -1)[:, :text_width]
+                    full_mask[y_pos:y_pos+text_height, x_pos:x_pos+text_width] = text_mask
+                    mask_packed = np.packbits(full_mask.reshape(-1, self.width), axis=1, bitorder='little')
+                    clock_frame.mask_data = mask_packed.tobytes()
+                    clock_frame.mask_width_bytes = (self.width // 8) + (1 if self.width % 8 else 0)
             else:
                 clock_frame = self.dotclk_font.render_text(display_time, self.width, self.height)
             
@@ -363,12 +379,33 @@ class ZeClock:
             else:
                 merged_frame = overlay_or(clock_frame, animation_frame)
             
+            # Debug merged frame
+            if debug:
+                merged_arr = np.array(merged_frame)
+                unique_merged = np.unique(merged_arr)
+                print(f"   ✅ Merged unique pixel values: {unique_merged.tolist()}")
+                print(f"   ✅ Merged pixels: 32={np.count_nonzero(merged_arr == 32)}, 96={np.count_nonzero(merged_arr == 96)}, 255={np.count_nonzero(merged_arr == 255)}")
+            
             gray_array = np.array(merged_frame)
             rgb_array = np.zeros((self.height, self.width, 3), dtype=np.uint8)
             intensity = gray_array / 255.0
             rgb_array[:, :, 0] = (self.color[0] * intensity).astype(np.uint8)
             rgb_array[:, :, 1] = (self.color[1] * intensity).astype(np.uint8)
             rgb_array[:, :, 2] = (self.color[2] * intensity).astype(np.uint8)
+            
+            # Debug RGB
+            if debug:
+                r_channel = rgb_array[:, :, 0]
+                g_channel = rgb_array[:, :, 1]
+                black_pixels = np.count_nonzero((r_channel == 0) & (g_channel == 0))
+                outline_r = int(self.color[0] * 32 / 255.0)
+                outline_g = int(self.color[1] * 32 / 255.0)
+                outline_pixels = np.count_nonzero((r_channel == outline_r) & (g_channel == outline_g))
+                shadow_r = int(self.color[0] * 96 / 255.0)
+                shadow_g = int(self.color[1] * 96 / 255.0)
+                shadow_pixels = np.count_nonzero((r_channel == shadow_r) & (g_channel == shadow_g))
+                print(f"   🎨 RGB: black={black_pixels}, outline(R={outline_r},G={outline_g})={outline_pixels}, shadow(R={shadow_r},G={shadow_g})={shadow_pixels}")
+            
             return Image.fromarray(rgb_array, 'RGB')
         
         # Debug clock mask and pixels
@@ -377,8 +414,8 @@ class ZeClock:
         clock_arr = np.array(test_clock)
         unique_vals = np.unique(clock_arr)
         print(f"   🔤 Clock mask: present={has_clock_mask}")
-        print(f"   🎨 Clock pixel values: {unique_vals.tolist()}")
-        print(f"   🎨 Clock pixels with value 64: {np.count_nonzero(clock_arr == 64)}")
+        print(f"   🎨 Clock unique pixel values: {unique_vals.tolist()}")
+        print(f"   🎨 Clock pixels: 32={np.count_nonzero(clock_arr == 32)}, 96={np.count_nonzero(clock_arr == 96)}, 255={np.count_nonzero(clock_arr == 255)}")
         if has_clock_mask:
             mask_bits = np.frombuffer(test_clock.mask_data, dtype=np.uint8)
             print(f"   🔤 Clock mask: {np.count_nonzero(mask_bits)} non-zero bytes")
@@ -389,9 +426,10 @@ class ZeClock:
                 has_mask = hasattr(animation_frame, 'mask_data') and animation_frame.mask_data is not None
                 anim_array = np.array(animation_frame)
                 non_zero = np.count_nonzero(anim_array)
-                print(f"   🖼️ Frame 0: size={animation_frame.size}, has_mask={has_mask}, non_zero_pixels={non_zero}")
+                anim_unique = np.unique(anim_array)
+                print(f"   🖼️ Frame 0: size={animation_frame.size}, has_mask={has_mask}, unique_values={anim_unique.tolist()}, non_zero={non_zero}")
             
-            precomputed_blink.append(create_frame(animation_frame, time.strftime("%H:%M")))
+            precomputed_blink.append(create_frame(animation_frame, time.strftime("%H:%M"), debug=(frame_idx==0)))
             precomputed_noblink.append(create_frame(animation_frame, time.strftime("%H %M")))
             
             if frame_idx % 10 == 0:
