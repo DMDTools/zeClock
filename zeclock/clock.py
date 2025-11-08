@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 from .dmdserver_client import DMDServerClient
 from .readers import load_font, load_scene
-from .overlay import overlay_or
+from .overlay import overlay_or, overlay_or_rgb
 
 
 class ZeClock:
@@ -22,7 +22,8 @@ class ZeClock:
         dmdserver_host: str = "localhost",
         dmdserver_port: int = 6789,
         test_mode: bool = False,
-        color: str = "orange"
+        color: str = "orange",
+        animation_color: str = None
     ):
         self.width = width
         self.height = height
@@ -47,6 +48,9 @@ class ZeClock:
             self.last_color_change = time.time()
         else:
             self.color = self.colors[color_map.get(color, 0)]
+        
+        # Animation color (defaults to same as clock if not specified)
+        self.animation_color = self.colors[color_map.get(animation_color, 0)] if animation_color else self.color
         
         # Client DMDServer
         self.dmd_client = DMDServerClient(dmdserver_host, dmdserver_port)
@@ -293,36 +297,33 @@ class ZeClock:
                     self.last_clock_time = ""  # Force clock regeneration
                     self.scene_end_time = time.time()  # Record when scene ended
         
-        # Create final frame
+        # Create final frame with dual colors
         if show_blank_frame:
-            # During blank periods, show clock with blank animation
-            merged_frame = clock_frame
+            # During blank periods, show clock only
+            import numpy as np
+            gray_array = np.array(clock_frame)
+            rgb_array = np.zeros((self.height, self.width, 3), dtype=np.uint8)
+            intensity = gray_array / 255.0
+            for i in range(3):
+                rgb_array[:, :, i] = (self.color[i] * intensity).astype(np.uint8)
+            return Image.fromarray(rgb_array, 'RGB')
         elif animation_frame:
-            # Animation is active - apply layering logic
+            # Animation is active - apply layering with dual colors
             if hasattr(self.current_scene, 'frame_layer') and self.current_scene.frame_layer == 1:
-                # Clock sits above the animation frame (frame_layer == 1)
-                # Layer order: animation first, then clock on top
-                merged_frame = overlay_or(animation_frame, clock_frame)
+                # Clock above animation: animation_color for base, clock_color for overlay
+                return overlay_or_rgb(animation_frame, clock_frame, self.animation_color, self.color)
             else:
-                # Clock sits behind the animation frame (frame_layer == 0, default)
-                # Layer order: clock first, then animation on top
-                merged_frame = overlay_or(clock_frame, animation_frame)
+                # Clock behind animation: clock_color for base, animation_color for overlay
+                return overlay_or_rgb(clock_frame, animation_frame, self.color, self.animation_color)
         else:
             # No animation - show only clock
-            merged_frame = clock_frame
-        
-        # Convert to RGB with orange color mapping
-        import numpy as np
-        gray_array = np.array(merged_frame)
-        rgb_array = np.zeros((self.height, self.width, 3), dtype=np.uint8)
-        
-        # Map grayscale to color
-        intensity = gray_array / 255.0
-        rgb_array[:, :, 0] = (self.color[0] * intensity).astype(np.uint8)
-        rgb_array[:, :, 1] = (self.color[1] * intensity).astype(np.uint8)
-        rgb_array[:, :, 2] = (self.color[2] * intensity).astype(np.uint8)
-        
-        return Image.fromarray(rgb_array, 'RGB')
+            import numpy as np
+            gray_array = np.array(clock_frame)
+            rgb_array = np.zeros((self.height, self.width, 3), dtype=np.uint8)
+            intensity = gray_array / 255.0
+            for i in range(3):
+                rgb_array[:, :, i] = (self.color[i] * intensity).astype(np.uint8)
+            return Image.fromarray(rgb_array, 'RGB')
     
     async def _precompute_animation(self):
         """Pré-calcule toutes les frames DMD d'une animation en arrière-plan"""
@@ -374,39 +375,21 @@ class ZeClock:
             
 
             
+            # Apply dual colors
             if hasattr(scene, 'frame_layer') and scene.frame_layer == 1:
-                merged_frame = overlay_or(animation_frame, clock_frame)
+                merged_frame = overlay_or_rgb(animation_frame, clock_frame, self.animation_color, self.color)
             else:
-                merged_frame = overlay_or(clock_frame, animation_frame)
-            
-            # Debug merged frame
-            if debug:
-                merged_arr = np.array(merged_frame)
-                unique_merged = np.unique(merged_arr)
-                print(f"   ✅ Merged unique pixel values: {unique_merged.tolist()}")
-                print(f"   ✅ Merged pixels: 32={np.count_nonzero(merged_arr == 32)}, 96={np.count_nonzero(merged_arr == 96)}, 255={np.count_nonzero(merged_arr == 255)}")
-            
-            gray_array = np.array(merged_frame)
-            rgb_array = np.zeros((self.height, self.width, 3), dtype=np.uint8)
-            intensity = gray_array / 255.0
-            rgb_array[:, :, 0] = (self.color[0] * intensity).astype(np.uint8)
-            rgb_array[:, :, 1] = (self.color[1] * intensity).astype(np.uint8)
-            rgb_array[:, :, 2] = (self.color[2] * intensity).astype(np.uint8)
+                merged_frame = overlay_or_rgb(clock_frame, animation_frame, self.color, self.animation_color)
             
             # Debug RGB
             if debug:
+                rgb_array = np.array(merged_frame)
                 r_channel = rgb_array[:, :, 0]
                 g_channel = rgb_array[:, :, 1]
                 black_pixels = np.count_nonzero((r_channel == 0) & (g_channel == 0))
-                outline_r = int(self.color[0] * 32 / 255.0)
-                outline_g = int(self.color[1] * 32 / 255.0)
-                outline_pixels = np.count_nonzero((r_channel == outline_r) & (g_channel == outline_g))
-                shadow_r = int(self.color[0] * 96 / 255.0)
-                shadow_g = int(self.color[1] * 96 / 255.0)
-                shadow_pixels = np.count_nonzero((r_channel == shadow_r) & (g_channel == shadow_g))
-                print(f"   🎨 RGB: black={black_pixels}, outline(R={outline_r},G={outline_g})={outline_pixels}, shadow(R={shadow_r},G={shadow_g})={shadow_pixels}")
+                print(f"   🎨 RGB: black={black_pixels}, clock_color={self.color}, animation_color={self.animation_color}")
             
-            return Image.fromarray(rgb_array, 'RGB')
+            return merged_frame
         
         # Debug clock mask and pixels
         test_clock = self.dotclk_font.render_text(time.strftime("%H:%M"), self.width, self.height)
@@ -522,10 +505,11 @@ def main():
     """Point d'entrée principal"""
     import argparse
     parser = argparse.ArgumentParser(description="zeClock - Animated DMD clock")
-    parser.add_argument("--color", choices=["orange", "blue", "red", "purple", "green", "yellow", "cyan", "pink"], default="auto", help="Clock color (default: auto-rotate every minute)")
+    parser.add_argument("--color", choices=["orange", "blue", "red", "purple", "green", "yellow", "cyan", "pink", "auto"], default="auto", help="Clock color (default: auto-rotate every minute)")
+    parser.add_argument("--animation-color", choices=["orange", "blue", "red", "purple", "green", "yellow", "cyan", "pink"], help="Animation color (default: same as clock)")
     args = parser.parse_args()
     
-    clock = ZeClock(color=args.color)
+    clock = ZeClock(color=args.color, animation_color=args.animation_color)
     asyncio.run(clock.run())
 
 
