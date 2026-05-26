@@ -95,7 +95,6 @@ class Scene:
         # Frame state management
         self.do_first = 1 if self.first_frame_delay > 0 else 0  # TODO=1, NA=0
         self.do_last = 1 if self.last_frame_delay > 0 else 0
-        self.current_frame = 0
         
         # Read each frame as a dotmap structure
         for i in range(cnt_item_dotmap):
@@ -181,24 +180,6 @@ class Scene:
     def get_frame(self, index: int) -> Image.Image:
         """Récupère une frame spécifique"""
         return self.frames[index % self.frame_count]
-
-
-    def next_frame(self):
-        """Advance to next frame"""
-        if self.current_frame < len(self.frames):
-            self.current_frame += 1
-    
-
-    def get_current_frame(self) -> Image.Image:
-        """Get current frame dotmap"""
-        if self.current_frame < len(self.frames):
-            return self.frames[self.current_frame]
-        return None
-    
-    def eof(self) -> bool:
-        """Check if at end of scene"""
-        return self.current_frame >= len(self.frames)
-
 
 def load_scene(scn_path: Path, width: int = 128, height: int = 32) -> Scene:
     """Loads an animation from a .scn file"""
