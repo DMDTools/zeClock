@@ -150,7 +150,7 @@ class ZeClock:
                 if self.animation_playing and self.current_scene:
                     frame_time = (self.current_scene.frame_delay_ms if self.current_scene.frame_delay_ms > 0 else 40) / 1000.0
                 else:
-                    frame_time = 0.5  # Rafraîchir toutes les 500ms pour le blink
+                    frame_time = 0.5  # Refresh every 500ms for colon blinking
                 
                 # Frame timing
                 elapsed = time.monotonic() - t0
@@ -165,17 +165,17 @@ class ZeClock:
     
     def create_dmd_frame(self) -> Image.Image:
         """Create a DMD frame with current time and optional animation"""
-        # Si animation pré-calculée disponible, l'utiliser directement
+        # If precomputed animation is available, use it directly
         if self.animation_playing and self.precomputed_frames:
             if self.scene_frame_index < len(self.precomputed_frames):
-                # Alterner entre blink/noblink toutes les 500ms
+                # Alternate between blink/noblink every 500ms
                 elapsed_ms = int((time.time() - self.animation_start_time) * 1000)
                 blink_state = (elapsed_ms // 500) % 2
                 frame = self.precomputed_frames[self.scene_frame_index] if blink_state == 0 else self.precomputed_frames_noblink[self.scene_frame_index]
                 self.scene_frame_index += 1
                 return frame
             else:
-                # Animation terminée
+                # Animation finished
                 self.animation_playing = False
                 self.precomputed_frames = []
                 self.precomputed_frames_noblink = []
@@ -326,7 +326,7 @@ class ZeClock:
             return Image.fromarray(rgb_array, 'RGB')
     
     async def _precompute_animation(self):
-        """Pré-calcule toutes les frames DMD d'une animation en arrière-plan"""
+        """Precomputes all DMD frames of an animation in the background"""
         if not self.scene_files:
             return
         
@@ -351,7 +351,7 @@ class ZeClock:
         precomputed_blink = []
         precomputed_noblink = []
         
-        # Helper pour créer une frame  
+        # Helper to create a frame  
         def create_frame(animation_frame, display_time, debug=False):
             if scene.clock_style == 1:
                 text_width = self.dotclk_font.get_text_width(display_time)
@@ -403,7 +403,7 @@ class ZeClock:
             mask_bits = np.frombuffer(test_clock.mask_data, dtype=np.uint8)
             print(f"   🔤 Clock mask: {np.count_nonzero(mask_bits)} non-zero bytes")
         
-        # Pré-calculer 2 versions de chaque frame
+        # Precompute 2 versions of each frame
         for frame_idx, animation_frame in enumerate(scene.frames):
             if frame_idx == 0:
                 has_mask = hasattr(animation_frame, 'mask_data') and animation_frame.mask_data is not None
@@ -418,7 +418,7 @@ class ZeClock:
             if frame_idx % 10 == 0:
                 await asyncio.sleep(0)
         
-        # Ajouter first/last delay frames
+        # Add first/last delay frames
         frame_delay = scene.frame_delay_ms if scene.frame_delay_ms > 0 else 40
         
         if scene.first_frame_delay > 0:
@@ -431,7 +431,7 @@ class ZeClock:
             precomputed_blink = precomputed_blink + [precomputed_blink[-1]] * last_frame_count
             precomputed_noblink = precomputed_noblink + [precomputed_noblink[-1]] * last_frame_count
         
-        # Activer l'animation
+        # Activate animation
         self.precomputed_frames = precomputed_blink
         self.precomputed_frames_noblink = precomputed_noblink
         self.current_scene = scene
@@ -504,11 +504,26 @@ class ZeClock:
 def main():
     """Point d'entrée principal"""
     import argparse
+    import sys
+    from .installer import check_and_install_resources
+    
     parser = argparse.ArgumentParser(description="zeClock - Animated DMD clock")
     parser.add_argument("--color", choices=["orange", "blue", "red", "purple", "green", "yellow", "cyan", "pink", "auto"], default="auto", help="Clock color (default: auto-rotate every minute)")
     parser.add_argument("--animation-color", choices=["orange", "blue", "red", "purple", "green", "yellow", "cyan", "pink"], help="Animation color (default: same as clock)")
+    parser.add_argument("--bootstrap", action="store_true", help="Automatically install dmdserver and all resources without running the clock")
+    parser.add_argument("--no-prompt", action="store_true", help="Disable interactive prompt during automatic bootstrap")
     args = parser.parse_args()
     
+    # If --bootstrap flag is active, force installation and exit
+    if args.bootstrap:
+        success = check_and_install_resources(interactive=False)
+        sys.exit(0 if success else 1)
+        
+    # Otherwise, check / initialize interactively (or non-interactively if --no-prompt)
+    if not check_and_install_resources(interactive=not args.no_prompt):
+        print("❌ Cannot start: required resources are missing.")
+        sys.exit(1)
+        
     clock = ZeClock(color=args.color, animation_color=args.animation_color)
     asyncio.run(clock.run())
 

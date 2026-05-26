@@ -1,5 +1,5 @@
 """
-Lecteur de fonts bitmap (.fnt)
+Bitmap font loader (.fnt)
 Format: Version + FontNameLen + FontName + CntFontInfo + FontCharInfo[] + bitmap data
 """
 from pathlib import Path
@@ -9,7 +9,7 @@ import struct
 
 
 class BitmapFont:
-    """Représente une police bitmap"""
+    """Represents a bitmap font"""
     
     def __init__(self, fnt_path: Path):
         self.path = fnt_path
@@ -20,7 +20,7 @@ class BitmapFont:
         self._load()
     
     def _load(self):
-        """Charge le fichier .fnt"""
+        """Loads the .fnt file"""
         with open(self.path, 'rb') as f:
             data = f.read()
         
@@ -145,7 +145,7 @@ class BitmapFont:
             self.glyphs[' '] = Image.new('L', self.glyphs[':'].size, 0)
     
     def render_text(self, text: str, width: int = 128, height: int = 32) -> Image.Image:
-        """Rend du texte avec cette police (optimized)"""
+        """Renders text with this font (optimized)"""
         img = Image.new('L', (width, height))  # Grayscale for 4-bit support
         
         # Create mask for the rendered text
@@ -207,7 +207,7 @@ class BitmapFont:
         return img
     
     def get_text_width(self, text: str) -> int:
-        """Calcule la largeur d'un texte avec kerning"""
+        """Calculates text width with kerning"""
         if not text:
             return 0
         
@@ -224,5 +224,5 @@ class BitmapFont:
 
 
 def load_font(fnt_path: Path) -> BitmapFont:
-    """Charge une police depuis un fichier .fnt"""
+    """Loads a font from a .fnt file"""
     return BitmapFont(fnt_path)

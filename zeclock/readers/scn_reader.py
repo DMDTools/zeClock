@@ -1,5 +1,5 @@
 """
-Lecteur d'animations (.scn)
+Animation loader (.scn)
 Format: Scene header + dotmap frames (4-bit per pixel)
 """
 from pathlib import Path
@@ -9,7 +9,7 @@ import struct
 
 
 class Scene:
-    """Représente une animation"""
+    """Represents an animation"""
     
     def __init__(self, scn_path: Path, width: int = 128, height: int = 32):
         self.path = scn_path
@@ -34,7 +34,7 @@ class Scene:
         self._load()
     
     def _load(self):
-        """Charge le fichier .scn"""
+        """Loads the .scn file"""
         with open(self.path, 'rb') as f:
             data = f.read()
         
@@ -201,5 +201,5 @@ class Scene:
 
 
 def load_scene(scn_path: Path, width: int = 128, height: int = 32) -> Scene:
-    """Charge une animation depuis un fichier .scn"""
+    """Loads an animation from a .scn file"""
     return Scene(scn_path, width, height)

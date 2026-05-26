@@ -1,6 +1,6 @@
 """
-Client Python pour communiquer avec dmdserver (libdmdutil)
-Protocole : StreamHeader + RGB565 data (big-endian)
+Python client to communicate with dmdserver (libdmdutil)
+Protocol: StreamHeader + RGB565 data (big-endian)
 """
 import socket
 from typing import Optional, Tuple
@@ -8,7 +8,7 @@ from PIL import Image
 
 
 class DMDServerClient:
-    """Client pour envoyer des frames RGB565 à dmdserver"""
+    """Client to send RGB565 frames to dmdserver"""
     
     def __init__(self, host: str = "localhost", port: int = 6789):
         self.host = host
@@ -17,7 +17,7 @@ class DMDServerClient:
         self.connected = False
     
     def connect(self) -> bool:
-        """Établit la connexion avec dmdserver"""
+        """Establishes connection with dmdserver"""
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.sock.connect((self.host, self.port))
@@ -29,13 +29,13 @@ class DMDServerClient:
             return False
     
     def disconnect(self):
-        """Ferme la connexion"""
+        """Closes the connection"""
         if self.sock:
             self.sock.close()
             self.connected = False
     
     def send_frame(self, image: Image.Image, buffered: bool = True, color: Tuple[int, int, int] = (255, 128, 0)) -> bool:
-        """Envoie une frame RGB565 au DMDServer"""
+        """Sends an RGB565 frame to DMDServer"""
         if not self.connected:
             if not self.connect():
                 return False

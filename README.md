@@ -26,41 +26,44 @@ Transform your desk into an arcade room with a DMD clock that displays time over
 
 ## Installation
 
-**1. Clone the project**
+**zeClock** features a modern packaging layout and an automatic runtime initialization (Bootstrap) mechanism, making it fully compatible with isolated environments out of the box.
+
+### Option A: Global Isolated Installation (Recommended - via pipx or uvx)
+
+You can install and run zeClock in an isolated environment without affecting your global Python packages:
 
 ```bash
-git clone https://github.com/DMDTools/zeclock.git
-cd zeclock
+# With pipx (Permanent global installation):
+pipx install git+https://github.com/DMDTools/zeClock.git
+
+# OR with uvx (Instant execution without manual installation):
+uvx --from git+https://github.com/DMDTools/zeClock.git zeclock
 ```
 
-**2. Install zeClock**
+### Option B: Development Installation (Source)
 
 ```bash
-pip install -e .
+git clone https://github.com/DMDTools/zeClock.git
+cd zeClock
+
+# Editable install with development dependencies:
+pip install -e ".[dev]"
 ```
 
-**3. Install libdmdutil (dmdserver)**
+### 🚀 Automatic Resource Bootstrap on First Launch
 
+On the first run (using the global `zeclock` command), the application automatically detects if the system binaries and retro resources are missing from your `~/.zeclock/` user directory.
+
+It will then prompt you with an **interactive setup wizard** directly in your terminal to download and configure everything automatically.
+
+If you prefer to install all resources in a single non-interactive command:
 ```bash
-./scripts/install_libdmdutil.sh
-# Or cross-platform Python version:
-python3 scripts/install_libdmdutil.py
+zeclock --bootstrap
 ```
 
-This installs:
-- `dmdserver`: TCP server to communicate with ZeDMD
-- Libraries: `libdmdutil`, `libzedmd`, `libserum`, etc.
-- Default configuration: `~/.zeclock/config/dmdserver.ini`
-
-**4. Install DotClk resources (animations + fonts)**
-
-```bash
-./scripts/install_dotclk_resources.sh
-```
-
-This downloads from [sigmafx/DotClk-Resources](https://github.com/sigmafx/DotClk-Resources):
-- **2300+ animations** `.scn` (pinball, classics, holidays...)
-- **Bitmap fonts** `.fnt` original DotClk fonts
+This process automatically installs the following in your `~/.zeclock/` directory:
+*   **dmdserver**: The C++ binary server used to communicate with ZeDMD, with a default configuration generated at `~/.zeclock/config/dmdserver.ini`.
+*   **Fonts & Animations** (from [sigmafx/DotClk-Resources](https://github.com/sigmafx/DotClk-Resources)): Over **2300 retro animations** (`.scn`) and the original bitmap fonts (`.fnt`).
 
 ## Getting Started
 
@@ -86,13 +89,13 @@ Or with config file:
 
 ```bash
 # Default: auto-rotating colors every minute
-python -m zeclock.clock
+zeclock
 
 # Fixed orange clock
-python -m zeclock.clock --color orange
+zeclock --color orange
 
 # Orange clock with blue animations
-python -m zeclock.clock --color orange --animation-color blue
+zeclock --color orange --animation-color blue
 ```
 
 **Color options:**
@@ -102,7 +105,7 @@ python -m zeclock.clock --color orange --animation-color blue
 Or with animation example:
 
 ```bash
-python examples/zeclock_demo.py
+python examples/demo.py
 ```
 
 ## Usage Examples
@@ -181,31 +184,27 @@ WiFiAddr = 192.168.1.100    # Your ZeDMD WiFi IP
 ## Project Structure
 
 ```
-zeclock/
+zeClock/
 ├── zeclock/
 │   ├── __init__.py
-│   ├── clock.py                 # Main clock
-│   ├── config.py                # Configuration
-│   ├── dmdserver_client.py      # TCP client for dmdserver
-│   ├── overlay.py               # Animation/text merging
+│   ├── clock.py                 # Main asynchronous clock loop
+│   ├── installer.py             # Runtime diagnostic & automatic resource bootstrapper (dmdserver & resources)
+│   ├── dmdserver_client.py      # Optimized TCP socket client supporting RGB565 streaming
+│   ├── overlay.py               # Bitmap blending and masking implementation (DotBlt algorithm)
 │   ├── readers/
 │   │   ├── __init__.py
-│   │   ├── fnt_reader.py        # .fnt font reader
-│   │   └── scn_reader.py        # .scn animation reader
+│   │   ├── fnt_reader.py        # Binary .fnt bitmap font loader
+│   │   └── scn_reader.py        # Binary .scn scene and animation loader
 │   └── resources/
 │       └── fonts/
-│           └── default.ttf      # Fallback font (Press Start 2P)
+│           └── default.ttf      # Fallback TrueType vector font
 ├── examples/
-│   ├── run_clock.py             # Simple example
-│   └── zeclock_demo.py          # Example with animations
-├── scripts/
-│   ├── install_libdmdutil.sh    # libdmdutil installation
-│   ├── install_libdmdutil.py    # Python version
-│   └── install_dotclk_resources.sh
-├── setup.py
-├── pyproject.toml
-├── requirements.txt
-└── README.md
+│   ├── demo.py                  # Simple rendering demonstration
+│   ├── run_clock.py             # Minimal clock launcher
+│   └── test_readers.py          # Quick loader integration tests
+├── pyproject.toml               # Unified modern packaging configuration (PEP 621)
+├── requirements.txt             # Minimum development requirements
+└── README.md                    # User manual
 ```
 
 **Installed resources**
