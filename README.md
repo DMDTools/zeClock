@@ -70,20 +70,16 @@ This process automatically installs the following in your `~/.zeclock/` director
 **Launch dmdserver (terminal 1)**
 
 ```bash
-~/.zeclock/bin/dmdserver -c ./config/dmdserver.ini -l -v
+# Start dmdserver using the generated default configuration
+~/.zeclock/bin/dmdserver -c ~/.zeclock/config/dmdserver.ini -w -l
 ```
 
 Options:
 - `-a 0.0.0.0`: Listen on all interfaces
 - `-p 6789`: TCP port (default)
-- `-w`: Don't quit if no display connected
-- `-l`: Enable logs
-
-Or with config file:
-
-```bash
-~/.zeclock/bin/dmdserver -c ~/.zeclock/config/dmdserver.ini -w -l
-```
+- `-w`: Don't quit if no display connected (wait for connection)
+- `-l`: Enable detailed logs
+- `-v`: Enable verbose debug logging
 
 **Launch zeClock (terminal 2)**
 

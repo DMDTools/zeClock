@@ -109,9 +109,11 @@ class ZeClock:
             self.current_clock_style = 0
     
     async def run(self):
-        """Boucle principale asynchrone"""
+        """Main asynchronous loop"""
         if not self.dmd_client.connect():
-            print("❌ Cannot start: dmdserver not available")
+            print("❌ Cannot start: dmdserver is not available.")
+            print("👉 Please make sure that dmdserver is running. You can start it using:")
+            print("   ~/.zeclock/bin/dmdserver -c ~/.zeclock/config/dmdserver.ini -w -l")
             return
         
         frame_time = 1 / self.fps
