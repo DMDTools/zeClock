@@ -303,7 +303,7 @@ frames = list(scene)  # Force loading
 - [ ] **MQTT**: Home automation integration (Jeedom, Home Assistant)
 - [ ] **Plugins**: Extensible Python plugin system
   - [ ] WeatherClock: Weather display
-  - [ ] JeedomClock: Home automation data
+  - [ ] Home automation data
   - [ ] MAMEClock: High scores
   - [ ] AWSClock: AWS costs
 - [ ] **Advanced attract mode**: Random rotation between multiple clocks

@@ -14,10 +14,17 @@ zeClock/
 │   ├── dmdserver_client.py     # TCP Socket client (DMDStream RGB565 protocol)
 │   ├── overlay.py              # Image composition via DotBlt masking
 │   ├── installer.py            # Automatic bootstrap (downloads dmdserver + resources)
-│   └── readers/                # Binary format parsers for DotClk files
-│       ├── __init__.py         # Exports load_font, load_scene, BitmapFont, Scene
-│       ├── fnt_reader.py       # Bitmap font .fnt loader (4-bit per pixel)
-│       └── scn_reader.py       # Animation .scn loader (storyboard + dotmaps)
+│   ├── readers/                # Binary format parsers for DotClk files
+│   │   ├── __init__.py         # Exports load_font, load_scene, BitmapFont, Scene
+│   │   ├── fnt_reader.py       # Bitmap font .fnt loader (4-bit per pixel)
+│   │   └── scn_reader.py       # Animation .scn loader (storyboard + dotmaps)
+│   ├── plugin_registry.py      # Plugin registry: stores plugins with state, frequency, override logic
+│   ├── plugin_config.py        # Plugin YAML configuration loader and validator
+│   ├── plugin_manager.py       # Plugin manager: discovery, loading, scheduling, lifecycle orchestration
+│   └── plugins/                # Plugin system for extensible display content
+│       ├── __init__.py         # Exports ClockPlugin ABC and validation utilities
+│       ├── base.py             # ClockPlugin abstract base class (plugin interface contract)
+│       └── helpers.py          # PluginHelpers shared rendering utilities (fonts, icons, compositing)
 ├── examples/                   # Example and quick-test scripts
 │   ├── run_clock.py            # Minimal clock launcher
 │   ├── demo.py                 # Frame loading and sending demo
@@ -55,6 +62,12 @@ This is the application core. It contains all the Python logic for reading resou
 | `readers/__init__.py` | Exports `BitmapFont`, `load_font`, `Scene`, `load_scene` |
 | `readers/fnt_reader.py` | Parses bitmap `.fnt` fonts: headers, character info (width, kerning), 4-bit bitmap, masks |
 | `readers/scn_reader.py` | Parses `.scn` animations: storyboard (delays, blanks, clock_style, positions), 4-bit dotmap frames with masks |
+| `plugin_registry.py` | `PluginRegistry`: stores loaded plugins with state, frequency, and error tracking; handles override logic and frequency normalization |
+| `plugin_config.py` | `PluginConfig`: loads and validates `plugins.yaml` configuration; provides defaults, frequency clamping, and plugin-specific settings |
+| `plugin_manager.py` | `PluginManager`: top-level orchestrator that discovers, loads, validates, schedules, and drives plugins through their lifecycle |
+| `plugins/__init__.py` | Plugin system package: exports `ClockPlugin` ABC, `validate_plugin_name`, `validate_plugin_description` |
+| `plugins/base.py` | `ClockPlugin` abstract base class defining the plugin interface (name, description, frame_delay_ms, initialize, render_frame, cleanup) |
+| `plugins/helpers.py` | `PluginHelpers` shared rendering utilities: frame creation, BitmapFont text rendering, pixel-art icon drawing, DotBlt-style compositing, font discovery and text measurement |
 
 ### 🧪 Examples (`examples/`)
 
@@ -94,7 +107,10 @@ During normal operation, the application expects the following directories in th
 │   ├── libzedmd.so
 │   └── ...
 ├── config/
-│   └── dmdserver.ini            # TCP server and ZeDMD connection configuration
+│   ├── dmdserver.ini            # TCP server and ZeDMD connection configuration
+│   └── plugins.yaml             # Plugin configuration (active plugins, frequencies, settings)
+├── plugins/                     # User-installed plugins (override built-in by name)
+│   └── *.py                     # Custom ClockPlugin implementations
 └── resources/
     ├── Fonts/
     │   ├── STANDARD.fnt         # Main clock font

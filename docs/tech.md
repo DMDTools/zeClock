@@ -73,6 +73,7 @@ Declared in `pyproject.toml`:
 |---------|---------|------|
 | `pillow` | >= 9.0 | Image processing, canvas, composition |
 | `numpy` | (latest) | Vectorized binary operations, RGB565 conversion |
+| `pyyaml` | >= 6.0 | YAML configuration parsing (plugin system) |
 
 ### Optional Dependencies
 
@@ -81,11 +82,11 @@ Declared in `pyproject.toml`:
 | `zedmd` | `pyserial` | Direct USB communication with ZeDMD (without dmdserver) |
 | `dev` | `pytest>=7.0`, `black>=22.0`, `flake8>=4.0`, `mypy>=0.950` | Code quality |
 
-### Additional Dependencies (requirements.txt)
+### Additional Production Dependencies
 
-| Package | Role |
-|---------|------|
-| `colorama >= 0.4.6` | ANSI terminal colors (bootstrap messages) |
+| Package | Version | Role |
+|---------|---------|------|
+| `colorama` | >= 0.4.6 | ANSI terminal colors (bootstrap messages) |
 
 ---
 
