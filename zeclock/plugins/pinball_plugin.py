@@ -108,13 +108,13 @@ class PinballPlugin(ClockPlugin):
             try:
                 self._font = load_font(font_path)
             except Exception as e:
-                logger.warning("Failed to load font %s: %s", font_path, e)
+                logger.warning("[pinball] Failed to load font %s: %s", font_path, e)
 
         # Find scene files
         scene_files = self._find_scene_files()
         if not scene_files:
             logger.warning(
-                "No .scn files found in %s - signaling completion immediately",
+                "[pinball] No .scn files found in %s - signaling completion immediately",
                 self._animations_dir,
             )
             self._frames = []
@@ -122,12 +122,12 @@ class PinballPlugin(ClockPlugin):
 
         # Randomly select a scene
         scene_path = random.choice(scene_files)
-        logger.info("Loading scene: %s", scene_path.name)
+        logger.info("[pinball] Loading scene: %s", scene_path.name)
 
         try:
             scene = load_scene(scene_path, width, height)
         except Exception as e:
-            logger.warning("Failed to load scene %s: %s", scene_path.name, e)
+            logger.warning("[pinball] Failed to load scene %s: %s", scene_path.name, e)
             self._frames = []
             return
 
@@ -139,7 +139,7 @@ class PinballPlugin(ClockPlugin):
         self._frame_index = 0
 
         logger.info(
-            "Animation ready: %s (%d frames, %.1f FPS)",
+            "[pinball] Animation ready: %s (%d frames, %.1f FPS)",
             scene_path.name,
             len(self._frames),
             1000.0 / self._frame_delay_ms,
@@ -157,6 +157,9 @@ class PinballPlugin(ClockPlugin):
         """
         if self._frame_index >= len(self._frames):
             return None
+
+        if self._frame_index == 0:
+            logger.info("[pinball] Start rendering")
 
         frame = self._frames[self._frame_index]
         self._frame_index += 1

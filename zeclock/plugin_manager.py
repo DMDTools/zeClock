@@ -65,6 +65,9 @@ class PluginManager:
         # Create the PluginHelpers instance to inject into plugins
         self._helpers = PluginHelpers(width, height, resources_path)
 
+        # Track last selected plugin to avoid consecutive repeats
+        self._last_selected_plugin: Optional[ClockPlugin] = None
+
     async def discover_and_load(self) -> None:
         """Scan plugin directories, import modules, validate and register plugins.
 
@@ -286,6 +289,9 @@ class PluginManager:
 
         Uses the normalized frequencies from the registry to perform
         weighted random selection among active (non-failed) plugins.
+        Avoids selecting the same plugin twice in a row by excluding
+        the last selected plugin from candidates (unless it's the only
+        one available or has 100% of the total weight).
 
         Returns:
             A ClockPlugin instance, or None if no plugins are available.
@@ -297,8 +303,28 @@ class PluginManager:
         plugins = [plugin for plugin, _freq in normalized]
         weights = [freq for _plugin, freq in normalized]
 
-        selected = random.choices(plugins, weights=weights, k=1)
-        return selected[0]
+        # If more than one candidate and last plugin isn't at 100%, exclude it
+        if (
+            len(plugins) > 1
+            and self._last_selected_plugin is not None
+            and self._last_selected_plugin in plugins
+        ):
+            idx = plugins.index(self._last_selected_plugin)
+            if weights[idx] < 100.0:
+                # Remove last plugin and re-select from the rest
+                remaining_plugins = plugins[:idx] + plugins[idx + 1:]
+                remaining_weights = weights[:idx] + weights[idx + 1:]
+                # Guard against all-zero remaining weights
+                if sum(remaining_weights) > 0:
+                    selected = random.choices(
+                        remaining_plugins, weights=remaining_weights, k=1
+                    )[0]
+                    self._last_selected_plugin = selected
+                    return selected
+
+        selected = random.choices(plugins, weights=weights, k=1)[0]
+        self._last_selected_plugin = selected
+        return selected
 
     async def activate_plugin(self, plugin: ClockPlugin) -> bool:
         """Initialize plugin with its config. Returns False if init fails.

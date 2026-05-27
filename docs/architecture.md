@@ -110,6 +110,12 @@ Extensible plugin architecture that allows contributors to author display plugin
   - `async render_frame(width, height)`: produce a single RGB PIL Image frame, or `None` to signal completion.
   - `async cleanup()`: release resources on deactivation.
 - **Validation Utilities**: `validate_plugin_name()` and `validate_plugin_description()` enforce naming and description constraints at registration time.
+- **Built-in Plugins**:
+  - **PinballPlugin** (`pinball_plugin.py`): Wraps the existing `.scn` animation playback logic with DotBlt clock overlay composition. Randomly selects a scene file, pre-computes frames respecting storyboard metadata (clock_style, custom_x, custom_y, frame_layer), and supports independent clock/animation colors.
+  - **PongPlugin** (`pong_plugin.py`): Simulates a Pong game where the score always displays the current time (left paddle = hours, right paddle = minutes). Features AI-controlled paddles, ball physics with spin and speed-up, and renders using the MENU font for the score display.
+  - **GifPlugin** (`gif_plugin.py`): Picks a random animated GIF from a configurable directory (`~/.zeclock/plugins/gif/` by default), extracts all frames with their native delays, resizes/crops to fit the display dimensions, plays the animation once, then signals completion.
+  - **WeatherPlugin** (`weather_plugin.py`): Fetches weather data from the Open-Meteo API and cycles through display pages (current conditions, tomorrow's forecast, 3-day outlook) with configurable page duration. Supports 15-minute caching, staleness indicators, and Celsius/Fahrenheit units.
+  - **StockPlugin** (`stock_plugin.py`): Fetches stock quotes from Yahoo Finance (no API key required) and displays current price, daily change, and change percentage for configured ticker symbols. Shows one symbol per page with configurable page duration. Supports 10-minute caching with a staleness indicator.
 - **`PluginHelpers` (`helpers.py`)**: Shared rendering utilities injected into plugins at initialization. Provides:
   - `create_frame()`: Creates blank RGB PIL Images at the correct display dimensions.
   - `render_text()`: Renders text using the BitmapFont system with positioning and colorization.

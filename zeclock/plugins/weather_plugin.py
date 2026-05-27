@@ -200,7 +200,7 @@ class WeatherPlugin(ClockPlugin):
 
         if missing_fields:
             logger.warning(
-                "Weather plugin missing required config fields: %s",
+                "[weather] Missing required config fields: %s",
                 ", ".join(missing_fields),
             )
             self._initialized = False
@@ -254,13 +254,16 @@ class WeatherPlugin(ClockPlugin):
 
         if self._cache is None:
             logger.warning(
-                "No weather data available - signaling completion"
+                "[weather] No weather data available - signaling completion"
             )
             return None
 
         # Check if we've completed all 4 pages
         if self._current_page >= 4:
             return None
+
+        if self._current_page == 0 and self._frame_count == 0:
+            logger.info("[weather] Start rendering")
 
         # Render current page
         frame = self._render_page(self._current_page, width, height)
@@ -303,7 +306,7 @@ class WeatherPlugin(ClockPlugin):
             if data is not None:
                 self._cache = data
         except Exception as e:
-            logger.warning("Failed to fetch weather data: %s", e)
+            logger.warning("[weather] Failed to fetch weather data: %s", e)
             # Keep existing cache if available (staleness indicator
             # will be handled in rendering - task 9.3)
 
@@ -336,7 +339,7 @@ class WeatherPlugin(ClockPlugin):
                 ) as response:
                     if response.status != 200:
                         logger.warning(
-                            "Open-Meteo API returned status %d", response.status
+                            "[weather] Open-Meteo API returned status %d", response.status
                         )
                         return None
 
@@ -344,10 +347,10 @@ class WeatherPlugin(ClockPlugin):
                     return self._parse_api_response(data)
 
         except aiohttp.ClientError as e:
-            logger.warning("Open-Meteo API request failed: %s", e)
+            logger.warning("[weather] Open-Meteo API request failed: %s", e)
             return None
         except Exception as e:
-            logger.warning("Unexpected error fetching weather: %s", e)
+            logger.warning("[weather] Unexpected error fetching weather: %s", e)
             return None
 
     def _parse_api_response(self, data: dict) -> Optional[WeatherData]:

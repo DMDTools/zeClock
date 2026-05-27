@@ -436,7 +436,10 @@ zeclock --list-plugins
 Output:
 ```
 pinball          Pinball animation display                active
+pong             Pong game where the score is the current time  active
+gif              Displays animated GIFs on the DMD       active
 weather          Current weather and forecast display     active
+stock            Stock prices and daily change display    active
 hello-world      Displays a hello world message          active
 ```
 

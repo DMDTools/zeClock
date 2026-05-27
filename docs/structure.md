@@ -24,7 +24,12 @@ zeClock/
 │   └── plugins/                # Plugin system for extensible display content
 │       ├── __init__.py         # Exports ClockPlugin ABC and validation utilities
 │       ├── base.py             # ClockPlugin abstract base class (plugin interface contract)
-│       └── helpers.py          # PluginHelpers shared rendering utilities (fonts, icons, compositing)
+│       ├── helpers.py          # PluginHelpers shared rendering utilities (fonts, icons, compositing)
+│       ├── pinball_plugin.py   # Built-in plugin: retro pinball .scn animation playback with DotBlt overlay
+│       ├── pong_plugin.py      # Built-in plugin: Pong game where the score displays the current time
+│       ├── gif_plugin.py       # Built-in plugin: plays random animated GIFs from a directory
+│       ├── weather_plugin.py   # Built-in plugin: weather conditions and forecast from Open-Meteo API
+│       └── weather_icons.py    # Weather condition code to pixel-art icon mapping
 ├── examples/                   # Example and quick-test scripts
 │   ├── run_clock.py            # Minimal clock launcher
 │   ├── demo.py                 # Frame loading and sending demo
@@ -68,6 +73,11 @@ This is the application core. It contains all the Python logic for reading resou
 | `plugins/__init__.py` | Plugin system package: exports `ClockPlugin` ABC, `validate_plugin_name`, `validate_plugin_description` |
 | `plugins/base.py` | `ClockPlugin` abstract base class defining the plugin interface (name, description, frame_delay_ms, initialize, render_frame, cleanup) |
 | `plugins/helpers.py` | `PluginHelpers` shared rendering utilities: frame creation, BitmapFont text rendering, pixel-art icon drawing, DotBlt-style compositing, font discovery and text measurement |
+| `plugins/pinball_plugin.py` | Built-in pinball animation plugin: wraps `.scn` playback with DotBlt clock overlay, supports dual color and scene storyboard metadata |
+| `plugins/pong_plugin.py` | Built-in Pong clock plugin: simulates a Pong game where the score always shows the current time (hours vs minutes) |
+| `plugins/gif_plugin.py` | Built-in GIF plugin: picks a random animated GIF from a configurable directory, plays it once respecting native frame delays, then signals completion |
+| `plugins/weather_plugin.py` | Built-in weather plugin: fetches data from Open-Meteo API, displays current conditions, tomorrow's forecast, and 3-day outlook |
+| `plugins/weather_icons.py` | WMO weather condition code to 16×16 pixel-art icon bitmap mapping |
 
 ### 🧪 Examples (`examples/`)
 
