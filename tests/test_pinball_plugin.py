@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Optional
 from unittest.mock import MagicMock, patch, AsyncMock
 
-import numpy as np
 import pytest
 from PIL import Image
 

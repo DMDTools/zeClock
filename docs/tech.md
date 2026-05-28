@@ -82,7 +82,7 @@ Declared in `pyproject.toml`:
 | Group | Packages | Role |
 |-------|----------|------|
 | `zedmd` | `pyserial` | Direct USB communication with ZeDMD (without dmdserver) |
-| `dev` | `pytest>=7.0`, `pytest-asyncio>=0.21`, `hypothesis>=6.0`, `black>=22.0`, `flake8>=4.0`, `mypy>=0.950` | Code quality & testing |
+| `dev` | `pytest>=7.0`, `pytest-asyncio>=0.21`, `hypothesis>=6.0`, `numpy>=1.21`, `black>=22.0`, `flake8>=4.0`, `mypy>=0.950`, `pyyaml>=6.0` | Code quality & testing |
 
 ---
 
