@@ -129,55 +129,24 @@ class StockPlugin(PagedPlugin):
         await self._refresh_cache_if_needed()
 
     async def render_frame(self, width: int, height: int) -> Optional[Image.Image]:
-        """Render the next stock frame with staleness indicator.
-
-        Overrides PagedPlugin.render_frame to add guards and staleness indicator.
-
-        Args:
-            width: Display width in pixels.
-            height: Display height in pixels.
-
-        Returns:
-            PIL Image in RGB mode, or None to signal completion.
-        """
-        if not self._initialized:
+        """Render the next stock frame with staleness indicator."""
+        if not self._initialized or self._cache is None or not self._cache.quotes:
             return None
 
-        if self._cache is None or not self._cache.quotes:
-            logger.warning("[stock] No stock data available - signaling completion")
-            return None
+        # Get total frame index before PagedPlugin advances it
+        total_idx = self._total_frame_index()
 
-        # Delegate to PagedPlugin's render_frame (handles page cycling)
         frame = await super().render_frame(width, height)
         if frame is None:
             return None
 
-        # Add staleness indicator if cache is stale
         if self._is_cache_stale():
-            # Compute the total frame index that was just rendered
-            if self._frame_count == 0 and self._current_page > 0:
-                total_frames = (self._current_page - 1) * self._frames_per_page + (
-                    self._frames_per_page - 1
-                )
-            else:
-                total_frames = self._current_page * self._frames_per_page + (
-                    self._frame_count - 1
-                )
-            draw_staleness_indicator(frame, max(0, total_frames), self._frame_delay_ms)
+            draw_staleness_indicator(frame, total_idx, self._frame_delay_ms)
 
         return frame
 
     def render_page(self, page: int, width: int, height: int) -> Image.Image:
-        """Render a page showing a single stock symbol.
-
-        Args:
-            page: Page index.
-            width: Display width in pixels.
-            height: Display height in pixels.
-
-        Returns:
-            PIL Image in RGB mode.
-        """
+        """Render a page showing a single stock symbol."""
         return self._render_page(page, width, height)
 
     async def cleanup(self) -> None:
@@ -421,10 +390,8 @@ class StockPlugin(PagedPlugin):
         frame = self._helpers.composite_frames(frame, ticker_frame)
 
         price_str = self._format_price(quote.price)
-        price_width = self._helpers.get_text_width(price_str, font_name="MENU")
-        price_x = width - price_width - 1
-        price_frame = self._helpers.render_text(
-            price_str, x=price_x, y=0, color=(255, 128, 0), font_name="MENU"
+        price_frame = self._helpers.render_text_right_aligned(
+            price_str, y=0, color=(255, 128, 0), font_name="MENU"
         )
         frame = self._helpers.composite_frames(frame, price_frame)
 
@@ -458,11 +425,8 @@ class StockPlugin(PagedPlugin):
 
         # Compose full line 2
         line2 = f"{change_val_padded} {change_pct_padded}"
-        line2_w = self._helpers.get_text_width(line2, font_name="SYSTEM")
-        line2_x = width - line2_w - 1
-
-        change_frame = self._helpers.render_text(
-            line2, x=line2_x, y=16, color=change_color, font_name="SYSTEM"
+        change_frame = self._helpers.render_text_right_aligned(
+            line2, y=16, color=change_color, font_name="SYSTEM"
         )
         frame = self._helpers.composite_frames(frame, change_frame)
 
@@ -471,11 +435,8 @@ class StockPlugin(PagedPlugin):
             ext_val_padded = ext_val_str.rjust(max_val_len)
             ext_pct_padded = ext_pct_str.rjust(max_pct_len)
             line3 = f"{ext_val_padded} {ext_pct_padded}"
-            line3_w = self._helpers.get_text_width(line3, font_name="SYSTEM")
-            line3_x = width - line3_w - 1
-
-            ext_frame = self._helpers.render_text(
-                line3, x=line3_x, y=24, color=ext_color, font_name="SYSTEM"
+            ext_frame = self._helpers.render_text_right_aligned(
+                line3, y=24, color=ext_color, font_name="SYSTEM"
             )
             frame = self._helpers.composite_frames(frame, ext_frame)
 

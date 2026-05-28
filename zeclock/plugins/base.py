@@ -2,7 +2,6 @@
 
 import logging
 import re
-import time
 from abc import ABC, abstractmethod
 from typing import Any, Optional
 
@@ -127,63 +126,6 @@ class ClockPlugin(ABC):
         ...
 
 
-class CachedDataMixin:
-    """Mixin for plugins that fetch and cache external data with staleness tracking.
-
-    Provides a standard cache-with-refresh pattern: data is fetched once and
-    reused until the cache duration expires. On fetch failure, existing cached
-    data is preserved.
-
-    Subclasses must implement `_fetch_data()` to perform the actual API call.
-
-    Attributes:
-        _cache_duration_seconds: How long cached data remains fresh (default: 900s / 15min).
-        _cache_data: The cached data (any type, managed by subclass).
-        _cache_fetched_at: Timestamp of last successful fetch.
-    """
-
-    _cache_duration_seconds: int = 900  # 15 minutes default
-    _cache_data: Any = None
-    _cache_fetched_at: float = 0.0
-
-    def is_cache_stale(self) -> bool:
-        """Check if the cached data is older than the configured duration.
-
-        Returns:
-            True if cache is stale or empty, False if fresh.
-        """
-        if self._cache_data is None:
-            return True
-        elapsed = time.time() - self._cache_fetched_at
-        return elapsed >= self._cache_duration_seconds
-
-    async def _refresh_cache_if_needed(self) -> None:
-        """Fetch new data if cache is stale. Preserves old cache on failure."""
-        if not self.is_cache_stale():
-            return
-
-        try:
-            data = await self._fetch_data()
-            if data is not None:
-                self._cache_data = data
-                self._cache_fetched_at = time.time()
-        except Exception as e:
-            logger.warning(
-                "[%s] Failed to fetch data: %s",
-                getattr(self, "name", "unknown"),
-                e,
-            )
-
-    @abstractmethod
-    async def _fetch_data(self) -> Any:
-        """Fetch fresh data from the external source.
-
-        Returns:
-            The fetched data, or None on failure.
-        """
-        ...
-
-
 class PagedPlugin(ClockPlugin):
     """Base class for plugins that cycle through multiple display pages.
 
@@ -228,22 +170,18 @@ class PagedPlugin(ClockPlugin):
         self._total_pages = total_pages
         self._current_page = 0
         self._frame_count = 0
-        # Ceiling division: ensures at least 1 frame per page
         self._frames_per_page = (
             self._page_duration_seconds * 1000 + self._frame_delay_ms - 1
         ) // self._frame_delay_ms
+
+    def _total_frame_index(self) -> int:
+        """Return the total frame index across all pages (for staleness indicators)."""
+        return self._current_page * self._frames_per_page + self._frame_count
 
     async def render_frame(self, width: int, height: int) -> Optional[Image.Image]:
         """Handle page cycling; delegates to render_page().
 
         Returns None after all pages have been displayed.
-
-        Args:
-            width: Display width in pixels.
-            height: Display height in pixels.
-
-        Returns:
-            PIL Image in RGB mode, or None to signal completion.
         """
         if self._current_page >= self._total_pages:
             return None
@@ -251,7 +189,6 @@ class PagedPlugin(ClockPlugin):
         if self._current_page == 0 and self._frame_count == 0:
             logger.info("[%s] Start rendering", self.name)
 
-        # Delegate to subclass
         frame = self.render_page(self._current_page, width, height)
 
         # Advance frame counter

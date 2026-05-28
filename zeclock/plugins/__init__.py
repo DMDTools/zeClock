@@ -1,7 +1,6 @@
 """zeClock plugin system - built-in plugins and base interface."""
 
 from .base import (
-    CachedDataMixin,
     ClockPlugin,
     PagedPlugin,
     validate_plugin_name,
@@ -10,7 +9,6 @@ from .base import (
 )
 
 __all__ = [
-    "CachedDataMixin",
     "ClockPlugin",
     "PagedPlugin",
     "validate_plugin_name",

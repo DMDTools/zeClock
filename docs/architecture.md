@@ -111,7 +111,6 @@ Extensible plugin architecture that allows contributors to author display plugin
   - `async initialize(config)`: prepare the plugin for rendering.
   - `async render_frame(width, height)`: produce a single RGB PIL Image frame, or `None` to signal completion.
   - `async cleanup()`: release resources on deactivation.
-- **`CachedDataMixin` (`base.py`)**: Mixin class providing a standard cache-with-refresh pattern for plugins that fetch external data. Tracks staleness via `_cache_duration_seconds` (default 15 minutes), `_cache_data`, and `_cache_fetched_at`. Exposes `is_cache_stale()` and `_refresh_cache_if_needed()` (which preserves old data on fetch failure). Subclasses implement `_fetch_data()` for the actual API call.
 - **`PagedPlugin` (`base.py`)**: Abstract subclass of `ClockPlugin` for plugins that cycle through multiple display pages. Handles frame counting, page advancement, and automatic completion signaling. Subclasses implement `render_page(page, width, height)` instead of `render_frame()`. Accepts `page_duration_seconds` (2–30s, default 4) and manages internal paging state via `_init_paging()`.
 - **Validation Utilities**: `validate_plugin_name()` and `validate_plugin_description()` enforce naming and description constraints at registration time.
 - **Built-in Plugins**:

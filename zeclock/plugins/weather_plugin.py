@@ -222,63 +222,38 @@ class WeatherPlugin(PagedPlugin):
         await self._refresh_cache_if_needed()
 
     async def render_frame(self, width: int, height: int) -> Optional[Image.Image]:
-        """Render the next weather frame with staleness indicator.
-
-        Overrides PagedPlugin.render_frame to add guards and staleness indicator.
-
-        Args:
-            width: Display width in pixels.
-            height: Display height in pixels.
-
-        Returns:
-            PIL Image in RGB mode, or None to signal completion.
-        """
-        if not self._initialized:
+        """Render the next weather frame with staleness indicator."""
+        if not self._initialized or self._cache is None:
             return None
 
-        if self._cache is None:
-            logger.warning("[weather] No weather data available - signaling completion")
-            return None
+        # Get total frame index before PagedPlugin advances it
+        total_idx = self._total_frame_index()
 
-        # Delegate to PagedPlugin's render_frame (handles page cycling)
         frame = await super().render_frame(width, height)
         if frame is None:
             return None
 
         # Add staleness indicator if cache is stale
         if self.is_cache_stale():
-            # Calculate total frame count (current page already advanced by super())
-            prev_page = self._current_page
-            prev_frame = self._frame_count
-            # The super() already incremented, so compute the frame that was just rendered
-            if prev_frame == 0 and prev_page > 0:
-                # Just advanced to next page
-                total_frames = (prev_page - 1) * self._frames_per_page + (
-                    self._frames_per_page - 1
-                )
-            else:
-                total_frames = prev_page * self._frames_per_page + (prev_frame - 1)
-            draw_staleness_indicator(frame, max(0, total_frames), self._frame_delay_ms)
+            draw_staleness_indicator(frame, total_idx, self._frame_delay_ms)
 
         return frame
 
     def render_page(self, page: int, width: int, height: int) -> Image.Image:
-        """Render a specific weather page.
+        """Render a specific weather page."""
+        if self._helpers is None:
+            return Image.new("RGB", (width, height), (0, 0, 0))
 
-        Page 0: Current conditions (temp, icon, description, city)
-        Page 1: Tomorrow forecast (high/low, icon)
-        Page 2: 3-day outlook (day name, icon, temp)
-        Page 3: 7-day overview (single letter, icon, temp)
-
-        Args:
-            page: Page index (0, 1, 2, or 3).
-            width: Display width in pixels.
-            height: Display height in pixels.
-
-        Returns:
-            PIL Image in RGB mode.
-        """
-        return self._render_page(page, width, height)
+        if page == 0:
+            return self._render_current_page(width, height)
+        elif page == 1:
+            return self._render_tomorrow_page(width, height)
+        elif page == 2:
+            return self._render_outlook_page(width, height)
+        elif page == 3:
+            return self._render_7day_page(width, height)
+        else:
+            return self._helpers.create_frame()
 
     async def cleanup(self) -> None:
         """Release resources."""
@@ -426,36 +401,6 @@ class WeatherPlugin(PagedPlugin):
         descriptions = WMO_DESCRIPTIONS.get(lang, WMO_DESCRIPTIONS["en"])
         desc = descriptions.get(code, "Unknown")
         return desc[:12]
-
-    def _render_page(self, page: int, width: int, height: int) -> Image.Image:
-        """Render a specific weather page.
-
-        Page 0: Current conditions (temp, icon, description, city)
-        Page 1: Tomorrow forecast (high/low, icon)
-        Page 2: 3-day outlook (day name, icon, temp)
-        Page 3: 7-day overview (single letter, icon, temp)
-
-        Args:
-            page: Page index (0, 1, 2, or 3).
-            width: Display width in pixels.
-            height: Display height in pixels.
-
-        Returns:
-            PIL Image in RGB mode.
-        """
-        if self._helpers is None:
-            return Image.new("RGB", (width, height), (0, 0, 0))
-
-        if page == 0:
-            return self._render_current_page(width, height)
-        elif page == 1:
-            return self._render_tomorrow_page(width, height)
-        elif page == 2:
-            return self._render_outlook_page(width, height)
-        elif page == 3:
-            return self._render_7day_page(width, height)
-        else:
-            return self._helpers.create_frame()
 
     def _format_temp(self, temp: float) -> str:
         """Format a temperature as a rounded integer with unit symbol.
