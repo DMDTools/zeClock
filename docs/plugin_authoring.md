@@ -10,6 +10,8 @@ This guide walks you through creating custom plugins for zeClock. Plugins render
 - [Configuration](#configuration)
 - [Lifecycle](#lifecycle)
 - [Signaling Completion](#signaling-completion)
+- [Using CachedDataMixin](#using-cacheddatamixin)
+- [Using PagedPlugin](#using-pagedplugin)
 - [Error Handling Best Practices](#error-handling-best-practices)
 - [Installation](#installation)
 - [Testing Your Plugin](#testing-your-plugin)
@@ -234,6 +236,36 @@ width = self._helpers.get_text_width("Temperature")
 x_pos = (128 - width) // 2  # Center manually
 ```
 
+#### `resolve_color(color_name, default="orange") -> Tuple[int, int, int]`
+
+Resolves a color name to an RGB tuple using the shared palette. Useful for letting users configure colors by name in plugin settings.
+
+```python
+# Resolve a color from config
+color = self._helpers.resolve_color("blue")        # (0, 0, 255) or similar
+color = self._helpers.resolve_color("nope", "red") # Falls back to red
+```
+
+#### `render_text_right_aligned(text, y, margin=1, color=(255, 128, 0), font_name="STANDARD") -> Image.Image`
+
+Renders text right-aligned on the frame with an optional right margin. Handy for scores, values, or any content that should hug the right edge.
+
+```python
+# Right-aligned temperature value
+temp_frame = self._helpers.render_text_right_aligned("23C", y=5, color=(255, 200, 0), font_name="MENU")
+frame = self._helpers.composite_frames(frame, temp_frame)
+```
+
+#### `render_text_centered_at(text, cx, y, color=(255, 128, 0), font_name="STANDARD") -> Image.Image`
+
+Renders text centered horizontally around a specific x coordinate. Useful for centering text within a column or sub-region of the display.
+
+```python
+# Center text in the left half of a 128px display
+col_frame = self._helpers.render_text_centered_at("MON", cx=32, y=2, font_name="MENU")
+frame = self._helpers.composite_frames(frame, col_frame)
+```
+
 #### `draw_staleness_indicator(frame, total_frames, frame_delay_ms) -> None`
 
 Draws a blinking red dot in the top-right corner of the frame. Use this to indicate that displayed data is stale (e.g., cached beyond its freshness window). The dot blinks at approximately 500ms intervals based on the frame count.
@@ -345,6 +377,173 @@ After returning `None`:
 - After `clock_display_seconds` elapses, another plugin is selected
 
 If you never return `None`, the 30-second maximum duration will stop your plugin automatically. This is not treated as an error.
+
+---
+
+## Using CachedDataMixin
+
+If your plugin fetches data from an external API, use `CachedDataMixin` to get a standard cache-with-refresh pattern. It handles staleness tracking and preserves old cached data when a fetch fails.
+
+```python
+"""cached_plugin.py - Plugin using CachedDataMixin for API data."""
+
+from typing import Any, Optional
+from PIL import Image
+from zeclock.plugins.base import ClockPlugin, CachedDataMixin
+
+
+class CachedPlugin(CachedDataMixin, ClockPlugin):
+    """Plugin that fetches and caches external data."""
+
+    _cache_duration_seconds = 600  # 10 minutes (override default of 900)
+
+    @property
+    def name(self) -> str:
+        return "my-cached-plugin"
+
+    @property
+    def description(self) -> str:
+        return "Displays data from an external API"
+
+    @property
+    def frame_delay_ms(self) -> int:
+        return 100
+
+    async def _fetch_data(self) -> Any:
+        """Fetch fresh data. Return None on failure."""
+        import aiohttp
+        async with aiohttp.ClientSession() as session:
+            async with session.get("https://api.example.com/data") as resp:
+                if resp.status == 200:
+                    return await resp.json()
+        return None
+
+    async def initialize(self, config: dict) -> None:
+        self._helpers = config["_helpers"]
+        await self._refresh_cache_if_needed()
+
+    async def render_frame(self, width: int, height: int) -> Optional[Image.Image]:
+        await self._refresh_cache_if_needed()
+        if self._cache_data is None:
+            return None  # No data available
+
+        frame = self._helpers.create_frame()
+        text_frame = self._helpers.render_text(
+            str(self._cache_data), centered=True, y=12, font_name="SYSTEM"
+        )
+        return self._helpers.composite_frames(frame, text_frame)
+
+    async def cleanup(self) -> None:
+        pass
+```
+
+### CachedDataMixin API
+
+| Attribute / Method | Description |
+|---|---|
+| `_cache_duration_seconds` | How long cached data stays fresh (default: 900s / 15 min). Override as a class attribute. |
+| `_cache_data` | The cached data (any type). `None` when empty. |
+| `_cache_fetched_at` | Timestamp of last successful fetch. |
+| `is_cache_stale()` | Returns `True` if cache is empty or older than the configured duration. |
+| `_refresh_cache_if_needed()` | Calls `_fetch_data()` if stale. On failure, preserves existing cached data. |
+| `_fetch_data()` | **Abstract** — implement this to perform the actual API call. Return data on success, `None` on failure. |
+
+---
+
+## Using PagedPlugin
+
+For plugins that display multiple pages of content (e.g., weather forecasts, stock tickers), subclass `PagedPlugin` instead of `ClockPlugin`. It handles frame counting, page advancement, and automatic completion signaling.
+
+```python
+"""paged_example.py - Plugin using PagedPlugin for multi-page display."""
+
+from PIL import Image
+from zeclock.plugins.base import PagedPlugin
+
+
+class MyPagedPlugin(PagedPlugin):
+    """Cycles through multiple pages of content."""
+
+    @property
+    def name(self) -> str:
+        return "my-paged-plugin"
+
+    @property
+    def description(self) -> str:
+        return "Displays multiple pages of information"
+
+    async def initialize(self, config: dict) -> None:
+        self._helpers = config["_helpers"]
+        self._data = ["Page 1 content", "Page 2 content", "Page 3 content"]
+
+        # Set up paging: 3 pages, 5 seconds each, 10 FPS
+        page_duration = config.get("page_duration_seconds", 5)
+        self._init_paging(
+            total_pages=len(self._data),
+            page_duration_seconds=page_duration,
+            frame_delay_ms=100,
+        )
+
+    def render_page(self, page: int, width: int, height: int) -> Image.Image:
+        """Render a single page. Called automatically by the paging logic."""
+        frame = self._helpers.create_frame()
+        text_frame = self._helpers.render_text(
+            self._data[page], centered=True, y=12, font_name="MENU"
+        )
+        return self._helpers.composite_frames(frame, text_frame)
+```
+
+### PagedPlugin API
+
+| Method / Attribute | Description |
+|---|---|
+| `_init_paging(total_pages, page_duration_seconds=4, frame_delay_ms=100)` | Call from `initialize()` to set up page cycling. `page_duration_seconds` is clamped to 2–30. |
+| `render_page(page, width, height) -> Image.Image` | **Abstract** — implement this instead of `render_frame()`. Receives the zero-based page index. |
+| `frame_delay_ms` | Managed automatically by `PagedPlugin` (set via `_init_paging`). |
+| `render_frame()` | Handled internally — advances pages and returns `None` after all pages are shown. |
+| `cleanup()` | Resets paging state. Override and call `await super().cleanup()` if you need additional cleanup. |
+
+### Combining PagedPlugin with CachedDataMixin
+
+For plugins that fetch data and display it across multiple pages, combine both:
+
+```python
+from typing import Any
+from PIL import Image
+from zeclock.plugins.base import CachedDataMixin, PagedPlugin
+
+
+class MyDataPlugin(CachedDataMixin, PagedPlugin):
+    """Fetches data and displays it across multiple pages."""
+
+    _cache_duration_seconds = 600
+
+    @property
+    def name(self) -> str:
+        return "my-data-plugin"
+
+    @property
+    def description(self) -> str:
+        return "Fetches and pages through external data"
+
+    async def _fetch_data(self) -> Any:
+        # ... fetch from API ...
+        return ["item1", "item2", "item3"]
+
+    async def initialize(self, config: dict) -> None:
+        self._helpers = config["_helpers"]
+        await self._refresh_cache_if_needed()
+
+        total = len(self._cache_data) if self._cache_data else 0
+        self._init_paging(total_pages=total, page_duration_seconds=4)
+
+    def render_page(self, page: int, width: int, height: int) -> Image.Image:
+        frame = self._helpers.create_frame()
+        text_frame = self._helpers.render_text(
+            self._cache_data[page], centered=True, y=12, font_name="SYSTEM"
+        )
+        return self._helpers.composite_frames(frame, text_frame)
+```
 
 ---
 

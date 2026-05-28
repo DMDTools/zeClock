@@ -15,7 +15,7 @@ from typing import List, Optional, Tuple
 import aiohttp
 from PIL import Image
 
-from .base import ClockPlugin
+from .base import PagedPlugin
 from .helpers import draw_staleness_indicator
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ class StockData:
     fetched_at: float = 0.0
 
 
-class StockPlugin(ClockPlugin):
+class StockPlugin(PagedPlugin):
     """Displays stock prices and daily change on the DMD.
 
     Fetches data from Yahoo Finance (no API key or account required).
@@ -65,10 +65,6 @@ class StockPlugin(ClockPlugin):
     def description(self) -> str:
         return "Stock prices and daily change display"
 
-    @property
-    def frame_delay_ms(self) -> int:
-        return self._frame_delay_ms
-
     # Class-level cache shared across activations
     _shared_cache: Optional["StockData"] = None
 
@@ -82,15 +78,9 @@ class StockPlugin(ClockPlugin):
 
     def __init__(self):
         """Initialize StockPlugin with default state."""
-        self._frame_delay_ms: int = 100  # 10 FPS
+        super().__init__()
         self._symbols: List[str] = []
-        self._page_duration_seconds: int = 5
         self._cache_duration_seconds: int = DEFAULT_CACHE_DURATION_SECONDS
-        self._current_page: int = 0
-        self._frame_count: int = 0
-        self._frames_per_page: int = 0
-        self._total_pages: int = 0
-        self._helpers = None
         self._initialized: bool = False
 
     async def initialize(self, config: dict) -> None:
@@ -121,32 +111,27 @@ class StockPlugin(ClockPlugin):
 
         # Read optional configuration
         page_duration = config.get("page_duration_seconds", 5)
-        self._page_duration_seconds = max(2, min(30, int(page_duration)))
 
         # Cache/refresh interval (default 10 minutes, minimum 5 minutes)
         refresh_minutes = config.get("refresh_minutes", 10)
         self._cache_duration_seconds = max(5 * 60, int(refresh_minutes) * 60)
 
-        # Calculate frames per page
-        self._frames_per_page = (
-            self._page_duration_seconds * 1000 + self._frame_delay_ms - 1
-        ) // self._frame_delay_ms
+        # Initialize paging (1 symbol per page)
+        self._init_paging(
+            total_pages=len(self._symbols),
+            page_duration_seconds=page_duration,
+            frame_delay_ms=100,
+        )
 
-        # Calculate total pages (1 symbol per page)
-        self._total_pages = len(self._symbols)
-
-        self._current_page = 0
-        self._frame_count = 0
         self._initialized = True
 
         # Fetch stock data
         await self._refresh_cache_if_needed()
 
     async def render_frame(self, width: int, height: int) -> Optional[Image.Image]:
-        """Render the next stock frame.
+        """Render the next stock frame with staleness indicator.
 
-        Shows up to 2 symbols per page with price and change.
-        Returns None after all pages are displayed.
+        Overrides PagedPlugin.render_frame to add guards and staleness indicator.
 
         Args:
             width: Display width in pixels.
@@ -162,35 +147,42 @@ class StockPlugin(ClockPlugin):
             logger.warning("[stock] No stock data available - signaling completion")
             return None
 
-        # All pages displayed? Signal completion.
-        if self._current_page >= self._total_pages:
+        # Delegate to PagedPlugin's render_frame (handles page cycling)
+        frame = await super().render_frame(width, height)
+        if frame is None:
             return None
-
-        if self._current_page == 0 and self._frame_count == 0:
-            logger.info("[stock] Start rendering")
-
-        # Render current page
-        frame = self._render_page(self._current_page, width, height)
 
         # Add staleness indicator if cache is stale
         if self._is_cache_stale():
-            total_frames = (
-                self._current_page * self._frames_per_page + self._frame_count
-            )
-            draw_staleness_indicator(frame, total_frames, self._frame_delay_ms)
-
-        # Advance frame counter
-        self._frame_count += 1
-        if self._frame_count >= self._frames_per_page:
-            self._frame_count = 0
-            self._current_page += 1
+            # Compute the total frame index that was just rendered
+            if self._frame_count == 0 and self._current_page > 0:
+                total_frames = (self._current_page - 1) * self._frames_per_page + (
+                    self._frames_per_page - 1
+                )
+            else:
+                total_frames = self._current_page * self._frames_per_page + (
+                    self._frame_count - 1
+                )
+            draw_staleness_indicator(frame, max(0, total_frames), self._frame_delay_ms)
 
         return frame
 
+    def render_page(self, page: int, width: int, height: int) -> Image.Image:
+        """Render a page showing a single stock symbol.
+
+        Args:
+            page: Page index.
+            width: Display width in pixels.
+            height: Display height in pixels.
+
+        Returns:
+            PIL Image in RGB mode.
+        """
+        return self._render_page(page, width, height)
+
     async def cleanup(self) -> None:
         """Release resources."""
-        self._current_page = 0
-        self._frame_count = 0
+        await super().cleanup()
 
     def _is_cache_stale(self) -> bool:
         """Check if the cached stock data is older than the configured interval."""

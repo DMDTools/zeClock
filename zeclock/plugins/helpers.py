@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Tuple
 
 from PIL import Image
 
+from ..colors import COLOR_MAP
 from ..readers.fnt_reader import BitmapFont, load_font
 
 
@@ -298,3 +299,65 @@ class PluginHelpers:
             frame_delay_ms: Delay between frames in ms (for blink calculation).
         """
         draw_staleness_indicator(frame, current_frame, frame_delay_ms)
+
+    def resolve_color(
+        self, color_name: str, default: str = "orange"
+    ) -> Tuple[int, int, int]:
+        """Resolve a color name to an RGB tuple using the shared palette.
+
+        Args:
+            color_name: Color name (e.g. "orange", "blue", "red").
+            default: Fallback color name if color_name is not found.
+
+        Returns:
+            RGB tuple for the resolved color.
+        """
+        return COLOR_MAP.get(color_name, COLOR_MAP.get(default, (255, 128, 0)))
+
+    def render_text_right_aligned(
+        self,
+        text: str,
+        y: int,
+        margin: int = 1,
+        color: Tuple[int, int, int] = (255, 128, 0),
+        font_name: str = "STANDARD",
+    ) -> Image.Image:
+        """Render text right-aligned on the frame.
+
+        Args:
+            text: The string to render.
+            y: Y position for the text top.
+            margin: Right margin in pixels (default: 1).
+            color: RGB color tuple for the text.
+            font_name: Name of the .fnt font file (without extension).
+
+        Returns:
+            PIL Image in RGB mode containing the rendered text.
+        """
+        text_width = self.get_text_width(text, font_name)
+        x = self.width - text_width - margin
+        return self.render_text(text, x=x, y=y, color=color, font_name=font_name)
+
+    def render_text_centered_at(
+        self,
+        text: str,
+        cx: int,
+        y: int,
+        color: Tuple[int, int, int] = (255, 128, 0),
+        font_name: str = "STANDARD",
+    ) -> Image.Image:
+        """Render text centered horizontally around a given x coordinate.
+
+        Args:
+            text: The string to render.
+            cx: Center x coordinate.
+            y: Y position for the text top.
+            color: RGB color tuple for the text.
+            font_name: Name of the .fnt font file (without extension).
+
+        Returns:
+            PIL Image in RGB mode containing the rendered text.
+        """
+        text_width = self.get_text_width(text, font_name)
+        x = cx - text_width // 2
+        return self.render_text(text, x=x, y=y, color=color, font_name=font_name)

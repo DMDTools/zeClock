@@ -14,7 +14,7 @@ from typing import List, Optional
 import aiohttp
 from PIL import Image
 
-from .base import ClockPlugin
+from .base import PagedPlugin
 from .helpers import draw_staleness_indicator
 from .weather_icons import get_weather_icon_image
 
@@ -134,7 +134,7 @@ class WeatherData:
     city_name: str = ""
 
 
-class WeatherPlugin(ClockPlugin):
+class WeatherPlugin(PagedPlugin):
     """Built-in plugin that displays weather conditions and forecasts.
 
     Fetches data from the Open-Meteo API (no API key required) and
@@ -150,23 +150,14 @@ class WeatherPlugin(ClockPlugin):
     def description(self) -> str:
         return "Current weather and forecast display"
 
-    @property
-    def frame_delay_ms(self) -> int:
-        return self._frame_delay_ms
-
     def __init__(self):
         """Initialize WeatherPlugin with default state."""
-        self._frame_delay_ms: int = 100  # 10 FPS for smooth page transitions
+        super().__init__()
         self._cache: Optional[WeatherData] = None
         self._latitude: Optional[float] = None
         self._longitude: Optional[float] = None
         self._city_name: str = ""
         self._temperature_unit: str = "celsius"
-        self._page_duration_seconds: int = 4
-        self._current_page: int = 0
-        self._frame_count: int = 0
-        self._frames_per_page: int = 0
-        self._helpers = None
         self._language: str = "en"
         self._initialized: bool = False
 
@@ -217,31 +208,23 @@ class WeatherPlugin(ClockPlugin):
             self._language = "en"
 
         page_duration = config.get("page_duration_seconds", 4)
-        self._page_duration_seconds = max(2, min(30, int(page_duration)))
 
-        # Calculate frames per page
-        self._frames_per_page = (
-            self._page_duration_seconds * 1000 + self._frame_delay_ms - 1
-        ) // self._frame_delay_ms
+        # Initialize paging (4 pages: current, tomorrow, 3-day, 7-day)
+        self._init_paging(
+            total_pages=4,
+            page_duration_seconds=page_duration,
+            frame_delay_ms=100,
+        )
 
-        self._current_page = 0
-        self._frame_count = 0
         self._initialized = True
 
         # Attempt to fetch weather data if cache is stale or empty
         await self._refresh_cache_if_needed()
 
     async def render_frame(self, width: int, height: int) -> Optional[Image.Image]:
-        """Render the next weather frame.
+        """Render the next weather frame with staleness indicator.
 
-        Cycles through 3 pages: current conditions, tomorrow forecast,
-        and 3-day outlook. Returns None after all pages are displayed.
-
-        When displaying stale cached data (cache older than 15 minutes),
-        a blinking dot is rendered in the top-right corner as a staleness
-        indicator. The dot blinks by toggling visibility based on frame
-        count (visible on even frames, hidden on odd frames relative to
-        a blink interval derived from frame_delay_ms).
+        Overrides PagedPlugin.render_frame to add guards and staleness indicator.
 
         Args:
             width: Display width in pixels.
@@ -257,35 +240,49 @@ class WeatherPlugin(ClockPlugin):
             logger.warning("[weather] No weather data available - signaling completion")
             return None
 
-        # Check if we've completed all 4 pages
-        if self._current_page >= 4:
+        # Delegate to PagedPlugin's render_frame (handles page cycling)
+        frame = await super().render_frame(width, height)
+        if frame is None:
             return None
-
-        if self._current_page == 0 and self._frame_count == 0:
-            logger.info("[weather] Start rendering")
-
-        # Render current page
-        frame = self._render_page(self._current_page, width, height)
 
         # Add staleness indicator if cache is stale
         if self.is_cache_stale():
-            total_frames = (
-                self._current_page * self._frames_per_page + self._frame_count
-            )
-            draw_staleness_indicator(frame, total_frames, self._frame_delay_ms)
-
-        # Advance frame counter
-        self._frame_count += 1
-        if self._frame_count >= self._frames_per_page:
-            self._frame_count = 0
-            self._current_page += 1
+            # Calculate total frame count (current page already advanced by super())
+            prev_page = self._current_page
+            prev_frame = self._frame_count
+            # The super() already incremented, so compute the frame that was just rendered
+            if prev_frame == 0 and prev_page > 0:
+                # Just advanced to next page
+                total_frames = (prev_page - 1) * self._frames_per_page + (
+                    self._frames_per_page - 1
+                )
+            else:
+                total_frames = prev_page * self._frames_per_page + (prev_frame - 1)
+            draw_staleness_indicator(frame, max(0, total_frames), self._frame_delay_ms)
 
         return frame
 
+    def render_page(self, page: int, width: int, height: int) -> Image.Image:
+        """Render a specific weather page.
+
+        Page 0: Current conditions (temp, icon, description, city)
+        Page 1: Tomorrow forecast (high/low, icon)
+        Page 2: 3-day outlook (day name, icon, temp)
+        Page 3: 7-day overview (single letter, icon, temp)
+
+        Args:
+            page: Page index (0, 1, 2, or 3).
+            width: Display width in pixels.
+            height: Display height in pixels.
+
+        Returns:
+            PIL Image in RGB mode.
+        """
+        return self._render_page(page, width, height)
+
     async def cleanup(self) -> None:
         """Release resources."""
-        self._current_page = 0
-        self._frame_count = 0
+        await super().cleanup()
 
     def is_cache_stale(self) -> bool:
         """Check if the cached weather data is older than 15 minutes.
