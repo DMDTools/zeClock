@@ -8,13 +8,31 @@ Validates Properties 17 and 18 from the design document:
 import tempfile
 from pathlib import Path
 
-import numpy as np
 import pytest
 from hypothesis import given, settings, assume
 from hypothesis import strategies as st
 from PIL import Image
 
 from zeclock.plugins.helpers import PluginHelpers
+
+
+def _frame_has_content(frame: Image.Image) -> bool:
+    """Check if a frame has any non-black pixels."""
+    return frame.getbbox() is not None
+
+
+def _frame_is_black(frame: Image.Image) -> bool:
+    """Check if a frame is entirely black."""
+    return frame.getbbox() is None
+
+
+def _rightmost_content_column(frame: Image.Image) -> int:
+    """Find the rightmost column (x) that has non-black pixels. Returns -1 if empty."""
+    bbox = frame.getbbox()
+    if bbox is None:
+        return -1
+    # bbox is (left, upper, right, lower) — right is exclusive
+    return bbox[2] - 1
 
 
 @pytest.fixture
@@ -239,26 +257,20 @@ class TestRenderText:
 
     def test_empty_text_returns_black_frame(self, helpers):
         frame = helpers.render_text("")
-        # Should be all black
-        arr = np.asarray(frame)
-        assert arr.max() == 0
+        assert _frame_is_black(frame)
 
     def test_centered_text_has_content(self, helpers):
         frame = helpers.render_text("12:00", centered=True)
-        arr = np.asarray(frame)
-        # Should have some non-black pixels
-        assert arr.max() > 0
+        assert _frame_has_content(frame)
 
     def test_positioned_text_has_content(self, helpers):
         # STANDARD font only has digits, ':', '/', 'A', 'M', 'P', ' '
         frame = helpers.render_text("12:00", x=10, y=5)
-        arr = np.asarray(frame)
-        assert arr.max() > 0
+        assert _frame_has_content(frame)
 
     def test_missing_font_returns_black_frame(self, helpers):
         frame = helpers.render_text("Hello", font_name="NONEXISTENT")
-        arr = np.asarray(frame)
-        assert arr.max() == 0
+        assert _frame_is_black(frame)
 
 
 class TestDrawIcon:
@@ -433,20 +445,14 @@ class TestTextWidthConsistencyProperty:
 
         # Render text at x=0 (non-centered) to measure actual content width
         frame = helpers.render_text(text, x=0, y=0, font_name="STANDARD")
-        arr = np.asarray(frame)
 
         # Find the rightmost non-black column (actual rendered width)
-        # Sum across height and color channels to find columns with content
-        col_has_content = np.any(arr > 0, axis=(0, 2))
+        actual_width = _rightmost_content_column(frame) + 1
 
-        if not np.any(col_has_content):
+        if actual_width == 0:
             # No visible content rendered - width should still be consistent
-            # with what the font reports (some chars may have no visible pixels)
             assert predicted_width >= 0
             return
-
-        # The actual rendered content width is the rightmost non-black column + 1
-        actual_width = int(np.max(np.where(col_has_content))) + 1
 
         # The predicted width should equal the actual rendered content width
         assert predicted_width == actual_width, (
@@ -472,17 +478,12 @@ class TestTextWidthConsistencyProperty:
 
         # Render text at x=0 (non-centered) to measure actual content width
         frame = helpers.render_text(text, x=0, y=0, font_name="MENU")
-        arr = np.asarray(frame)
 
-        # Find the rightmost non-black column
-        col_has_content = np.any(arr > 0, axis=(0, 2))
+        actual_width = _rightmost_content_column(frame) + 1
 
-        if not np.any(col_has_content):
-            # Text with only spaces or chars with no visible pixels
+        if actual_width == 0:
             assert predicted_width >= 0
             return
-
-        actual_width = int(np.max(np.where(col_has_content))) + 1
 
         assert predicted_width == actual_width, (
             f"Text '{text}': get_text_width={predicted_width}, "
@@ -511,15 +512,11 @@ class TestTextWidthConsistencyProperty:
 
         # Render text at x=0
         frame = helpers.render_text(text, x=0, y=0, font_name=font_name)
-        arr = np.asarray(frame)
 
-        # Find rightmost non-black column
-        col_has_content = np.any(arr > 0, axis=(0, 2))
+        actual_width = _rightmost_content_column(frame) + 1
 
-        if not np.any(col_has_content):
+        if actual_width == 0:
             return  # No visible content, nothing to check
-
-        actual_width = int(np.max(np.where(col_has_content))) + 1
 
         # Rendered content should not exceed predicted width
         assert actual_width <= predicted_width, (
