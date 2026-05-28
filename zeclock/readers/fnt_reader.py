@@ -149,8 +149,8 @@ class BitmapFont:
         img = Image.new('L', (width, height))  # Grayscale for 4-bit support
         
         # Create mask for the rendered text
-        import numpy as np
-        mask_array = np.zeros((height, width), dtype=np.uint8)
+        mask_width_bytes = (width // 8) + (1 if width % 8 else 0)
+        mask_array = bytearray(height * mask_width_bytes)
         
         # Calculate total text width (with kerning) and validate chars in one pass
         text_width = 0
@@ -170,6 +170,7 @@ class BitmapFont:
         y_pos = (height - self.char_height) // 2
         
         # Render characters
+        has_mask = False
         for i, char in enumerate(valid_chars):
             if char and char in self.glyphs:
                 glyph = self.glyphs[char]
@@ -188,7 +189,12 @@ class BitmapFont:
                                 dest_x = x_pos + gx
                                 dest_y = y_pos + gy
                                 if 0 <= dest_x < width and 0 <= dest_y < height:
-                                    mask_array[dest_y, dest_x] = mask_bit
+                                    if mask_bit:
+                                        # Set bit in packed mask
+                                        mask_byte_idx = (dest_x // 8) + (dest_y * mask_width_bytes)
+                                        mask_bit_pos = dest_x % 8
+                                        mask_array[mask_byte_idx] |= (1 << mask_bit_pos)
+                                        has_mask = True
                 
                 x_pos += self.char_info[char]['width']
                 if i < len(valid_chars) - 1:  # Apply kerning except for last character
@@ -197,11 +203,9 @@ class BitmapFont:
                 # Space for missing characters
                 x_pos += 8
         
-        # Store mask on image (pack bits: 8 pixels per byte)
-        if np.any(mask_array):
-            mask_width_bytes = (width // 8) + (1 if width % 8 else 0)
-            mask_packed = np.packbits(mask_array.reshape(-1, width), axis=1, bitorder='little')
-            img.mask_data = mask_packed.tobytes()
+        # Store mask on image
+        if has_mask:
+            img.mask_data = bytes(mask_array)
             img.mask_width_bytes = mask_width_bytes
         
         return img

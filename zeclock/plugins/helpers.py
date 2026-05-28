@@ -7,7 +7,6 @@ and common drawing operations for DMD displays.
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-import numpy as np
 from PIL import Image
 
 from ..readers.fnt_reader import BitmapFont, load_font
@@ -93,52 +92,46 @@ class PluginHelpers:
         if font is None or not text:
             return frame
 
-        # Use the BitmapFont's render_text which returns a grayscale image
-        # centered in the given dimensions
-        grayscale = font.render_text(text, self.width, self.height)
-
-        # Convert grayscale to RGB with the specified color
-        gray_array = np.asarray(grayscale)
-
         if centered:
-            # The BitmapFont.render_text already centers the text,
-            # so we just colorize it directly
-            rgb_array = np.zeros(
-                (self.height, self.width, 3), dtype=np.uint8
-            )
-            intensity = gray_array / 255.0
-            for i in range(3):
-                rgb_array[:, :, i] = (color[i] * intensity).astype(np.uint8)
-            frame = Image.fromarray(rgb_array, "RGB")
+            # Use the BitmapFont's render_text which returns a grayscale image
+            # centered in the given dimensions, then colorize
+            grayscale = font.render_text(text, self.width, self.height)
+            gray_data = grayscale.tobytes()
+            rgb_data = bytearray(self.width * self.height * 3)
+            
+            for i, pixel in enumerate(gray_data):
+                if pixel > 0:
+                    offset = i * 3
+                    rgb_data[offset] = (color[0] * pixel) // 255
+                    rgb_data[offset + 1] = (color[1] * pixel) // 255
+                    rgb_data[offset + 2] = (color[2] * pixel) // 255
+            
+            frame = Image.frombytes("RGB", (self.width, self.height), bytes(rgb_data))
         else:
-            # Render at a specific position: render text into a temporary
-            # buffer then place it at (x, y)
+            # Render at a specific position
             text_width = font.get_text_width(text)
             text_height = font.char_height
 
-            # Render text into a buffer sized to fit
             buf_width = max(text_width, 1)
             buf_height = max(text_height, 1)
             text_img = font.render_text(text, buf_width, buf_height)
-            text_array = np.asarray(text_img)
+            text_data = text_img.tobytes()
 
             # Colorize and place at (x, y)
-            rgb_array = np.zeros(
-                (self.height, self.width, 3), dtype=np.uint8
-            )
+            rgb_data = bytearray(self.width * self.height * 3)
             for row in range(buf_height):
                 for col in range(buf_width):
                     dest_x = x + col
                     dest_y = y + row
                     if 0 <= dest_x < self.width and 0 <= dest_y < self.height:
-                        pixel_val = text_array[row, col]
+                        pixel_val = text_data[row * buf_width + col]
                         if pixel_val > 0:
-                            intensity = pixel_val / 255.0
-                            for i in range(3):
-                                rgb_array[dest_y, dest_x, i] = int(
-                                    color[i] * intensity
-                                )
-            frame = Image.fromarray(rgb_array, "RGB")
+                            offset = (dest_y * self.width + dest_x) * 3
+                            rgb_data[offset] = (color[0] * pixel_val) // 255
+                            rgb_data[offset + 1] = (color[1] * pixel_val) // 255
+                            rgb_data[offset + 2] = (color[2] * pixel_val) // 255
+            
+            frame = Image.frombytes("RGB", (self.width, self.height), bytes(rgb_data))
 
         return frame
 
@@ -201,19 +194,24 @@ class PluginHelpers:
         Returns:
             Composited frame.
         """
-        bg_array = np.asarray(background).copy()
-        fg_array = np.asarray(foreground)
-
-        # Create mask where foreground is non-black (any channel > 0)
-        if fg_array.ndim == 3:
-            fg_mask = np.any(fg_array > 0, axis=2)
-            # Where foreground is non-black, use foreground pixels
-            bg_array[fg_mask] = fg_array[fg_mask]
-        elif fg_array.ndim == 2:
-            fg_mask = fg_array > 0
-            bg_array[fg_mask] = fg_array[fg_mask]
-
-        return Image.fromarray(bg_array, background.mode)
+        bg_data = bytearray(background.tobytes())
+        fg_data = foreground.tobytes()
+        mode = background.mode
+        
+        if mode == 'RGB':
+            # 3 bytes per pixel
+            for i in range(0, len(fg_data), 3):
+                if fg_data[i] > 0 or fg_data[i + 1] > 0 or fg_data[i + 2] > 0:
+                    bg_data[i] = fg_data[i]
+                    bg_data[i + 1] = fg_data[i + 1]
+                    bg_data[i + 2] = fg_data[i + 2]
+        else:
+            # Grayscale - 1 byte per pixel
+            for i in range(len(fg_data)):
+                if fg_data[i] > 0:
+                    bg_data[i] = fg_data[i]
+        
+        return Image.frombytes(mode, background.size, bytes(bg_data))
 
     def get_font_names(self) -> List[str]:
         """List available .fnt font names in the resources directory.

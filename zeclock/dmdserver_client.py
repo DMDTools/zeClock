@@ -70,33 +70,36 @@ class DMDServerClient:
     
     def _grayscale_to_rgb(self, image: Image.Image, color: Tuple[int, int, int]) -> Image.Image:
         """Convert grayscale DMD image to RGB using color palette"""
-        import numpy as np
+        width, height = image.size
+        gray_data = image.tobytes()
+        rgb_data = bytearray(width * height * 3)
         
-        gray_array = np.asarray(image)
-        rgb_array = np.zeros((image.height, image.width, 3), dtype=np.uint8)
+        for i, pixel in enumerate(gray_data):
+            if pixel > 0:
+                offset = i * 3
+                rgb_data[offset] = (color[0] * pixel) // 255
+                rgb_data[offset + 1] = (color[1] * pixel) // 255
+                rgb_data[offset + 2] = (color[2] * pixel) // 255
         
-        # Apply color with brightness from grayscale value
-        for i in range(3):
-            rgb_array[:, :, i] = (gray_array * color[i]) // 255
-        
-        return Image.fromarray(rgb_array, 'RGB')
+        return Image.frombytes('RGB', (width, height), bytes(rgb_data))
     
     def _rgb_to_rgb565(self, image: Image.Image) -> bytearray:
-        """Convert RGB image to RGB565 format (big-endian) - optimized"""
-        import numpy as np
+        """Convert RGB image to RGB565 format (big-endian)"""
+        import struct
         
-        # Convert to numpy array for vectorized operations
-        rgb_array = np.array(image)
+        rgb_data = image.tobytes()
+        pixel_count = len(rgb_data) // 3
+        result = bytearray(pixel_count * 2)
         
-        # Vectorized RGB565 conversion
-        r = (rgb_array[:, :, 0] >> 3).astype(np.uint16)
-        g = (rgb_array[:, :, 1] >> 2).astype(np.uint16) 
-        b = (rgb_array[:, :, 2] >> 3).astype(np.uint16)
+        for i in range(pixel_count):
+            offset = i * 3
+            r = rgb_data[offset] >> 3
+            g = rgb_data[offset + 1] >> 2
+            b = rgb_data[offset + 2] >> 3
+            rgb565 = (r << 11) | (g << 5) | b
+            struct.pack_into('>H', result, i * 2, rgb565)
         
-        rgb565 = (r << 11) | (g << 5) | b
-        
-        # Convert to big-endian bytes
-        return rgb565.astype('>u2').tobytes()
+        return result
     
     def __enter__(self):
         self.connect()

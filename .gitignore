@@ -60,3 +60,4 @@ htmlcov/
 dmd-simulator
 libdmdutil.src
 DotClk
+deploy

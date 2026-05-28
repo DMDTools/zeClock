@@ -12,7 +12,6 @@ import time
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-import numpy as np
 from PIL import Image
 
 from .base import ClockPlugin
@@ -243,14 +242,8 @@ class PinballPlugin(ClockPlugin):
         """
         if self._font is None:
             # No font available - just colorize the animation frame
-            anim_array = np.asarray(animation_frame)
-            rgb_array = np.zeros((height, width, 3), dtype=np.uint8)
-            intensity = anim_array / 255.0
-            for i in range(3):
-                rgb_array[:, :, i] = (
-                    self._animation_color[i] * intensity
-                ).astype(np.uint8)
-            return Image.fromarray(rgb_array, "RGB")
+            from ..overlay import _colorize_grayscale
+            return _colorize_grayscale(animation_frame, self._animation_color)
 
         # Render clock overlay based on clock_style
         if scene.clock_style == 1:
@@ -316,16 +309,28 @@ class PinballPlugin(ClockPlugin):
 
         # Reposition mask to full canvas
         if hasattr(text_img, "mask_data") and text_img.mask_data:
-            full_mask = np.zeros((height, width), dtype=np.uint8)
-            text_mask_bytes = np.frombuffer(text_img.mask_data, dtype=np.uint8)
-            text_mask = np.unpackbits(
-                text_mask_bytes, bitorder="little"
-            ).reshape(text_height, -1)[:, :text_width]
-            full_mask[y_pos:y_pos + text_height, x_pos:x_pos + text_width] = text_mask
-            mask_packed = np.packbits(
-                full_mask.reshape(-1, width), axis=1, bitorder="little"
-            )
-            clock_frame.mask_data = mask_packed.tobytes()
-            clock_frame.mask_width_bytes = (width // 8) + (1 if width % 8 else 0)
+            mask_width_bytes = (width // 8) + (1 if width % 8 else 0)
+            full_mask = bytearray(height * mask_width_bytes)
+            
+            text_mask_width_bytes = (text_width // 8) + (1 if text_width % 8 else 0)
+            
+            for ty in range(text_height):
+                for tx in range(text_width):
+                    # Read bit from text mask
+                    src_byte_idx = (tx // 8) + (ty * text_mask_width_bytes)
+                    src_bit_pos = tx % 8
+                    if src_byte_idx < len(text_img.mask_data):
+                        mask_bit = (text_img.mask_data[src_byte_idx] >> src_bit_pos) & 1
+                        if mask_bit:
+                            # Write bit to full mask
+                            dest_x = x_pos + tx
+                            dest_y = y_pos + ty
+                            if 0 <= dest_x < width and 0 <= dest_y < height:
+                                dest_byte_idx = (dest_x // 8) + (dest_y * mask_width_bytes)
+                                dest_bit_pos = dest_x % 8
+                                full_mask[dest_byte_idx] |= (1 << dest_bit_pos)
+            
+            clock_frame.mask_data = bytes(full_mask)
+            clock_frame.mask_width_bytes = mask_width_bytes
 
         return clock_frame

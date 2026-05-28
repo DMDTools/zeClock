@@ -1,71 +1,98 @@
 from PIL import Image
-import numpy as np
 from typing import Tuple, Optional
 
 def overlay_or(base: Image.Image, overlay: Image.Image) -> Image.Image:
     """Combine images using DotClk DotBlt logic: mask=1 preserves dest, mask=0 copies source"""
-    base_array = np.asarray(base).copy()
-    overlay_array = np.asarray(overlay)
+    base_data = bytearray(base.tobytes())
+    overlay_data = overlay.tobytes()
+    width, height = base.size
     
     # Check if overlay has mask data
     if hasattr(overlay, 'mask_data') and overlay.mask_data:
-        # Vectorized mask processing
-        height, width = overlay_array.shape
-        mask_bytes = np.frombuffer(overlay.mask_data, dtype=np.uint8)
+        mask_bytes = overlay.mask_data
+        mask_width_bytes = overlay.mask_width_bytes
         
-        # Create mask array using vectorized operations
-        y_indices, x_indices = np.mgrid[0:height, 0:width]
-        byte_indices = (x_indices // 8) + (y_indices * overlay.mask_width_bytes)
-        bit_positions = x_indices % 8
+        for y in range(height):
+            for x in range(width):
+                byte_idx = (x // 8) + (y * mask_width_bytes)
+                bit_pos = x % 8
+                if byte_idx < len(mask_bytes):
+                    mask_bit = (mask_bytes[byte_idx] >> bit_pos) & 1
+                else:
+                    mask_bit = 0
+                
+                # DotClk DotBlt logic: mask=0 copy overlay, mask=1 keep base
+                if mask_bit == 0:
+                    idx = y * width + x
+                    base_data[idx] = overlay_data[idx]
         
-        # Vectorized mask extraction
-        valid_mask = byte_indices < len(mask_bytes)
-        mask_vals = np.zeros((height, width), dtype=bool)
-        mask_vals[valid_mask] = (mask_bytes[byte_indices[valid_mask]] >> bit_positions[valid_mask]) & 1
-        
-        # DotClk DotBlt logic: 
-        # - mask=0: copy overlay (even if 0)
-        # - mask=1: keep base
-        result = np.where(~mask_vals, overlay_array, base_array)
-        return Image.fromarray(result, 'L')
+        return Image.frombytes('L', (width, height), bytes(base_data))
     else:
         # No mask: treat as fully opaque (mask=0 everywhere)
-        # Copy all overlay pixels, even zeros
-        return Image.fromarray(overlay_array, 'L')
+        return overlay.copy()
+
+
+def _colorize_grayscale(gray_img: Image.Image, color: Tuple[int, int, int]) -> Image.Image:
+    """Convert a grayscale image to RGB using a color tint."""
+    width, height = gray_img.size
+    gray_data = gray_img.tobytes()
+    rgb_data = bytearray(width * height * 3)
+    
+    for i, pixel in enumerate(gray_data):
+        if pixel > 0:
+            offset = i * 3
+            rgb_data[offset] = (color[0] * pixel) // 255
+            rgb_data[offset + 1] = (color[1] * pixel) // 255
+            rgb_data[offset + 2] = (color[2] * pixel) // 255
+    
+    return Image.frombytes('RGB', (width, height), bytes(rgb_data))
+
 
 def overlay_or_rgb(base: Image.Image, overlay: Image.Image, 
                    base_color: Tuple[int, int, int], 
                    overlay_color: Tuple[int, int, int]) -> Image.Image:
     """Combine grayscale images with different colors for each layer"""
-    base_array = np.asarray(base)
-    overlay_array = np.asarray(overlay)
-    height, width = base_array.shape
+    width, height = base.size
+    base_data = base.tobytes()
+    overlay_data = overlay.tobytes()
+    rgb_data = bytearray(width * height * 3)
     
-    # Convert base to RGB with base_color
-    rgb_array = np.zeros((height, width, 3), dtype=np.uint8)
-    intensity_base = base_array / 255.0
-    for i in range(3):
-        rgb_array[:, :, i] = (base_color[i] * intensity_base).astype(np.uint8)
+    # Start with base colorized
+    for i, pixel in enumerate(base_data):
+        if pixel > 0:
+            offset = i * 3
+            rgb_data[offset] = (base_color[0] * pixel) // 255
+            rgb_data[offset + 1] = (base_color[1] * pixel) // 255
+            rgb_data[offset + 2] = (base_color[2] * pixel) // 255
     
-    # Apply overlay with overlay_color
+    # Apply overlay with mask
     if hasattr(overlay, 'mask_data') and overlay.mask_data:
-        mask_bytes = np.frombuffer(overlay.mask_data, dtype=np.uint8)
-        y_indices, x_indices = np.mgrid[0:height, 0:width]
-        byte_indices = (x_indices // 8) + (y_indices * overlay.mask_width_bytes)
-        bit_positions = x_indices % 8
-        valid_mask = byte_indices < len(mask_bytes)
-        mask_vals = np.zeros((height, width), dtype=bool)
-        mask_vals[valid_mask] = (mask_bytes[byte_indices[valid_mask]] >> bit_positions[valid_mask]) & 1
+        mask_bytes = overlay.mask_data
+        mask_width_bytes = overlay.mask_width_bytes
         
-        # Where mask=0, apply overlay color
-        intensity_overlay = overlay_array / 255.0
-        for i in range(3):
-            overlay_rgb = (overlay_color[i] * intensity_overlay).astype(np.uint8)
-            rgb_array[:, :, i] = np.where(~mask_vals, overlay_rgb, rgb_array[:, :, i])
+        for y in range(height):
+            for x in range(width):
+                byte_idx = (x // 8) + (y * mask_width_bytes)
+                bit_pos = x % 8
+                if byte_idx < len(mask_bytes):
+                    mask_bit = (mask_bytes[byte_idx] >> bit_pos) & 1
+                else:
+                    mask_bit = 0
+                
+                # Where mask=0, apply overlay color
+                if mask_bit == 0:
+                    idx = y * width + x
+                    pixel = overlay_data[idx]
+                    offset = idx * 3
+                    rgb_data[offset] = (overlay_color[0] * pixel) // 255
+                    rgb_data[offset + 1] = (overlay_color[1] * pixel) // 255
+                    rgb_data[offset + 2] = (overlay_color[2] * pixel) // 255
     else:
         # No mask: apply overlay color everywhere
-        intensity_overlay = overlay_array / 255.0
-        for i in range(3):
-            rgb_array[:, :, i] = (overlay_color[i] * intensity_overlay).astype(np.uint8)
+        for i, pixel in enumerate(overlay_data):
+            offset = i * 3
+            rgb_data[offset] = (overlay_color[0] * pixel) // 255
+            rgb_data[offset + 1] = (overlay_color[1] * pixel) // 255
+            rgb_data[offset + 2] = (overlay_color[2] * pixel) // 255
     
-    return Image.fromarray(rgb_array, 'RGB')
+    return Image.frombytes('RGB', (width, height), bytes(rgb_data))

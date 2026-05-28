@@ -31,10 +31,14 @@ class StockQuote:
     """Cached quote data for a single stock symbol."""
 
     symbol: str
-    price: float
-    change: float
+    price: float          # regular market close price
+    change: float         # day change (vs previous close)
     change_percent: float
     currency: str
+    market_state: str = "CLOSED"  # OPEN, PRE, POST, CLOSED
+    extended_price: float = 0.0       # pre/post market price (0 if not available)
+    extended_change: float = 0.0      # change vs regular close
+    extended_change_percent: float = 0.0
 
 
 @dataclass
@@ -252,8 +256,9 @@ class StockPlugin(ClockPlugin):
         """
         url = YAHOO_QUOTE_URL.format(symbol=symbol)
         params = {
-            "interval": "1d",
-            "range": "2d",
+            "interval": "1m",
+            "range": "1d",
+            "includePrePost": "true",
         }
         headers = {
             "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
@@ -304,17 +309,68 @@ class StockPlugin(ClockPlugin):
             change = current_price - previous_close
             change_percent = (change / previous_close * 100) if previous_close != 0 else 0.0
 
+            # Determine market state from currentTradingPeriod
+            market_state = self._determine_market_state(meta)
+
+            # Get extended hours price (last data point if in pre/post market)
+            extended_price = 0.0
+            extended_change = 0.0
+            extended_change_percent = 0.0
+
+            if market_state in ("PRE", "POST"):
+                timestamps = result.get("timestamp", [])
+                closes = result.get("indicators", {}).get("quote", [{}])[0].get("close", [])
+                if closes:
+                    # Find last non-None close
+                    last_price = None
+                    for c in reversed(closes):
+                        if c is not None:
+                            last_price = c
+                            break
+                    if last_price is not None and last_price != current_price:
+                        extended_price = last_price
+                        extended_change = last_price - current_price
+                        extended_change_percent = (extended_change / current_price * 100) if current_price != 0 else 0.0
+
             return StockQuote(
                 symbol=symbol,
                 price=current_price,
                 change=change,
                 change_percent=change_percent,
                 currency=currency,
+                market_state=market_state,
+                extended_price=extended_price,
+                extended_change=extended_change,
+                extended_change_percent=extended_change_percent,
             )
 
         except (KeyError, IndexError, TypeError, ZeroDivisionError) as e:
             logger.warning("[stock] Failed to parse response for %s: %s", symbol, e)
             return None
+
+    def _determine_market_state(self, meta: dict) -> str:
+        """Determine market state from currentTradingPeriod timestamps.
+
+        Returns:
+            One of: "OPEN", "PRE", "POST", "CLOSED"
+        """
+        ctp = meta.get("currentTradingPeriod")
+        if not ctp:
+            return "CLOSED"
+
+        now = int(time.time())
+        pre = ctp.get("pre", {})
+        regular = ctp.get("regular", {})
+        post = ctp.get("post", {})
+
+        if regular.get("start", 0) <= now <= regular.get("end", 0):
+            return "OPEN"
+        elif pre.get("start", 0) <= now <= pre.get("end", 0):
+            return "PRE"
+        elif post.get("start", 0) <= now <= post.get("end", 0):
+            return "POST"
+        else:
+            return "CLOSED"
 
     def _render_page(self, page: int, width: int, height: int) -> Image.Image:
         """Render a page showing a single stock symbol.
@@ -366,27 +422,56 @@ class StockPlugin(ClockPlugin):
         )
         frame = self._helpers.composite_frames(frame, price_frame)
 
-        # Line 2: Currency (SYSTEM, dim white, left)
-        currency = quote.currency[:3].upper()
-        currency_frame = self._helpers.render_text(
-            currency, x=1, y=13, color=(150, 150, 150), font_name="SYSTEM"
-        )
-        frame = self._helpers.composite_frames(frame, currency_frame)
+        # Lines 2 & 3: Render change and extended hours aligned on decimals
+        # Font is monospace, so align by character count
 
-        # Line 3: Change + percent (SYSTEM font, green/red)
-        change_str = f"{sign}{quote.change:+.2f}"
-        change_str = change_str.replace("++", "+").replace("+-", "-")
-        pct_str = f"{sign}{quote.change_percent:+.1f}%"
-        pct_str = pct_str.replace("++", "+").replace("+-", "-")
-        change_line = f"{change_str} ({pct_str})"
+        # Format line 2 parts
+        change_val_str = f"{sign}{abs(quote.change):.2f}"
+        change_pct_str = f"{sign}{abs(quote.change_percent):.1f}%"
 
-        if self._helpers.get_text_width(change_line, font_name="SYSTEM") > width - 2:
-            change_line = pct_str
+        # Format line 3 parts (if extended hours)
+        has_ext = quote.extended_price > 0
+        if has_ext:
+            ext_sign = "+" if quote.extended_change >= 0 else "-"
+            ext_color = (0, 200, 150) if quote.extended_change >= 0 else (200, 80, 80)
+            ext_label = "AH " if quote.market_state == "POST" else "PM "
+            ext_val_str = f"{ext_label}{quote.extended_price:.2f}"
+            ext_pct_str = f"{ext_sign}{abs(quote.extended_change_percent):.1f}%"
+        else:
+            ext_val_str = ""
+            ext_pct_str = ""
+            ext_color = (0, 0, 0)
+
+        # Pad value strings so decimal points align (right-pad shorter one)
+        max_val_len = max(len(change_val_str), len(ext_val_str) if has_ext else 0)
+        change_val_padded = change_val_str.rjust(max_val_len)
+
+        # Pad percent strings so decimal points align
+        max_pct_len = max(len(change_pct_str), len(ext_pct_str) if has_ext else 0)
+        change_pct_padded = change_pct_str.rjust(max_pct_len)
+
+        # Compose full line 2
+        line2 = f"{change_val_padded} {change_pct_padded}"
+        line2_w = self._helpers.get_text_width(line2, font_name="SYSTEM")
+        line2_x = width - line2_w - 1
 
         change_frame = self._helpers.render_text(
-            change_line, x=1, y=25, color=change_color, font_name="SYSTEM"
+            line2, x=line2_x, y=16, color=change_color, font_name="SYSTEM"
         )
         frame = self._helpers.composite_frames(frame, change_frame)
+
+        # Render line 3 if extended hours
+        if has_ext:
+            ext_val_padded = ext_val_str.rjust(max_val_len)
+            ext_pct_padded = ext_pct_str.rjust(max_pct_len)
+            line3 = f"{ext_val_padded} {ext_pct_padded}"
+            line3_w = self._helpers.get_text_width(line3, font_name="SYSTEM")
+            line3_x = width - line3_w - 1
+
+            ext_frame = self._helpers.render_text(
+                line3, x=line3_x, y=24, color=ext_color, font_name="SYSTEM"
+            )
+            frame = self._helpers.composite_frames(frame, ext_frame)
 
         return frame
 

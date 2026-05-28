@@ -8,7 +8,6 @@ import time
 from pathlib import Path
 from typing import Optional
 
-import numpy as np
 from PIL import Image
 
 from .dmdserver_client import DMDServerClient
@@ -339,12 +338,18 @@ class ZeClock:
         clock_frame = self.cached_clock_frame
         
         # Colorize the grayscale clock frame
-        gray_array = np.array(clock_frame)
-        rgb_array = np.zeros((self.height, self.width, 3), dtype=np.uint8)
-        intensity = gray_array / 255.0
-        for i in range(3):
-            rgb_array[:, :, i] = (self.color[i] * intensity).astype(np.uint8)
-        return Image.fromarray(rgb_array, 'RGB')
+        width, height = clock_frame.size
+        gray_data = clock_frame.tobytes()
+        rgb_data = bytearray(width * height * 3)
+        
+        for i, pixel in enumerate(gray_data):
+            if pixel > 0:
+                offset = i * 3
+                rgb_data[offset] = (self.color[0] * pixel) // 255
+                rgb_data[offset + 1] = (self.color[1] * pixel) // 255
+                rgb_data[offset + 2] = (self.color[2] * pixel) // 255
+        
+        return Image.frombytes('RGB', (width, height), bytes(rgb_data))
     
     def stop(self):
         """Stop the clock"""

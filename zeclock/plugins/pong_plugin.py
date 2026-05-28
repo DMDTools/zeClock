@@ -11,8 +11,7 @@ import time
 import logging
 from typing import Optional, Tuple
 
-import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from .base import ClockPlugin
 
@@ -245,7 +244,8 @@ class PongPlugin(ClockPlugin):
 
     def _render(self, width: int, height: int) -> Image.Image:
         """Render the current game state to a frame."""
-        frame_array = np.zeros((height, width, 3), dtype=np.uint8)
+        frame = Image.new("RGB", (width, height), (0, 0, 0))
+        draw = ImageDraw.Draw(frame)
 
         # Draw center net (dashed line)
         center_x = width // 2
@@ -253,7 +253,7 @@ class PongPlugin(ClockPlugin):
             for dy in range(NET_DOT_SIZE):
                 py = y + dy
                 if py < height:
-                    frame_array[py, center_x, :] = self._net_color
+                    frame.putpixel((center_x, py), self._net_color)
 
         # Draw paddles
         left_x = PADDLE_MARGIN
@@ -262,31 +262,24 @@ class PongPlugin(ClockPlugin):
         left_top = int(round(self._left_paddle_y))
         right_top = int(round(self._right_paddle_y))
 
-        for dy in range(PADDLE_HEIGHT):
-            for dx in range(PADDLE_WIDTH):
-                # Left paddle
-                py = left_top + dy
-                px = left_x + dx
-                if 0 <= py < height and 0 <= px < width:
-                    frame_array[py, px, :] = self._paddle_color
-                # Right paddle
-                py = right_top + dy
-                px = right_x + dx
-                if 0 <= py < height and 0 <= px < width:
-                    frame_array[py, px, :] = self._paddle_color
+        # Left paddle
+        draw.rectangle(
+            [left_x, left_top, left_x + PADDLE_WIDTH - 1, left_top + PADDLE_HEIGHT - 1],
+            fill=self._paddle_color
+        )
+        # Right paddle
+        draw.rectangle(
+            [right_x, right_top, right_x + PADDLE_WIDTH - 1, right_top + PADDLE_HEIGHT - 1],
+            fill=self._paddle_color
+        )
 
         # Draw ball
         ball_x = int(round(self._ball_x))
         ball_y = int(round(self._ball_y))
-        for dy in range(BALL_SIZE):
-            for dx in range(BALL_SIZE):
-                px = ball_x + dx
-                py = ball_y + dy
-                if 0 <= px < width and 0 <= py < height:
-                    frame_array[py, px, :] = self._ball_color
-
-        # Draw score (time) using helpers if available
-        frame = Image.fromarray(frame_array, "RGB")
+        draw.rectangle(
+            [ball_x, ball_y, ball_x + BALL_SIZE - 1, ball_y + BALL_SIZE - 1],
+            fill=self._ball_color
+        )
 
         hours, minutes = self._get_current_score()
 
