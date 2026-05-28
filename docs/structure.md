@@ -11,6 +11,7 @@ zeClock/
 ├── zeclock/                    # Main Python package (source code)
 │   ├── __init__.py             # Package initialization, version
 │   ├── clock.py                # Main async loop + CLI (entry point)
+│   ├── colors.py               # Shared color constants (palette, auto-rotate list, reverse lookup)
 │   ├── dmdserver_client.py     # TCP Socket client (DMDStream RGB565 protocol)
 │   ├── overlay.py              # Image composition via DotBlt masking
 │   ├── installer.py            # Automatic bootstrap (downloads dmdserver + resources)
@@ -79,6 +80,7 @@ This is the application core. It contains all the Python logic for reading resou
 |------|------|
 | `__init__.py` | Initializes the Python package and exposes the version (`0.1.0`) |
 | `clock.py` | Main application: async loop, state machine, animation pre-computation, CLI (`--color`, `--animation-color`, `--bootstrap`) |
+| `colors.py` | Shared color constants: canonical `COLOR_MAP` (name → RGB), `COLOR_LIST` (for auto-rotate), and `COLOR_NAMES` (reverse lookup) |
 | `dmdserver_client.py` | Lightweight TCP client: forges DMDStream packets (header + RGB565 big-endian), manages persistent connection |
 | `overlay.py` | Image merging via DotBlt algorithm: `overlay_or` (monochrome) and `overlay_or_rgb` (dual color) |
 | `installer.py` | Runtime bootstrap: detects platform, downloads dmdserver from GitHub, installs DotClk resources |

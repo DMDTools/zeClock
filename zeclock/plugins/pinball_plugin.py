@@ -15,22 +15,11 @@ from typing import Any, List, Optional, Tuple
 from PIL import Image
 
 from .base import ClockPlugin
+from ..colors import COLOR_MAP
 from ..overlay import overlay_or_rgb
 from ..readers import BitmapFont, Scene, load_font, load_scene
 
 logger = logging.getLogger(__name__)
-
-# Default color mapping (same as clock.py)
-COLOR_MAP = {
-    "orange": (255, 128, 0),
-    "blue": (0, 128, 255),
-    "red": (255, 0, 0),
-    "purple": (255, 0, 255),
-    "green": (0, 255, 128),
-    "yellow": (255, 255, 0),
-    "cyan": (0, 255, 255),
-    "pink": (255, 64, 128),
-}
 
 DEFAULT_FRAME_DELAY_MS = 40
 DEFAULT_COLOR = "orange"
@@ -246,9 +235,9 @@ class PinballPlugin(ClockPlugin):
         """
         if self._font is None:
             # No font available - just colorize the animation frame
-            from ..overlay import _colorize_grayscale
+            from ..overlay import colorize_grayscale
 
-            return _colorize_grayscale(animation_frame, self._animation_color)
+            return colorize_grayscale(animation_frame, self._animation_color)
 
         # Render clock overlay based on clock_style
         if scene.clock_style == 1:

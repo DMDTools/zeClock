@@ -7,6 +7,8 @@ import socket
 from typing import Optional, Tuple
 from PIL import Image
 
+from .overlay import colorize_grayscale
+
 
 class DMDServerClient:
     """Client to send RGB565 frames to dmdserver"""
@@ -79,18 +81,7 @@ class DMDServerClient:
         self, image: Image.Image, color: Tuple[int, int, int]
     ) -> Image.Image:
         """Convert grayscale DMD image to RGB using color palette"""
-        width, height = image.size
-        gray_data = image.tobytes()
-        rgb_data = bytearray(width * height * 3)
-
-        for i, pixel in enumerate(gray_data):
-            if pixel > 0:
-                offset = i * 3
-                rgb_data[offset] = (color[0] * pixel) // 255
-                rgb_data[offset + 1] = (color[1] * pixel) // 255
-                rgb_data[offset + 2] = (color[2] * pixel) // 255
-
-        return Image.frombytes("RGB", (width, height), bytes(rgb_data))
+        return colorize_grayscale(image, color)
 
     def _rgb_to_rgb565(self, image: Image.Image) -> bytearray:
         """Convert RGB image to RGB565 format (big-endian)"""

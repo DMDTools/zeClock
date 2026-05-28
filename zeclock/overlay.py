@@ -2,6 +2,36 @@ from PIL import Image
 from typing import Any, Tuple
 
 
+def colorize_grayscale(
+    gray_img: Image.Image, color: Tuple[int, int, int]
+) -> Image.Image:
+    """Convert a grayscale image to RGB using a color tint.
+
+    Args:
+        gray_img: Grayscale (mode 'L') PIL Image.
+        color: RGB color tuple to tint with.
+
+    Returns:
+        RGB PIL Image with the grayscale values tinted by color.
+    """
+    width, height = gray_img.size
+    gray_data = gray_img.tobytes()
+    rgb_data = bytearray(width * height * 3)
+
+    for i, pixel in enumerate(gray_data):
+        if pixel > 0:
+            offset = i * 3
+            rgb_data[offset] = (color[0] * pixel) // 255
+            rgb_data[offset + 1] = (color[1] * pixel) // 255
+            rgb_data[offset + 2] = (color[2] * pixel) // 255
+
+    return Image.frombytes("RGB", (width, height), bytes(rgb_data))
+
+
+# Keep backward-compatible alias
+_colorize_grayscale = colorize_grayscale
+
+
 def overlay_or(base: Image.Image, overlay: Image.Image) -> Image.Image:
     """Combine images using DotClk DotBlt logic: mask=1 preserves dest, mask=0 copies source"""
     base_data = bytearray(base.tobytes())
@@ -32,24 +62,6 @@ def overlay_or(base: Image.Image, overlay: Image.Image) -> Image.Image:
     else:
         # No mask: treat as fully opaque (mask=0 everywhere)
         return overlay.copy()
-
-
-def _colorize_grayscale(
-    gray_img: Image.Image, color: Tuple[int, int, int]
-) -> Image.Image:
-    """Convert a grayscale image to RGB using a color tint."""
-    width, height = gray_img.size
-    gray_data = gray_img.tobytes()
-    rgb_data = bytearray(width * height * 3)
-
-    for i, pixel in enumerate(gray_data):
-        if pixel > 0:
-            offset = i * 3
-            rgb_data[offset] = (color[0] * pixel) // 255
-            rgb_data[offset + 1] = (color[1] * pixel) // 255
-            rgb_data[offset + 2] = (color[2] * pixel) // 255
-
-    return Image.frombytes("RGB", (width, height), bytes(rgb_data))
 
 
 def overlay_or_rgb(

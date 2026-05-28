@@ -124,6 +124,7 @@ Extensible plugin architecture that allows contributors to author display plugin
   - `draw_icon()`: Draws 16×16 pixel-art icons from raw bitmap data onto frames.
   - `composite_frames()`: Merges foreground onto background using DotBlt-style OR blending (non-black pixels overwrite).
   - `get_font_names()` / `get_text_width()`: Font discovery and text measurement for layout calculations.
+  - `draw_staleness_indicator()`: Draws a blinking red dot in the top-right corner when data is stale (used by WeatherPlugin and StockPlugin).
 
 ### 6. Automatic Bootstrap: `Installer` (`installer.py`)
 

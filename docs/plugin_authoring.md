@@ -234,6 +234,16 @@ width = self._helpers.get_text_width("Temperature")
 x_pos = (128 - width) // 2  # Center manually
 ```
 
+#### `draw_staleness_indicator(frame, total_frames, frame_delay_ms) -> None`
+
+Draws a blinking red dot in the top-right corner of the frame. Use this to indicate that displayed data is stale (e.g., cached beyond its freshness window). The dot blinks at approximately 500ms intervals based on the frame count.
+
+```python
+if self._is_cache_stale():
+    total_frames = self._current_page * self._frames_per_page + self._frame_count
+    self._helpers.draw_staleness_indicator(frame, total_frames, self._frame_delay_ms)
+```
+
 ---
 
 ## Configuration

@@ -16,6 +16,7 @@ import aiohttp
 from PIL import Image
 
 from .base import ClockPlugin
+from .helpers import draw_staleness_indicator
 
 logger = logging.getLogger(__name__)
 
@@ -173,7 +174,10 @@ class StockPlugin(ClockPlugin):
 
         # Add staleness indicator if cache is stale
         if self._is_cache_stale():
-            self._draw_staleness_indicator(frame, width, height)
+            total_frames = (
+                self._current_page * self._frames_per_page + self._frame_count
+            )
+            draw_staleness_indicator(frame, total_frames, self._frame_delay_ms)
 
         # Advance frame counter
         self._frame_count += 1
@@ -507,34 +511,3 @@ class StockPlugin(ClockPlugin):
         else:
             # Sub-dollar (crypto, penny stocks)
             return f"{price:.4f}"
-
-    def _draw_staleness_indicator(
-        self, frame: Image.Image, width: int, height: int
-    ) -> None:
-        """Draw a blinking dot in the top-right corner when data is stale.
-
-        Args:
-            frame: The frame to draw onto (modified in place).
-            width: Display width in pixels.
-            height: Display height in pixels.
-        """
-        blink_interval_frames = max(1, 500 // self._frame_delay_ms)
-        total_frames = self._current_page * self._frames_per_page + self._frame_count
-        blink_cycle = total_frames // blink_interval_frames
-        dot_visible = (blink_cycle % 2) == 0
-
-        if not dot_visible:
-            return
-
-        dot_color = (255, 0, 0)
-        dot_x = width - 5
-        dot_y = 2
-        pixels = frame.load()
-        assert pixels is not None
-
-        for dy in range(3):
-            for dx in range(3):
-                px = dot_x + dx
-                py = dot_y + dy
-                if 0 <= px < width and 0 <= py < height:
-                    pixels[px, py] = dot_color

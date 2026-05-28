@@ -12,6 +12,51 @@ from PIL import Image
 from ..readers.fnt_reader import BitmapFont, load_font
 
 
+def draw_staleness_indicator(
+    frame: Image.Image,
+    current_frame: int,
+    frame_delay_ms: int,
+) -> None:
+    """Draw a blinking red dot in the top-right corner as a staleness indicator.
+
+    The dot blinks at approximately 500ms intervals by toggling visibility
+    based on the current frame count and frame_delay_ms. The dot is drawn
+    as a 3x3 pixel block in red to be distinguishable from normal content.
+
+    This is a standalone function usable without a PluginHelpers instance.
+
+    Args:
+        frame: The frame to draw the indicator onto (modified in place).
+        current_frame: Total frame count for blink timing.
+        frame_delay_ms: Delay between frames in ms (for blink calculation).
+    """
+    width, height = frame.size
+
+    # Calculate blink interval in frames (~500ms toggle)
+    blink_interval_frames = max(1, 500 // frame_delay_ms)
+
+    # Determine if the dot should be visible this frame
+    blink_cycle = current_frame // blink_interval_frames
+    dot_visible = (blink_cycle % 2) == 0
+
+    if not dot_visible:
+        return
+
+    # Draw a 3x3 red dot in the top-right corner (2px margin)
+    dot_color = (255, 0, 0)
+    dot_x = width - 5  # 2px margin from right edge
+    dot_y = 2  # 2px margin from top edge
+    pixels = frame.load()
+    assert pixels is not None
+
+    for dy in range(3):
+        for dx in range(3):
+            px = dot_x + dx
+            py = dot_y + dy
+            if 0 <= px < width and 0 <= py < height:
+                pixels[px, py] = dot_color
+
+
 class PluginHelpers:
     """Shared rendering utilities available to all plugins.
 
@@ -236,3 +281,20 @@ class PluginHelpers:
         if font is None or not text:
             return 0
         return font.get_text_width(text)
+
+    def draw_staleness_indicator(
+        self,
+        frame: Image.Image,
+        current_frame: int,
+        frame_delay_ms: int,
+    ) -> None:
+        """Draw a blinking red dot in the top-right corner as a staleness indicator.
+
+        Delegates to the module-level draw_staleness_indicator function.
+
+        Args:
+            frame: The frame to draw the indicator onto (modified in place).
+            current_frame: Total frame count for blink timing.
+            frame_delay_ms: Delay between frames in ms (for blink calculation).
+        """
+        draw_staleness_indicator(frame, current_frame, frame_delay_ms)

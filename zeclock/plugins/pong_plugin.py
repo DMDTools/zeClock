@@ -14,6 +14,7 @@ from typing import Optional, Tuple
 from PIL import Image, ImageDraw
 
 from .base import ClockPlugin
+from ..colors import COLOR_MAP
 
 logger = logging.getLogger(__name__)
 
@@ -63,26 +64,18 @@ class PongPlugin(ClockPlugin):
         # Parse color if provided
         color = config.get("color")
         if isinstance(color, str):
-            color_map = {
-                "orange": (255, 128, 0),
-                "blue": (0, 128, 255),
-                "red": (255, 0, 0),
-                "purple": (255, 0, 255),
-                "green": (0, 255, 128),
-                "yellow": (255, 255, 0),
-                "cyan": (0, 255, 255),
-                "pink": (255, 64, 128),
-            }
-            self._color = color_map.get(color, (255, 128, 0))
-            self._score_color = self._color
-            self._ball_color = self._color
-            self._paddle_color = self._color
-            # Net is a dimmer version
-            self._net_color = (
-                self._color[0] // 3,
-                self._color[1] // 3,
-                self._color[2] // 3,
-            )
+            resolved = COLOR_MAP.get(color)
+            if resolved:
+                self._color = resolved
+                self._score_color = resolved
+                self._ball_color = resolved
+                self._paddle_color = resolved
+                # Net is a dimmer version
+                self._net_color = (
+                    resolved[0] // 3,
+                    resolved[1] // 3,
+                    resolved[2] // 3,
+                )
 
         self._frames_rendered = 0
         self._max_frames = int(self._duration_seconds * 1000 / self.frame_delay_ms)

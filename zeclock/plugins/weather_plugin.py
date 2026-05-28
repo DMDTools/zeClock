@@ -15,6 +15,7 @@ import aiohttp
 from PIL import Image
 
 from .base import ClockPlugin
+from .helpers import draw_staleness_indicator
 from .weather_icons import get_weather_icon_image
 
 logger = logging.getLogger(__name__)
@@ -268,7 +269,10 @@ class WeatherPlugin(ClockPlugin):
 
         # Add staleness indicator if cache is stale
         if self.is_cache_stale():
-            self._draw_staleness_indicator(frame, width, height)
+            total_frames = (
+                self._current_page * self._frames_per_page + self._frame_count
+            )
+            draw_staleness_indicator(frame, total_frames, self._frame_delay_ms)
 
         # Advance frame counter
         self._frame_count += 1
@@ -747,44 +751,3 @@ class WeatherPlugin(ClockPlugin):
             frame = self._helpers.composite_frames(frame, temp_frame)
 
         return frame
-
-    def _draw_staleness_indicator(
-        self, frame: Image.Image, width: int, height: int
-    ) -> None:
-        """Draw a blinking dot in the top-right corner as a staleness indicator.
-
-        The dot blinks at approximately 500ms intervals by toggling visibility
-        based on the current frame count and frame_delay_ms. The dot is drawn
-        as a 3x3 pixel block in a distinct color (red) to be distinguishable
-        from normal display content.
-
-        Args:
-            frame: The frame to draw the indicator onto (modified in place).
-            width: Display width in pixels.
-            height: Display height in pixels.
-        """
-        # Calculate blink interval in frames (~500ms toggle)
-        blink_interval_frames = max(1, 500 // self._frame_delay_ms)
-
-        # Determine if the dot should be visible this frame
-        # Use total frame count across all pages for consistent blinking
-        total_frames = self._current_page * self._frames_per_page + self._frame_count
-        blink_cycle = total_frames // blink_interval_frames
-        dot_visible = (blink_cycle % 2) == 0
-
-        if not dot_visible:
-            return
-
-        # Draw a 3x3 red dot in the top-right corner (2px margin)
-        dot_color = (255, 0, 0)
-        dot_x = width - 5  # 2px margin from right edge
-        dot_y = 2  # 2px margin from top edge
-        pixels = frame.load()
-        assert pixels is not None
-
-        for dy in range(3):
-            for dx in range(3):
-                px = dot_x + dx
-                py = dot_y + dy
-                if 0 <= px < width and 0 <= py < height:
-                    pixels[px, py] = dot_color

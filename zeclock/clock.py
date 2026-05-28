@@ -11,7 +11,9 @@ from typing import Optional
 
 from PIL import Image
 
+from .colors import COLOR_LIST, COLOR_MAP, COLOR_NAMES
 from .dmdserver_client import DMDServerClient
+from .overlay import colorize_grayscale
 from .plugin_manager import PluginManager
 from .readers import load_font
 
@@ -47,38 +49,18 @@ class ZeClock:
         self.fps = fps
         self.running = True
 
-        # Color mapping
-        self.colors = [
-            (255, 128, 0),  # orange
-            (0, 128, 255),  # blue
-            (255, 0, 0),  # red
-            (255, 0, 255),  # purple
-            (0, 255, 128),  # green
-            (255, 255, 0),  # yellow
-            (0, 255, 255),  # cyan
-            (255, 64, 128),  # pink
-        ]
-        color_map = {
-            "orange": 0,
-            "blue": 1,
-            "red": 2,
-            "purple": 3,
-            "green": 4,
-            "yellow": 5,
-            "cyan": 6,
-            "pink": 7,
-        }
+        # Color configuration
         self.color_mode = color
         if color == "auto":
-            self.color = self.colors[0]
+            self.color = COLOR_LIST[0]
             self.last_color_change = time.time()
         else:
-            self.color = self.colors[color_map.get(color, 0)]
+            self.color = COLOR_MAP.get(color, COLOR_LIST[0])
 
         # Animation color (defaults to same as clock if not specified)
         self.animation_color_name = animation_color
         self.animation_color = (
-            self.colors[color_map.get(animation_color, 0)]
+            COLOR_MAP.get(animation_color, COLOR_LIST[0])
             if animation_color
             else self.color
         )
@@ -134,7 +116,7 @@ class ZeClock:
 
                 # Change color every minute if auto mode
                 if self.color_mode == "auto" and now - self.last_color_change >= 60:
-                    self.color = self.colors[int(now // 60) % len(self.colors)]
+                    self.color = COLOR_LIST[int(now // 60) % len(COLOR_LIST)]
                     self.last_color_change = now
                     self.last_clock_time = ""  # Force refresh
 
@@ -218,17 +200,6 @@ class ZeClock:
 
     async def _init_plugin_system(self):
         """Initialize the PluginManager, discover and load plugins."""
-        color_map_names = {
-            (255, 128, 0): "orange",
-            (0, 128, 255): "blue",
-            (255, 0, 0): "red",
-            (255, 0, 255): "purple",
-            (0, 255, 128): "green",
-            (255, 255, 0): "yellow",
-            (0, 255, 255): "cyan",
-            (255, 64, 128): "pink",
-        }
-
         self._plugin_manager = PluginManager(
             width=self.width,
             height=self.height,
@@ -252,8 +223,7 @@ class ZeClock:
         logger.info(f"Plugins activated: {active_with_freq}")
 
         # Wire --color and --animation-color to PinballPlugin config
-        # Determine color name from the tuple
-        clock_color_name = color_map_names.get(self.color, "orange")
+        clock_color_name = COLOR_NAMES.get(self.color, "orange")
         anim_color_name = self.animation_color_name or clock_color_name
 
         # Inject color settings into pinball plugin config
@@ -371,18 +341,7 @@ class ZeClock:
         clock_frame = self.cached_clock_frame
 
         # Colorize the grayscale clock frame
-        width, height = clock_frame.size
-        gray_data = clock_frame.tobytes()
-        rgb_data = bytearray(width * height * 3)
-
-        for i, pixel in enumerate(gray_data):
-            if pixel > 0:
-                offset = i * 3
-                rgb_data[offset] = (self.color[0] * pixel) // 255
-                rgb_data[offset + 1] = (self.color[1] * pixel) // 255
-                rgb_data[offset + 2] = (self.color[2] * pixel) // 255
-
-        return Image.frombytes("RGB", (width, height), bytes(rgb_data))
+        return colorize_grayscale(clock_frame, self.color)
 
     def stop(self):
         """Stop the clock"""
@@ -510,32 +469,22 @@ def _handle_plugins_override(args, manager):
     """Apply --plugins CLI override: activate only specified plugins with equal frequency.
 
     Args:
-        args: Parsed CLI arguments.
+        args: Parsed CLI arguments (must have .plugins attribute).
         manager: The PluginManager instance (after discover_and_load).
 
     Returns:
         True if at least one valid plugin was found, False if all names are unrecognized.
     """
-    import logging
-
-    logger = logging.getLogger(__name__)
-
     plugin_names = [name.strip() for name in args.plugins.split(",") if name.strip()]
     valid_names = []
-    invalid_names = []
 
     for name in plugin_names:
         if manager.registry.has_plugin(name):
             valid_names.append(name)
         else:
-            invalid_names.append(name)
-
-    # Log warnings for unrecognized names
-    for name in invalid_names:
-        logger.warning(f"Unrecognized plugin name: '{name}'")
+            logger.warning(f"Unrecognized plugin name: '{name}'")
 
     if not valid_names:
-        # All names unrecognized: log error, fall back to pinball
         logger.error(
             f"All plugin names unrecognized: {plugin_names}. Falling back to pinball."
         )
