@@ -40,7 +40,11 @@ jobs:
 
       - name: Run linter
         run: |
-          flake8 zeclock/ --max-line-length=120 --ignore=E501,W503
+          flake8 zeclock/ --max-line-length=120 --ignore=E501,W503,E203,F841
+
+      - name: Run type checker
+        run: |
+          mypy zeclock/ --ignore-missing-imports
 
   lint:
     runs-on: ubuntu-latest

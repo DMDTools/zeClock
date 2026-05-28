@@ -1,7 +1,7 @@
 """Plugin registry for tracking discovered plugins and their states."""
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 from .plugins.base import ClockPlugin

@@ -10,7 +10,7 @@ import logging
 import random
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 from PIL import Image
 
@@ -63,7 +63,9 @@ class PinballPlugin(ClockPlugin):
         self._frame_index: int = 0
         self._color: Tuple[int, int, int] = COLOR_MAP[DEFAULT_COLOR]
         self._animation_color: Tuple[int, int, int] = COLOR_MAP[DEFAULT_COLOR]
-        self._animations_dir: Path = Path.home() / ".zeclock" / "resources" / "animations"
+        self._animations_dir: Path = (
+            Path.home() / ".zeclock" / "resources" / "animations"
+        )
         self._font: Optional[BitmapFont] = None
 
     async def initialize(self, config: dict) -> None:
@@ -84,9 +86,7 @@ class PinballPlugin(ClockPlugin):
         self._color = COLOR_MAP.get(color_name, COLOR_MAP[DEFAULT_COLOR])
 
         animation_color_name = config.get("animation_color", color_name)
-        self._animation_color = COLOR_MAP.get(
-            animation_color_name, self._color
-        )
+        self._animation_color = COLOR_MAP.get(animation_color_name, self._color)
 
         # Allow overriding animations directory (useful for testing)
         animations_dir = config.get("animations_dir")
@@ -131,7 +131,9 @@ class PinballPlugin(ClockPlugin):
             return
 
         # Set frame delay from scene metadata
-        self._frame_delay_ms = scene.frame_delay_ms if scene.frame_delay_ms > 0 else DEFAULT_FRAME_DELAY_MS
+        self._frame_delay_ms = (
+            scene.frame_delay_ms if scene.frame_delay_ms > 0 else DEFAULT_FRAME_DELAY_MS
+        )
 
         # Pre-compute frames
         self._frames = self._precompute_frames(scene, width, height)
@@ -197,7 +199,9 @@ class PinballPlugin(ClockPlugin):
         """
         frames: List[Image.Image] = []
         display_time = time.strftime("%H:%M")
-        frame_delay = scene.frame_delay_ms if scene.frame_delay_ms > 0 else DEFAULT_FRAME_DELAY_MS
+        frame_delay = (
+            scene.frame_delay_ms if scene.frame_delay_ms > 0 else DEFAULT_FRAME_DELAY_MS
+        )
 
         for animation_frame in scene.frames:
             merged = self._create_merged_frame(
@@ -243,14 +247,13 @@ class PinballPlugin(ClockPlugin):
         if self._font is None:
             # No font available - just colorize the animation frame
             from ..overlay import _colorize_grayscale
+
             return _colorize_grayscale(animation_frame, self._animation_color)
 
         # Render clock overlay based on clock_style
         if scene.clock_style == 1:
             # Custom position clock
-            clock_frame = self._render_custom_clock(
-                display_time, scene, width, height
-            )
+            clock_frame = self._render_custom_clock(display_time, scene, width, height)
         else:
             # Standard centered clock
             clock_frame = self._font.render_text(display_time, width, height)
@@ -259,14 +262,12 @@ class PinballPlugin(ClockPlugin):
         if scene.frame_layer == 1:
             # Clock above animation: animation is base, clock is overlay
             merged = overlay_or_rgb(
-                animation_frame, clock_frame,
-                self._animation_color, self._color
+                animation_frame, clock_frame, self._animation_color, self._color
             )
         else:
             # Clock behind animation (default): clock is base, animation is overlay
             merged = overlay_or_rgb(
-                clock_frame, animation_frame,
-                self._color, self._animation_color
+                clock_frame, animation_frame, self._color, self._animation_color
             )
 
         return merged
@@ -289,18 +290,13 @@ class PinballPlugin(ClockPlugin):
         Returns:
             Grayscale PIL Image with clock text at custom position.
         """
+        assert self._font is not None
         text_width = self._font.get_text_width(display_time)
         text_height = self._font.char_height
 
         # Calculate position (custom_x/y are center points)
-        x_pos = max(0, min(
-            scene.custom_x - (text_width // 2),
-            width - text_width
-        ))
-        y_pos = max(0, min(
-            scene.custom_y - (text_height // 2),
-            height - text_height
-        ))
+        x_pos = max(0, min(scene.custom_x - (text_width // 2), width - text_width))
+        y_pos = max(0, min(scene.custom_y - (text_height // 2), height - text_height))
 
         # Create clock frame at custom position
         clock_frame = Image.new("L", (width, height), 0)
@@ -308,29 +304,35 @@ class PinballPlugin(ClockPlugin):
         clock_frame.paste(text_img, (x_pos, y_pos))
 
         # Reposition mask to full canvas
-        if hasattr(text_img, "mask_data") and text_img.mask_data:
+        text_img_any: Any = text_img
+        if hasattr(text_img, "mask_data") and text_img_any.mask_data:
             mask_width_bytes = (width // 8) + (1 if width % 8 else 0)
             full_mask = bytearray(height * mask_width_bytes)
-            
+
             text_mask_width_bytes = (text_width // 8) + (1 if text_width % 8 else 0)
-            
+
             for ty in range(text_height):
                 for tx in range(text_width):
                     # Read bit from text mask
                     src_byte_idx = (tx // 8) + (ty * text_mask_width_bytes)
                     src_bit_pos = tx % 8
-                    if src_byte_idx < len(text_img.mask_data):
-                        mask_bit = (text_img.mask_data[src_byte_idx] >> src_bit_pos) & 1
+                    if src_byte_idx < len(text_img_any.mask_data):
+                        mask_bit = (
+                            text_img_any.mask_data[src_byte_idx] >> src_bit_pos
+                        ) & 1
                         if mask_bit:
                             # Write bit to full mask
                             dest_x = x_pos + tx
                             dest_y = y_pos + ty
                             if 0 <= dest_x < width and 0 <= dest_y < height:
-                                dest_byte_idx = (dest_x // 8) + (dest_y * mask_width_bytes)
+                                dest_byte_idx = (dest_x // 8) + (
+                                    dest_y * mask_width_bytes
+                                )
                                 dest_bit_pos = dest_x % 8
-                                full_mask[dest_byte_idx] |= (1 << dest_bit_pos)
-            
-            clock_frame.mask_data = bytes(full_mask)
-            clock_frame.mask_width_bytes = mask_width_bytes
+                                full_mask[dest_byte_idx] |= 1 << dest_bit_pos
+
+            clock_frame_any: Any = clock_frame
+            clock_frame_any.mask_data = bytes(full_mask)
+            clock_frame_any.mask_width_bytes = mask_width_bytes
 
         return clock_frame

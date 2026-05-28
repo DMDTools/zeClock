@@ -31,13 +31,13 @@ class StockQuote:
     """Cached quote data for a single stock symbol."""
 
     symbol: str
-    price: float          # regular market close price
-    change: float         # day change (vs previous close)
+    price: float  # regular market close price
+    change: float  # day change (vs previous close)
     change_percent: float
     currency: str
     market_state: str = "CLOSED"  # OPEN, PRE, POST, CLOSED
-    extended_price: float = 0.0       # pre/post market price (0 if not available)
-    extended_change: float = 0.0      # change vs regular close
+    extended_price: float = 0.0  # pre/post market price (0 if not available)
+    extended_change: float = 0.0  # change vs regular close
     extended_change_percent: float = 0.0
 
 
@@ -198,6 +198,7 @@ class StockPlugin(ClockPlugin):
     async def _refresh_cache_if_needed(self) -> None:
         """Fetch new stock data if cache is stale."""
         if not self._is_cache_stale():
+            assert self._cache is not None
             age = int(time.time() - self._cache.fetched_at)
             logger.info("[stock] Using cached data (%ds old)", age)
             return
@@ -260,19 +261,20 @@ class StockPlugin(ClockPlugin):
             "range": "1d",
             "includePrePost": "true",
         }
-        headers = {
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
-        }
+        headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"}
 
         try:
             async with session.get(
-                url, params=params, headers=headers,
+                url,
+                params=params,
+                headers=headers,
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as response:
                 if response.status != 200:
                     logger.warning(
                         "[stock] Yahoo Finance returned %d for %s",
-                        response.status, symbol,
+                        response.status,
+                        symbol,
                     )
                     return None
 
@@ -286,9 +288,7 @@ class StockPlugin(ClockPlugin):
             logger.warning("[stock] Unexpected error for %s: %s", symbol, e)
             return None
 
-    def _parse_chart_response(
-        self, data: dict, symbol: str
-    ) -> Optional[StockQuote]:
+    def _parse_chart_response(self, data: dict, symbol: str) -> Optional[StockQuote]:
         """Parse Yahoo Finance chart API response.
 
         Args:
@@ -303,11 +303,15 @@ class StockPlugin(ClockPlugin):
             meta = result["meta"]
 
             current_price = meta["regularMarketPrice"]
-            previous_close = meta.get("chartPreviousClose", meta.get("previousClose", current_price))
+            previous_close = meta.get(
+                "chartPreviousClose", meta.get("previousClose", current_price)
+            )
             currency = meta.get("currency", "USD")
 
             change = current_price - previous_close
-            change_percent = (change / previous_close * 100) if previous_close != 0 else 0.0
+            change_percent = (
+                (change / previous_close * 100) if previous_close != 0 else 0.0
+            )
 
             # Determine market state from currentTradingPeriod
             market_state = self._determine_market_state(meta)
@@ -318,8 +322,9 @@ class StockPlugin(ClockPlugin):
             extended_change_percent = 0.0
 
             if market_state in ("PRE", "POST"):
-                timestamps = result.get("timestamp", [])
-                closes = result.get("indicators", {}).get("quote", [{}])[0].get("close", [])
+                closes = (
+                    result.get("indicators", {}).get("quote", [{}])[0].get("close", [])
+                )
                 if closes:
                     # Find last non-None close
                     last_price = None
@@ -330,7 +335,11 @@ class StockPlugin(ClockPlugin):
                     if last_price is not None and last_price != current_price:
                         extended_price = last_price
                         extended_change = last_price - current_price
-                        extended_change_percent = (extended_change / current_price * 100) if current_price != 0 else 0.0
+                        extended_change_percent = (
+                            (extended_change / current_price * 100)
+                            if current_price != 0
+                            else 0.0
+                        )
 
             return StockQuote(
                 symbol=symbol,
@@ -394,6 +403,7 @@ class StockPlugin(ClockPlugin):
         frame = self._helpers.create_frame()
 
         # Get the quote for this page
+        assert self._cache is not None
         if page >= len(self._cache.quotes):
             return frame
 
@@ -520,6 +530,7 @@ class StockPlugin(ClockPlugin):
         dot_x = width - 5
         dot_y = 2
         pixels = frame.load()
+        assert pixels is not None
 
         for dy in range(3):
             for dx in range(3):

@@ -16,12 +16,13 @@ from hypothesis import strategies as st
 
 from zeclock.plugins.weather_plugin import WeatherPlugin, WMO_DESCRIPTIONS
 
-
 # --- Property-Based Tests ---
 
 
 @given(
-    temp=st.floats(min_value=-60.0, max_value=60.0, allow_nan=False, allow_infinity=False)
+    temp=st.floats(
+        min_value=-60.0, max_value=60.0, allow_nan=False, allow_infinity=False
+    )
 )
 @settings(max_examples=200)
 def test_temperature_always_rounded_integer_celsius(temp: float):
@@ -46,7 +47,9 @@ def test_temperature_always_rounded_integer_celsius(temp: float):
 
 
 @given(
-    temp=st.floats(min_value=-60.0, max_value=150.0, allow_nan=False, allow_infinity=False)
+    temp=st.floats(
+        min_value=-60.0, max_value=150.0, allow_nan=False, allow_infinity=False
+    )
 )
 @settings(max_examples=200)
 def test_temperature_always_rounded_integer_fahrenheit(temp: float):
@@ -71,7 +74,9 @@ def test_temperature_always_rounded_integer_fahrenheit(temp: float):
 
 
 @given(
-    temp=st.floats(min_value=-60.0, max_value=150.0, allow_nan=False, allow_infinity=False),
+    temp=st.floats(
+        min_value=-60.0, max_value=150.0, allow_nan=False, allow_infinity=False
+    ),
     unit=st.sampled_from(["celsius", "fahrenheit"]),
 )
 @settings(max_examples=200)
@@ -189,6 +194,6 @@ class TestConditionDescription:
         plugin = WeatherPlugin()
         for code in WMO_DESCRIPTIONS:
             result = plugin._get_condition_description(code)
-            assert len(result) <= 12, (
-                f"WMO code {code} description '{result}' exceeds 12 chars"
-            )
+            assert (
+                len(result) <= 12
+            ), f"WMO code {code} description '{result}' exceeds 12 chars"

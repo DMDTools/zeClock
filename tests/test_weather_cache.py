@@ -23,7 +23,6 @@ from zeclock.plugins.weather_plugin import (
     WeatherPlugin,
 )
 
-
 # --- Helpers ---
 
 
@@ -82,9 +81,7 @@ class TestCacheStaleDetection:
         plugin = WeatherPlugin()
         now = time.time()
         with patch("zeclock.plugins.weather_plugin.time.time", return_value=now):
-            plugin._cache = make_weather_data(
-                fetched_at=now - CACHE_DURATION_SECONDS
-            )
+            plugin._cache = make_weather_data(fetched_at=now - CACHE_DURATION_SECONDS)
             assert plugin.is_cache_stale() is True
 
     def test_cache_fresh_just_before_15_minutes(self):
@@ -285,7 +282,10 @@ class TestCacheInvalidationTiming:
 
         with patch("zeclock.plugins.weather_plugin.time.time", return_value=base_time):
             with patch.object(
-                plugin, "_fetch_weather_data", new_callable=AsyncMock, return_value=new_data
+                plugin,
+                "_fetch_weather_data",
+                new_callable=AsyncMock,
+                return_value=new_data,
             ) as mock_fetch:
                 # First activation - should fetch (no cache)
                 await plugin._refresh_cache_if_needed()
@@ -294,7 +294,9 @@ class TestCacheInvalidationTiming:
         # Simulate multiple activations within 15 minutes
         for minutes_later in [1, 5, 10, 14]:
             check_time = base_time + minutes_later * 60
-            with patch("zeclock.plugins.weather_plugin.time.time", return_value=check_time):
+            with patch(
+                "zeclock.plugins.weather_plugin.time.time", return_value=check_time
+            ):
                 with patch.object(
                     plugin, "_fetch_weather_data", new_callable=AsyncMock
                 ) as mock_fetch:
@@ -318,9 +320,14 @@ class TestCacheInvalidationTiming:
         expired_time = base_time + CACHE_DURATION_SECONDS + 1
         second_data = make_weather_data(fetched_at=expired_time)
 
-        with patch("zeclock.plugins.weather_plugin.time.time", return_value=expired_time):
+        with patch(
+            "zeclock.plugins.weather_plugin.time.time", return_value=expired_time
+        ):
             with patch.object(
-                plugin, "_fetch_weather_data", new_callable=AsyncMock, return_value=second_data
+                plugin,
+                "_fetch_weather_data",
+                new_callable=AsyncMock,
+                return_value=second_data,
             ) as mock_fetch:
                 await plugin._refresh_cache_if_needed()
                 mock_fetch.assert_called_once()
@@ -359,7 +366,9 @@ class TestWeatherCacheRefreshProperty:
 
         current_time = fetch_time + elapsed_seconds
 
-        with patch("zeclock.plugins.weather_plugin.time.time", return_value=current_time):
+        with patch(
+            "zeclock.plugins.weather_plugin.time.time", return_value=current_time
+        ):
             is_stale = plugin.is_cache_stale()
 
         if elapsed_seconds >= CACHE_DURATION_SECONDS:
@@ -419,7 +428,9 @@ class TestWeatherCacheRefreshProperty:
 
             new_data = make_weather_data(fetched_at=current_time)
 
-            with patch("zeclock.plugins.weather_plugin.time.time", return_value=current_time):
+            with patch(
+                "zeclock.plugins.weather_plugin.time.time", return_value=current_time
+            ):
                 with patch.object(
                     plugin,
                     "_fetch_weather_data",

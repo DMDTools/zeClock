@@ -223,7 +223,9 @@ class TestDiscoverAndLoad:
         assert any("invalid name" in r.message for r in caplog.records)
 
     @pytest.mark.asyncio
-    async def test_user_plugin_overrides_builtin(self, tmp_path, tmp_config_path, caplog):
+    async def test_user_plugin_overrides_builtin(
+        self, tmp_path, tmp_config_path, caplog
+    ):
         """User plugin with same name as built-in overrides it."""
         user_dir = tmp_path / ".zeclock" / "plugins"
         user_dir.mkdir(parents=True)

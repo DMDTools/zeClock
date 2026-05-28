@@ -23,7 +23,6 @@ from zeclock.plugins.pinball_plugin import (
     DEFAULT_FRAME_DELAY_MS,
 )
 
-
 # --- Mock Scene Factory ---
 
 
@@ -175,9 +174,9 @@ class TestPinballPluginEmptyAnimations:
             warning_messages = [
                 r.message for r in caplog.records if r.levelno == logging.WARNING
             ]
-            assert any("No .scn files" in msg for msg in warning_messages), (
-                f"Expected warning about no .scn files, got: {warning_messages}"
-            )
+            assert any(
+                "No .scn files" in msg for msg in warning_messages
+            ), f"Expected warning about no .scn files, got: {warning_messages}"
 
     @pytest.mark.asyncio
     async def test_empty_directory_signals_completion_immediately(self):
@@ -483,8 +482,8 @@ class TestPinballPluginFrameOutput:
         # B = int(0 * 128/255) = 0
         pixel = frame.getpixel((0, 0))
         assert pixel[0] == 128  # R channel
-        assert pixel[1] == 64   # G channel
-        assert pixel[2] == 0    # B channel
+        assert pixel[1] == 64  # G channel
+        assert pixel[2] == 0  # B channel
 
     @pytest.mark.asyncio
     async def test_first_frame_delay_repeats_first_frame(self):

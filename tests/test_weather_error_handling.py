@@ -60,7 +60,9 @@ class TestStalenessIndicator:
             "temperature_unit": "celsius",
         }
 
-        with patch.object(weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock):
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
             await weather_plugin.initialize(config)
 
         # Set stale cache (older than 15 minutes)
@@ -78,9 +80,11 @@ class TestStalenessIndicator:
         # On the first frame (frame_count=0), blink_cycle=0, dot should be visible
         dot_x = 128 - 5
         dot_y = 2
-        assert pixels[dot_x, dot_y] == (255, 0, 0), (
-            "Staleness indicator dot should be visible on first frame"
-        )
+        assert pixels[dot_x, dot_y] == (
+            255,
+            0,
+            0,
+        ), "Staleness indicator dot should be visible on first frame"
 
     @pytest.mark.asyncio
     async def test_staleness_indicator_blinks(self, weather_plugin):
@@ -92,7 +96,9 @@ class TestStalenessIndicator:
             "temperature_unit": "celsius",
         }
 
-        with patch.object(weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock):
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
             await weather_plugin.initialize(config)
 
         # Set stale cache
@@ -133,7 +139,9 @@ class TestStalenessIndicator:
             "temperature_unit": "celsius",
         }
 
-        with patch.object(weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock):
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
             await weather_plugin.initialize(config)
 
         # Set fresh cache (just fetched)
@@ -146,9 +154,11 @@ class TestStalenessIndicator:
         pixels = frame.load()
         dot_x = 128 - 5
         dot_y = 2
-        assert pixels[dot_x, dot_y] != (255, 0, 0), (
-            "No staleness indicator should be shown when cache is fresh"
-        )
+        assert pixels[dot_x, dot_y] != (
+            255,
+            0,
+            0,
+        ), "No staleness indicator should be shown when cache is fresh"
 
 
 class TestSignalCompletionNoCache:
@@ -163,7 +173,9 @@ class TestSignalCompletionNoCache:
             "city_name": "Paris",
         }
 
-        with patch.object(weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock):
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
             await weather_plugin.initialize(config)
 
         # Ensure no cache
@@ -192,7 +204,9 @@ class TestConfigReading:
             "city_name": "New York",
         }
 
-        with patch.object(weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock):
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
             await weather_plugin.initialize(config)
 
         assert weather_plugin._latitude == 40.7128
@@ -208,7 +222,9 @@ class TestConfigReading:
             "city_name": "Paris",
         }
 
-        with patch.object(weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock):
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
             await weather_plugin.initialize(config)
 
         assert weather_plugin._initialized is False
@@ -223,7 +239,9 @@ class TestConfigReading:
             "city_name": "Paris",
         }
 
-        with patch.object(weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock):
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
             await weather_plugin.initialize(config)
 
         assert weather_plugin._initialized is False
@@ -238,7 +256,9 @@ class TestConfigReading:
             "longitude": 2.3522,
         }
 
-        with patch.object(weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock):
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
             await weather_plugin.initialize(config)
 
         assert weather_plugin._initialized is False
@@ -254,7 +274,9 @@ class TestConfigReading:
             "city_name": "",
         }
 
-        with patch.object(weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock):
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
             await weather_plugin.initialize(config)
 
         assert weather_plugin._initialized is False
@@ -264,7 +286,9 @@ class TestConfigReading:
         """Plugin should not initialize if all required fields are missing."""
         config = {}
 
-        with patch.object(weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock):
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
             await weather_plugin.initialize(config)
 
         assert weather_plugin._initialized is False
@@ -303,7 +327,9 @@ class TestTemperatureUnitConfig:
             "city_name": "Paris",
         }
 
-        with patch.object(weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock):
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
             await weather_plugin.initialize(config)
 
         assert weather_plugin._temperature_unit == "celsius"
@@ -318,7 +344,9 @@ class TestTemperatureUnitConfig:
             "temperature_unit": "fahrenheit",
         }
 
-        with patch.object(weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock):
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
             await weather_plugin.initialize(config)
 
         assert weather_plugin._temperature_unit == "fahrenheit"
@@ -333,7 +361,9 @@ class TestTemperatureUnitConfig:
             "temperature_unit": "celsius",
         }
 
-        with patch.object(weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock):
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
             await weather_plugin.initialize(config)
 
         assert weather_plugin._temperature_unit == "celsius"
@@ -348,7 +378,9 @@ class TestTemperatureUnitConfig:
             "temperature_unit": "kelvin",
         }
 
-        with patch.object(weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock):
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
             await weather_plugin.initialize(config)
 
         assert weather_plugin._temperature_unit == "celsius"
@@ -363,7 +395,9 @@ class TestTemperatureUnitConfig:
             "temperature_unit": "fahrenheit",
         }
 
-        with patch.object(weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock):
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
             await weather_plugin.initialize(config)
 
         # Verify the unit is stored correctly for API calls
@@ -383,7 +417,9 @@ class TestCachedDataWithStaleness:
             "city_name": "Paris",
         }
 
-        with patch.object(weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock):
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
             await weather_plugin.initialize(config)
 
         # Set stale cache
@@ -407,7 +443,9 @@ class TestCachedDataWithStaleness:
             "city_name": "Paris",
         }
 
-        with patch.object(weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock):
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
             await weather_plugin.initialize(config)
 
         # Set stale cache

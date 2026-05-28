@@ -28,9 +28,7 @@ class PluginConfig:
 
     DEFAULT_CONFIG = {
         "clock_display_seconds": CLOCK_DISPLAY_SECONDS_DEFAULT,
-        "plugins": [
-            {"name": "pinball", "frequency": 100, "settings": {}}
-        ],
+        "plugins": [{"name": "pinball", "frequency": 100, "settings": {}}],
     }
 
     def __init__(self, config_path: Optional[Path] = None):
@@ -74,7 +72,10 @@ class PluginConfig:
         # clock_display_seconds
         raw_seconds = data.get("clock_display_seconds", CLOCK_DISPLAY_SECONDS_DEFAULT)
         if isinstance(raw_seconds, int):
-            if raw_seconds < CLOCK_DISPLAY_SECONDS_MIN or raw_seconds > CLOCK_DISPLAY_SECONDS_MAX:
+            if (
+                raw_seconds < CLOCK_DISPLAY_SECONDS_MIN
+                or raw_seconds > CLOCK_DISPLAY_SECONDS_MAX
+            ):
                 logger.warning(
                     f"clock_display_seconds={raw_seconds} out of range "
                     f"[{CLOCK_DISPLAY_SECONDS_MIN}, {CLOCK_DISPLAY_SECONDS_MAX}], clamping"
@@ -115,18 +116,18 @@ class PluginConfig:
             if not isinstance(settings, dict):
                 settings = {}
 
-            self.plugin_entries.append({
-                "name": name,
-                "frequency": frequency,
-                "settings": settings,
-            })
+            self.plugin_entries.append(
+                {
+                    "name": name,
+                    "frequency": frequency,
+                    "settings": settings,
+                }
+            )
 
     def _apply_defaults(self) -> None:
         """Apply default configuration."""
         self.clock_display_seconds = CLOCK_DISPLAY_SECONDS_DEFAULT
-        self.plugin_entries = [
-            {"name": "pinball", "frequency": 100, "settings": {}}
-        ]
+        self.plugin_entries = [{"name": "pinball", "frequency": 100, "settings": {}}]
 
     def _create_default_config(self) -> None:
         """Create a default plugins.yaml file on disk."""
@@ -135,7 +136,9 @@ class PluginConfig:
 
             self.path.parent.mkdir(parents=True, exist_ok=True)
             with open(self.path, "w") as f:
-                yaml.dump(self.DEFAULT_CONFIG, f, default_flow_style=False, sort_keys=False)
+                yaml.dump(
+                    self.DEFAULT_CONFIG, f, default_flow_style=False, sort_keys=False
+                )
             logger.info(f"Created default plugin config at {self.path}")
         except Exception as e:
             logger.warning(f"Could not create default config: {e}")

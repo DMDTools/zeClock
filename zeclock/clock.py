@@ -1,6 +1,7 @@
 """
 Horloge principale zeClock avec support DMDServer
 """
+
 import asyncio
 import enum
 import logging
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 class ClockState(enum.Enum):
     """State machine states for the clock display."""
+
     CLOCK_ONLY = "clock_only"
     PLUGIN_SELECT = "plugin_select"
     PLUGIN_ACTIVE = "plugin_active"
@@ -26,7 +28,7 @@ class ClockState(enum.Enum):
 
 class ZeClock:
     """Horloge animée avec affichage sur ZeDMD via DMDServer"""
-    
+
     def __init__(
         self,
         width: int = 128,
@@ -36,7 +38,7 @@ class ZeClock:
         dmdserver_port: int = 6789,
         test_mode: bool = False,
         color: str = "orange",
-        animation_color: str = None,
+        animation_color: Optional[str] = None,
         plugin_config_path: Optional[Path] = None,
         plugins_override: Optional[str] = None,
     ):
@@ -44,44 +46,57 @@ class ZeClock:
         self.height = height
         self.fps = fps
         self.running = True
-        
+
         # Color mapping
         self.colors = [
-            (255, 128, 0),   # orange
-            (0, 128, 255),   # blue
-            (255, 0, 0),     # red
-            (255, 0, 255),   # purple
-            (0, 255, 128),   # green
-            (255, 255, 0),   # yellow
-            (0, 255, 255),   # cyan
-            (255, 64, 128)   # pink
+            (255, 128, 0),  # orange
+            (0, 128, 255),  # blue
+            (255, 0, 0),  # red
+            (255, 0, 255),  # purple
+            (0, 255, 128),  # green
+            (255, 255, 0),  # yellow
+            (0, 255, 255),  # cyan
+            (255, 64, 128),  # pink
         ]
-        color_map = {"orange": 0, "blue": 1, "red": 2, "purple": 3, "green": 4, "yellow": 5, "cyan": 6, "pink": 7}
+        color_map = {
+            "orange": 0,
+            "blue": 1,
+            "red": 2,
+            "purple": 3,
+            "green": 4,
+            "yellow": 5,
+            "cyan": 6,
+            "pink": 7,
+        }
         self.color_mode = color
         if color == "auto":
             self.color = self.colors[0]
             self.last_color_change = time.time()
         else:
             self.color = self.colors[color_map.get(color, 0)]
-        
+
         # Animation color (defaults to same as clock if not specified)
         self.animation_color_name = animation_color
-        self.animation_color = self.colors[color_map.get(animation_color, 0)] if animation_color else self.color
-        
+        self.animation_color = (
+            self.colors[color_map.get(animation_color, 0)]
+            if animation_color
+            else self.color
+        )
+
         # Client DMDServer
         self.dmd_client = DMDServerClient(dmdserver_host, dmdserver_port)
-        
+
         # Plugin system state
         self._state = ClockState.CLOCK_ONLY
         self._clock_only_start = time.time()
         self._plugin_config_path = plugin_config_path
         self._plugins_override = plugins_override
         self._plugin_manager: Optional[PluginManager] = None
-        
+
         # Clock caching
-        self.cached_clock_frame = None
+        self.cached_clock_frame: Optional[Image.Image] = None
         self.last_clock_time = ""
-        
+
         # Load font
         self.dotclk_font = None
         font_path = Path.home() / ".zeclock" / "resources" / "Fonts" / "STANDARD.fnt"
@@ -93,46 +108,50 @@ class ZeClock:
                 print(f"⚠️ Failed to load font: {e}")
         else:
             print("❌ No font found")
-    
+
     async def run(self):
         """Main asynchronous loop with plugin-driven state machine."""
         if not self.dmd_client.connect():
             print("❌ Cannot start: dmdserver is not available.")
-            print("👉 Please make sure that dmdserver is running. You can start it using:")
-            print("   ~/.zeclock/bin/dmdserver -c ~/.zeclock/config/dmdserver.ini -w -l")
+            print(
+                "👉 Please make sure that dmdserver is running. You can start it using:"
+            )
+            print(
+                "   ~/.zeclock/bin/dmdserver -c ~/.zeclock/config/dmdserver.ini -w -l"
+            )
             return
-        
+
         # Initialize plugin system
         await self._init_plugin_system()
-        
+
         frame_time = 1 / self.fps
         print(f"🕒 Starting zeClock at {self.fps} FPS")
-        
+
         try:
             while self.running:
                 t0 = time.monotonic()
                 now = time.time()
-                
+
                 # Change color every minute if auto mode
                 if self.color_mode == "auto" and now - self.last_color_change >= 60:
                     self.color = self.colors[int(now // 60) % len(self.colors)]
                     self.last_color_change = now
                     self.last_clock_time = ""  # Force refresh
-                
+
                 # State machine transitions
                 if self._state == ClockState.CLOCK_ONLY:
                     frame = self._render_clock_frame()
                     frame_time = 0.5  # Refresh every 500ms for colon blinking
-                    
+
                     # Check if clock-only duration has elapsed
                     clock_display_seconds = self._get_clock_display_seconds()
                     if now - self._clock_only_start >= clock_display_seconds:
                         self._state = ClockState.PLUGIN_SELECT
-                
+
                 elif self._state == ClockState.PLUGIN_SELECT:
                     frame = self._render_clock_frame()
                     frame_time = 0.5
-                    
+
                     # Try to select and activate a plugin
                     activated = await self._select_and_activate_plugin()
                     if activated:
@@ -141,10 +160,13 @@ class ZeClock:
                         # No plugins available - stay in clock-only
                         self._state = ClockState.CLOCK_ONLY
                         self._clock_only_start = now
-                
+
                 elif self._state == ClockState.PLUGIN_ACTIVE:
                     # Check if plugin should be deactivated
-                    if self._plugin_manager and self._plugin_manager.should_deactivate():
+                    if (
+                        self._plugin_manager
+                        and self._plugin_manager.should_deactivate()
+                    ):
                         await self._plugin_manager.deactivate_plugin()
                         self._state = ClockState.CLOCK_ONLY
                         self._clock_only_start = time.time()
@@ -168,10 +190,10 @@ class ZeClock:
                                 frame_time = active.frame_delay_ms / 1000.0
                             else:
                                 frame_time = 0.04  # 40ms default
-                
+
                 # Send to DMD
                 success = self.dmd_client.send_frame(frame)
-                
+
                 # Reconnect if sending failed
                 if not success:
                     print("⚠️ Reconnecting to dmdserver...")
@@ -179,13 +201,13 @@ class ZeClock:
                     if not self.dmd_client.connect():
                         print("❌ Cannot reconnect to dmdserver")
                         break
-                
+
                 # Frame timing
                 elapsed = time.monotonic() - t0
                 sleep_time = max(0, frame_time - elapsed)
                 if sleep_time > 0:
                     await asyncio.sleep(sleep_time)
-                    
+
         except KeyboardInterrupt:
             print("\n🛑 Stopping zeClock...")
         finally:
@@ -193,22 +215,26 @@ class ZeClock:
             if self._plugin_manager and self._plugin_manager.is_plugin_active():
                 await self._plugin_manager.deactivate_plugin()
             self.dmd_client.disconnect()
-    
+
     async def _init_plugin_system(self):
         """Initialize the PluginManager, discover and load plugins."""
         color_map_names = {
-            (255, 128, 0): "orange", (0, 128, 255): "blue",
-            (255, 0, 0): "red", (255, 0, 255): "purple",
-            (0, 255, 128): "green", (255, 255, 0): "yellow",
-            (0, 255, 255): "cyan", (255, 64, 128): "pink",
+            (255, 128, 0): "orange",
+            (0, 128, 255): "blue",
+            (255, 0, 0): "red",
+            (255, 0, 255): "purple",
+            (0, 255, 128): "green",
+            (255, 255, 0): "yellow",
+            (0, 255, 255): "cyan",
+            (255, 64, 128): "pink",
         }
-        
+
         self._plugin_manager = PluginManager(
             width=self.width,
             height=self.height,
             config_path=self._plugin_config_path,
         )
-        
+
         try:
             await self._plugin_manager.discover_and_load()
         except Exception as e:
@@ -224,12 +250,12 @@ class ZeClock:
         ]
         logger.info(f"Plugins found: {all_names}")
         logger.info(f"Plugins activated: {active_with_freq}")
-        
+
         # Wire --color and --animation-color to PinballPlugin config
         # Determine color name from the tuple
         clock_color_name = color_map_names.get(self.color, "orange")
         anim_color_name = self.animation_color_name or clock_color_name
-        
+
         # Inject color settings into pinball plugin config
         pinball_entry = self._plugin_manager.registry.get_plugin("pinball")
         if pinball_entry:
@@ -243,49 +269,52 @@ class ZeClock:
                     break
             else:
                 # Pinball not in config entries, add it
-                self._plugin_manager.config.plugin_entries.append({
-                    "name": "pinball",
-                    "frequency": 100,
-                    "settings": {
-                        "color": clock_color_name,
-                        "animation_color": anim_color_name,
-                        "width": self.width,
-                        "height": self.height,
-                    },
-                })
-        
+                self._plugin_manager.config.plugin_entries.append(
+                    {
+                        "name": "pinball",
+                        "frequency": 100,
+                        "settings": {
+                            "color": clock_color_name,
+                            "animation_color": anim_color_name,
+                            "width": self.width,
+                            "height": self.height,
+                        },
+                    }
+                )
+
         # Apply --plugins override if specified
         if self._plugins_override:
             success = self._apply_plugins_override(self._plugins_override)
             if not success:
                 logger.error("All plugin names unrecognized, no plugins active")
-        
+
         # Check if any plugins are available
         active_plugins = self._plugin_manager.registry.get_active_plugins()
         if not active_plugins:
             logger.warning("No active plugins available, clock-only mode")
-    
+
     def _apply_plugins_override(self, plugins_str: str) -> bool:
         """Apply --plugins CLI override to the plugin manager.
-        
+
         Args:
             plugins_str: Comma-separated list of plugin names.
-            
+
         Returns:
             True if at least one valid plugin was found, False otherwise.
         """
+        assert self._plugin_manager is not None
         plugin_names = [name.strip() for name in plugins_str.split(",") if name.strip()]
         valid_names = []
-        
+
         for name in plugin_names:
             if self._plugin_manager.registry.has_plugin(name):
                 valid_names.append(name)
             else:
                 logger.warning(f"Unrecognized plugin name: '{name}'")
-        
+
         if not valid_names:
             return False
-        
+
         # Set equal frequency for valid plugins, zero out others
         equal_frequency = 100 // len(valid_names)
         for entry in self._plugin_manager.registry.get_all_plugins():
@@ -293,64 +322,68 @@ class ZeClock:
                 self._plugin_manager.registry.set_frequency(entry.name, equal_frequency)
             else:
                 self._plugin_manager.registry.set_frequency(entry.name, 0)
-        
+
         return True
-    
+
     def _get_clock_display_seconds(self) -> float:
         """Get the clock-only display duration from plugin config."""
         if self._plugin_manager:
             return self._plugin_manager.config.clock_display_seconds
         return 5.0  # Default fallback
-    
+
     async def _select_and_activate_plugin(self) -> bool:
         """Select and activate the next plugin.
-        
+
         Returns:
             True if a plugin was successfully activated, False otherwise.
         """
         if not self._plugin_manager:
             return False
-        
+
         plugin = self._plugin_manager.select_next_plugin()
         if plugin is None:
             return False
-        
+
         success = await self._plugin_manager.activate_plugin(plugin)
         return success
-    
+
     def _render_clock_frame(self) -> Image.Image:
         """Render a clock-only frame with colon blinking."""
         # Generate clock with 500ms blink timing
         milliseconds = int(time.time() * 1000)
         blink_state = (milliseconds // 500) % 2
         cache_key = f"{time.strftime('%H:%M:%S')}_{blink_state}"
-        
+
         if cache_key != self.last_clock_time:
             if blink_state == 0:
                 display_time = time.strftime("%H:%M")
             else:
                 display_time = time.strftime("%H %M")
-            
+
             # Standard centered positioning
-            self.cached_clock_frame = self.dotclk_font.render_text(display_time, self.width, self.height)
+            assert self.dotclk_font is not None
+            self.cached_clock_frame = self.dotclk_font.render_text(
+                display_time, self.width, self.height
+            )
             self.last_clock_time = cache_key
-        
+
+        assert self.cached_clock_frame is not None
         clock_frame = self.cached_clock_frame
-        
+
         # Colorize the grayscale clock frame
         width, height = clock_frame.size
         gray_data = clock_frame.tobytes()
         rgb_data = bytearray(width * height * 3)
-        
+
         for i, pixel in enumerate(gray_data):
             if pixel > 0:
                 offset = i * 3
                 rgb_data[offset] = (self.color[0] * pixel) // 255
                 rgb_data[offset + 1] = (self.color[1] * pixel) // 255
                 rgb_data[offset + 2] = (self.color[2] * pixel) // 255
-        
-        return Image.frombytes('RGB', (width, height), bytes(rgb_data))
-    
+
+        return Image.frombytes("RGB", (width, height), bytes(rgb_data))
+
     def stop(self):
         """Stop the clock"""
         self.running = False
@@ -367,15 +400,56 @@ def main():
     logger = logging.getLogger(__name__)
 
     parser = argparse.ArgumentParser(description="zeClock - Animated DMD clock")
-    parser.add_argument("--color", choices=["orange", "blue", "red", "purple", "green", "yellow", "cyan", "pink", "auto"], default="auto", help="Clock color (default: auto-rotate every minute)")
-    parser.add_argument("--animation-color", choices=["orange", "blue", "red", "purple", "green", "yellow", "cyan", "pink"], help="Animation color (default: same as clock)")
-    parser.add_argument("--bootstrap", action="store_true", help="Automatically install dmdserver and all resources without running the clock")
-    parser.add_argument("--no-prompt", action="store_true", help="Disable interactive prompt during automatic bootstrap")
+    parser.add_argument(
+        "--color",
+        choices=[
+            "orange",
+            "blue",
+            "red",
+            "purple",
+            "green",
+            "yellow",
+            "cyan",
+            "pink",
+            "auto",
+        ],
+        default="auto",
+        help="Clock color (default: auto-rotate every minute)",
+    )
+    parser.add_argument(
+        "--animation-color",
+        choices=["orange", "blue", "red", "purple", "green", "yellow", "cyan", "pink"],
+        help="Animation color (default: same as clock)",
+    )
+    parser.add_argument(
+        "--bootstrap",
+        action="store_true",
+        help="Automatically install dmdserver and all resources without running the clock",
+    )
+    parser.add_argument(
+        "--no-prompt",
+        action="store_true",
+        help="Disable interactive prompt during automatic bootstrap",
+    )
 
     # Plugin management arguments
-    parser.add_argument("--list-plugins", action="store_true", help="List all discovered plugins with name, description, and active status, then exit")
-    parser.add_argument("--plugins", type=str, default=None, help="Comma-separated list of plugin names to activate with equal frequency (overrides config)")
-    parser.add_argument("--plugin-config", type=str, default=None, help="Path to custom plugin configuration YAML file")
+    parser.add_argument(
+        "--list-plugins",
+        action="store_true",
+        help="List all discovered plugins with name, description, and active status, then exit",
+    )
+    parser.add_argument(
+        "--plugins",
+        type=str,
+        default=None,
+        help="Comma-separated list of plugin names to activate with equal frequency (overrides config)",
+    )
+    parser.add_argument(
+        "--plugin-config",
+        type=str,
+        default=None,
+        help="Path to custom plugin configuration YAML file",
+    )
 
     args = parser.parse_args()
 
@@ -384,7 +458,10 @@ def main():
         config_path = Path(args.plugin_config)
         if not config_path.exists():
             logger.error(f"Plugin config file not found: {args.plugin_config}")
-            print(f"Error: plugin config file not found: {args.plugin_config}", file=sys.stderr)
+            print(
+                f"Error: plugin config file not found: {args.plugin_config}",
+                file=sys.stderr,
+            )
             sys.exit(1)
 
     # If --bootstrap flag is active, force installation and exit

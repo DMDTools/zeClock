@@ -24,12 +24,9 @@ from zeclock.plugin_registry import PluginRegistry
 from zeclock.plugins.base import validate_plugin_name
 from tests.conftest import DummyPlugin
 
-
 # --- Strategies ---
 
-valid_plugin_name_chars = st.sampled_from(
-    "abcdefghijklmnopqrstuvwxyz0123456789_-"
-)
+valid_plugin_name_chars = st.sampled_from("abcdefghijklmnopqrstuvwxyz0123456789_-")
 valid_plugin_names = st.text(
     alphabet=valid_plugin_name_chars, min_size=1, max_size=64
 ).filter(lambda n: validate_plugin_name(n))
@@ -41,6 +38,7 @@ unknown_plugin_names = st.text(
 
 
 # --- Helper functions ---
+
 
 def build_registry_with_plugins(names: List[str]) -> PluginRegistry:
     """Create a registry with DummyPlugins registered under the given names."""
@@ -67,6 +65,7 @@ def filter_cli_plugins(
 
 
 # --- Unit Tests: Unknown names in config excluded from scheduling ---
+
 
 class TestUnknownPluginsInConfig:
     """Test that unknown plugin names in config are excluded from scheduling."""
@@ -170,6 +169,7 @@ class TestUnknownPluginsInConfig:
 
 # --- Unit Tests: Unknown names in --plugins CLI excluded ---
 
+
 class TestUnknownPluginsInCLI:
     """Test that unknown plugin names in --plugins CLI are excluded."""
 
@@ -219,6 +219,7 @@ class TestUnknownPluginsInCLI:
 
 
 # --- Unit Tests: Valid plugins still scheduled when mixed with unknown ---
+
 
 class TestValidPluginsScheduledWithUnknown:
     """Test that valid plugins are still correctly scheduled when unknown names present."""
@@ -279,6 +280,7 @@ class TestValidPluginsScheduledWithUnknown:
 
 # --- Property-Based Test: Property 12 ---
 
+
 class TestUnknownPluginNamesExcludedProperty:
     """Property 12: Unknown Plugin Names Excluded.
 
@@ -291,7 +293,9 @@ class TestUnknownPluginNamesExcludedProperty:
     """
 
     @given(
-        registered_names=st.lists(valid_plugin_names, min_size=1, max_size=5, unique=True),
+        registered_names=st.lists(
+            valid_plugin_names, min_size=1, max_size=5, unique=True
+        ),
         unknown_names=st.lists(valid_plugin_names, min_size=1, max_size=5, unique=True),
     )
     @settings(max_examples=100)
@@ -333,8 +337,12 @@ class TestUnknownPluginNamesExcludedProperty:
             assert unknown not in active_names
 
     @given(
-        registered_names=st.lists(valid_plugin_names, min_size=1, max_size=5, unique=True),
-        requested_names=st.lists(valid_plugin_names, min_size=1, max_size=8, unique=True),
+        registered_names=st.lists(
+            valid_plugin_names, min_size=1, max_size=5, unique=True
+        ),
+        requested_names=st.lists(
+            valid_plugin_names, min_size=1, max_size=8, unique=True
+        ),
     )
     @settings(max_examples=100)
     def test_unknown_names_excluded_from_cli_filtering(
@@ -363,7 +371,9 @@ class TestUnknownPluginNamesExcludedProperty:
                 assert name not in valid
 
     @given(
-        registered_names=st.lists(valid_plugin_names, min_size=1, max_size=5, unique=True),
+        registered_names=st.lists(
+            valid_plugin_names, min_size=1, max_size=5, unique=True
+        ),
         unknown_names=st.lists(valid_plugin_names, min_size=1, max_size=5, unique=True),
     )
     @settings(max_examples=100)

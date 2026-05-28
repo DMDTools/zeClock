@@ -56,6 +56,7 @@ class PluginManager:
         self.consecutive_errors: int = 0
         self.plugin_start_time: float = 0.0
         self.last_good_frame: Optional[Image.Image] = None
+        self.init_timeout: float = 10.0  # seconds, configurable for testing
 
         # Set up resources path for PluginHelpers
         if resources_path is None:
@@ -113,7 +114,10 @@ class PluginManager:
 
         for filepath in sorted(directory.glob("*.py")):
             # Skip __init__.py, base.py, helpers.py (infrastructure files)
-            if filepath.name.startswith("_") or filepath.name in ("base.py", "helpers.py"):
+            if filepath.name.startswith("_") or filepath.name in (
+                "base.py",
+                "helpers.py",
+            ):
                 continue
 
             if source == "builtin":
@@ -312,8 +316,8 @@ class PluginManager:
             idx = plugins.index(self._last_selected_plugin)
             if weights[idx] < 100.0:
                 # Remove last plugin and re-select from the rest
-                remaining_plugins = plugins[:idx] + plugins[idx + 1:]
-                remaining_weights = weights[:idx] + weights[idx + 1:]
+                remaining_plugins = plugins[:idx] + plugins[idx + 1 :]
+                remaining_weights = weights[:idx] + weights[idx + 1 :]
                 # Guard against all-zero remaining weights
                 if sum(remaining_weights) > 0:
                     selected = random.choices(
@@ -342,17 +346,15 @@ class PluginManager:
         config = self.get_plugin_config_with_helpers(plugin.name)
 
         try:
-            await asyncio.wait_for(plugin.initialize(config), timeout=10.0)
+            await asyncio.wait_for(plugin.initialize(config), timeout=self.init_timeout)
         except asyncio.TimeoutError:
             logger.warning(
-                f"Plugin '{plugin.name}' initialization timed out (>10s), marking failed"
+                f"Plugin '{plugin.name}' initialization timed out (>{self.init_timeout}s), marking failed"
             )
             self.registry.mark_failed(plugin.name)
             return False
         except Exception as e:
-            logger.error(
-                f"Plugin '{plugin.name}' initialization failed: {e}"
-            )
+            logger.error(f"Plugin '{plugin.name}' initialization failed: {e}")
             self.registry.mark_failed(plugin.name)
             return False
 
@@ -439,9 +441,7 @@ class PluginManager:
             try:
                 await self.active_plugin.cleanup()
             except Exception as e:
-                logger.warning(
-                    f"Plugin '{self.active_plugin.name}' cleanup error: {e}"
-                )
+                logger.warning(f"Plugin '{self.active_plugin.name}' cleanup error: {e}")
 
             self.active_plugin = None
             self.consecutive_errors = 0

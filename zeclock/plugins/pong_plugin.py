@@ -78,7 +78,11 @@ class PongPlugin(ClockPlugin):
             self._ball_color = self._color
             self._paddle_color = self._color
             # Net is a dimmer version
-            self._net_color = tuple(c // 3 for c in self._color)
+            self._net_color = (
+                self._color[0] // 3,
+                self._color[1] // 3,
+                self._color[2] // 3,
+            )
 
         self._frames_rendered = 0
         self._max_frames = int(self._duration_seconds * 1000 / self.frame_delay_ms)
@@ -145,10 +149,7 @@ class PongPlugin(ClockPlugin):
         ):
             paddle_top = self._left_paddle_y
             paddle_bottom = self._left_paddle_y + PADDLE_HEIGHT
-            if (
-                self._ball_y + BALL_SIZE >= paddle_top
-                and self._ball_y <= paddle_bottom
-            ):
+            if self._ball_y + BALL_SIZE >= paddle_top and self._ball_y <= paddle_bottom:
                 self._ball_vx = abs(self._ball_vx) * 1.02  # Slight speedup
                 # Add spin based on where ball hits paddle
                 hit_pos = (
@@ -165,10 +166,7 @@ class PongPlugin(ClockPlugin):
         ):
             paddle_top = self._right_paddle_y
             paddle_bottom = self._right_paddle_y + PADDLE_HEIGHT
-            if (
-                self._ball_y + BALL_SIZE >= paddle_top
-                and self._ball_y <= paddle_bottom
-            ):
+            if self._ball_y + BALL_SIZE >= paddle_top and self._ball_y <= paddle_bottom:
                 self._ball_vx = -abs(self._ball_vx) * 1.02
                 hit_pos = (
                     (self._ball_y + BALL_SIZE / 2) - (paddle_top + PADDLE_HEIGHT / 2)
@@ -219,9 +217,7 @@ class PongPlugin(ClockPlugin):
             # Ball moving away - track lazily
             tracking_speed *= 0.4
         if abs(diff) > 1:
-            self._left_paddle_y += math.copysign(
-                min(tracking_speed, abs(diff)), diff
-            )
+            self._left_paddle_y += math.copysign(min(tracking_speed, abs(diff)), diff)
 
         # Right paddle AI
         target_y = self._ball_y - PADDLE_HEIGHT / 2
@@ -230,9 +226,7 @@ class PongPlugin(ClockPlugin):
         if self._ball_vx < 0:
             tracking_speed *= 0.4
         if abs(diff) > 1:
-            self._right_paddle_y += math.copysign(
-                min(tracking_speed, abs(diff)), diff
-            )
+            self._right_paddle_y += math.copysign(min(tracking_speed, abs(diff)), diff)
 
         # Clamp paddles to screen
         self._left_paddle_y = max(
@@ -265,12 +259,17 @@ class PongPlugin(ClockPlugin):
         # Left paddle
         draw.rectangle(
             [left_x, left_top, left_x + PADDLE_WIDTH - 1, left_top + PADDLE_HEIGHT - 1],
-            fill=self._paddle_color
+            fill=self._paddle_color,
         )
         # Right paddle
         draw.rectangle(
-            [right_x, right_top, right_x + PADDLE_WIDTH - 1, right_top + PADDLE_HEIGHT - 1],
-            fill=self._paddle_color
+            [
+                right_x,
+                right_top,
+                right_x + PADDLE_WIDTH - 1,
+                right_top + PADDLE_HEIGHT - 1,
+            ],
+            fill=self._paddle_color,
         )
 
         # Draw ball
@@ -278,7 +277,7 @@ class PongPlugin(ClockPlugin):
         ball_y = int(round(self._ball_y))
         draw.rectangle(
             [ball_x, ball_y, ball_x + BALL_SIZE - 1, ball_y + BALL_SIZE - 1],
-            fill=self._ball_color
+            fill=self._ball_color,
         )
 
         hours, minutes = self._get_current_score()
@@ -299,8 +298,11 @@ class PongPlugin(ClockPlugin):
 
             # Render hours (fixed position)
             hours_frame = self._helpers.render_text(
-                hours_str, x=start_x, y=1,
-                color=self._score_color, font_name="MENU",
+                hours_str,
+                x=start_x,
+                y=1,
+                color=self._score_color,
+                font_name="MENU",
             )
             frame = self._helpers.composite_frames(frame, hours_frame)
 
@@ -308,23 +310,27 @@ class PongPlugin(ClockPlugin):
             blink_state = (int(time.time() * 1000) // 500) % 2
             if blink_state == 0:
                 colon_frame = self._helpers.render_text(
-                    colon_str, x=start_x + hours_w, y=1,
-                    color=self._score_color, font_name="MENU",
+                    colon_str,
+                    x=start_x + hours_w,
+                    y=1,
+                    color=self._score_color,
+                    font_name="MENU",
                 )
                 frame = self._helpers.composite_frames(frame, colon_frame)
 
             # Render minutes (fixed position, never shifts)
             minutes_frame = self._helpers.render_text(
-                minutes_str, x=start_x + hours_w + colon_w, y=1,
-                color=self._score_color, font_name="MENU",
+                minutes_str,
+                x=start_x + hours_w + colon_w,
+                y=1,
+                color=self._score_color,
+                font_name="MENU",
             )
             frame = self._helpers.composite_frames(frame, minutes_frame)
 
         return frame
 
-    async def render_frame(
-        self, width: int, height: int
-    ) -> Optional[Image.Image]:
+    async def render_frame(self, width: int, height: int) -> Optional[Image.Image]:
         """Render the next Pong frame.
 
         Args:

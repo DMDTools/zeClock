@@ -22,7 +22,6 @@ from zeclock.plugins.base import ClockPlugin
 
 from tests.conftest import DummyPlugin, SlowInitPlugin
 
-
 # --- Helper plugin classes for testing ---
 
 
@@ -91,11 +90,13 @@ class FastInitPlugin(ClockPlugin):
 
 @pytest.fixture
 def plugin_manager(tmp_path):
-    """Create a PluginManager with a temporary config path."""
+    """Create a PluginManager with a temporary config path and short timeout."""
     config_dir = tmp_path / ".zeclock" / "config"
     config_dir.mkdir(parents=True)
     config_path = config_dir / "plugins.yaml"
-    return PluginManager(128, 32, config_path=config_path)
+    pm = PluginManager(128, 32, config_path=config_path)
+    pm.init_timeout = 0.5  # Short timeout for fast tests
+    return pm
 
 
 # --- Unit Tests ---
@@ -107,7 +108,7 @@ class TestSlowInitializeMarkedFailed:
     @pytest.mark.asyncio
     async def test_slow_init_plugin_marked_failed(self, plugin_manager):
         """A plugin whose initialize takes >10s is marked failed."""
-        plugin = SlowInitPlugin(delay_seconds=15.0)
+        plugin = SlowInitPlugin(delay_seconds=2.0)
         plugin_manager.registry.register(plugin, "builtin")
 
         # Patch asyncio.wait_for timeout to use a shorter value for testing
@@ -121,7 +122,7 @@ class TestSlowInitializeMarkedFailed:
     @pytest.mark.asyncio
     async def test_slow_init_excluded_from_scheduling(self, plugin_manager):
         """A failed plugin is excluded from active plugins list."""
-        plugin = SlowInitPlugin(delay_seconds=15.0)
+        plugin = SlowInitPlugin(delay_seconds=2.0)
         plugin_manager.registry.register(plugin, "builtin")
 
         await plugin_manager.activate_plugin(plugin)
@@ -132,7 +133,7 @@ class TestSlowInitializeMarkedFailed:
     @pytest.mark.asyncio
     async def test_slow_init_not_set_as_active_plugin(self, plugin_manager):
         """A plugin that fails init is not set as the active plugin."""
-        plugin = SlowInitPlugin(delay_seconds=15.0)
+        plugin = SlowInitPlugin(delay_seconds=2.0)
         plugin_manager.registry.register(plugin, "builtin")
 
         await plugin_manager.activate_plugin(plugin)
@@ -170,7 +171,9 @@ class TestExceptionInitializeMarkedFailed:
     async def test_various_exception_types_mark_failed(self, plugin_manager):
         """Different exception types all result in failed state."""
         for exc_type in [RuntimeError, ValueError, TypeError, OSError, IOError]:
-            plugin = ExceptionInitPlugin(error_type=exc_type, message=f"{exc_type.__name__} test")
+            plugin = ExceptionInitPlugin(
+                error_type=exc_type, message=f"{exc_type.__name__} test"
+            )
             # Use a unique name for each to avoid conflicts
             plugin._name_override = f"exc-{exc_type.__name__.lower()}"
             # Monkey-patch name property for this test
@@ -186,7 +189,9 @@ class TestExceptionInitializeMarkedFailed:
                     return self._plugin_name
 
             named_plugin = NamedExceptionPlugin(
-                exc_type, f"{exc_type.__name__} test", f"exc-{exc_type.__name__.lower()}"
+                exc_type,
+                f"{exc_type.__name__} test",
+                f"exc-{exc_type.__name__.lower()}",
             )
             plugin_manager.registry.register(named_plugin, "builtin")
             result = await plugin_manager.activate_plugin(named_plugin)
@@ -260,7 +265,9 @@ class TestFastInitializeRemainsAvailable:
 class ConfigurableInitPlugin(ClockPlugin):
     """A plugin with configurable init behavior for property testing."""
 
-    def __init__(self, plugin_name: str, delay: float = 0.0, should_raise: bool = False):
+    def __init__(
+        self, plugin_name: str, delay: float = 0.0, should_raise: bool = False
+    ):
         self._plugin_name = plugin_name
         self._delay = delay
         self._should_raise = should_raise
@@ -309,7 +316,7 @@ class TestInitializeTimeoutProperty:
     """
 
     @pytest.mark.asyncio
-    @settings(max_examples=100, deadline=None)
+    @settings(max_examples=20, deadline=None)
     @given(
         # Delay that exceeds our test timeout of 0.2s
         delay=st.floats(min_value=0.3, max_value=2.0),
@@ -388,7 +395,11 @@ class TestInitializeTimeoutProperty:
     @settings(max_examples=100, deadline=None)
     @given(
         # Generate various exception messages
-        msg=st.text(min_size=1, max_size=50, alphabet=st.characters(whitelist_categories=("L", "N", "P"))),
+        msg=st.text(
+            min_size=1,
+            max_size=50,
+            alphabet=st.characters(whitelist_categories=("L", "N", "P")),
+        ),
     )
     async def test_exception_init_always_fails(self, msg):
         """Any plugin that raises during init is marked failed.

@@ -20,7 +20,6 @@ from PIL import Image
 from zeclock.plugin_manager import PluginManager
 from zeclock.plugins.base import ClockPlugin
 
-
 # --- Test fixtures ---
 
 

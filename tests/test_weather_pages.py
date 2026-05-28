@@ -25,7 +25,6 @@ from zeclock.plugins.weather_plugin import (
     WeatherPlugin,
 )
 
-
 # Feature: plugin-system, Property 15: Weather Page Cycling and Completion
 
 
@@ -66,14 +65,16 @@ def make_config(page_duration_seconds: int = 4):
 
 
 class TestExactlyThreePages:
-    """Test that exactly 3 pages are rendered (current, tomorrow, 3-day)."""
+    """Test that exactly 4 pages are rendered (current, tomorrow, 3-day)."""
 
     @pytest.mark.asyncio
     async def test_three_pages_rendered(self, weather_plugin):
-        """Plugin should render exactly 3 pages before returning None."""
+        """Plugin should render exactly 4 pages before returning None."""
         config = make_config(page_duration_seconds=2)
 
-        with patch.object(weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock):
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
             await weather_plugin.initialize(config)
 
         weather_plugin._cache = make_weather_data()
@@ -91,16 +92,18 @@ class TestExactlyThreePages:
             assert frame.mode == "RGB"
             assert frame.size == (128, 32)
 
-        # Should have rendered exactly 3 pages worth of frames
-        expected_total = 3 * frames_per_page
+        # Should have rendered exactly 4 pages worth of frames
+        expected_total = 4 * frames_per_page
         assert frame_count == expected_total
 
     @pytest.mark.asyncio
     async def test_page_index_advances_through_three_pages(self, weather_plugin):
-        """Internal page counter should advance from 0 to 2 then stop."""
+        """Internal page counter should advance from 0 to 3 then stop."""
         config = make_config(page_duration_seconds=2)
 
-        with patch.object(weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock):
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
             await weather_plugin.initialize(config)
 
         weather_plugin._cache = make_weather_data()
@@ -108,19 +111,19 @@ class TestExactlyThreePages:
         frames_per_page = weather_plugin._frames_per_page
         pages_seen = set()
 
-        total_frames = 3 * frames_per_page
+        total_frames = 4 * frames_per_page
         for i in range(total_frames):
             pages_seen.add(weather_plugin._current_page)
             frame = await weather_plugin.render_frame(128, 32)
             assert frame is not None
 
         # After all frames, next call should return None
-        assert weather_plugin._current_page == 3
+        assert weather_plugin._current_page == 4
         frame = await weather_plugin.render_frame(128, 32)
         assert frame is None
 
         # Should have seen pages 0, 1, 2
-        assert pages_seen == {0, 1, 2}
+        assert pages_seen == {0, 1, 2, 3}
 
 
 class TestPageDuration:
@@ -131,7 +134,9 @@ class TestPageDuration:
         """Each page should produce exactly frames_per_page frames."""
         config = make_config(page_duration_seconds=4)
 
-        with patch.object(weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock):
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
             await weather_plugin.initialize(config)
 
         weather_plugin._cache = make_weather_data()
@@ -142,9 +147,9 @@ class TestPageDuration:
         assert frames_per_page == expected_fpp
 
         # Track frames per page
-        page_frame_counts = [0, 0, 0]
+        page_frame_counts = [0, 0, 0, 0]
 
-        for _ in range(3 * frames_per_page):
+        for _ in range(4 * frames_per_page):
             current_page = weather_plugin._current_page
             frame = await weather_plugin.render_frame(128, 32)
             assert frame is not None
@@ -152,16 +157,18 @@ class TestPageDuration:
 
         # Each page should have exactly frames_per_page frames
         for i, count in enumerate(page_frame_counts):
-            assert count == frames_per_page, (
-                f"Page {i} rendered {count} frames, expected {frames_per_page}"
-            )
+            assert (
+                count == frames_per_page
+            ), f"Page {i} rendered {count} frames, expected {frames_per_page}"
 
     @pytest.mark.asyncio
     async def test_page_duration_minimum_2_seconds(self, weather_plugin):
         """Page duration should be clamped to minimum 2 seconds."""
         config = make_config(page_duration_seconds=1)  # Below minimum
 
-        with patch.object(weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock):
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
             await weather_plugin.initialize(config)
 
         # Should be clamped to 2
@@ -172,7 +179,9 @@ class TestPageDuration:
         """Page duration should be clamped to maximum 30 seconds."""
         config = make_config(page_duration_seconds=60)  # Above maximum
 
-        with patch.object(weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock):
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
             await weather_plugin.initialize(config)
 
         # Should be clamped to 30
@@ -187,13 +196,15 @@ class TestNoneAfterLastPage:
         """After rendering all 3 pages, render_frame should return None."""
         config = make_config(page_duration_seconds=2)
 
-        with patch.object(weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock):
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
             await weather_plugin.initialize(config)
 
         weather_plugin._cache = make_weather_data()
 
         frames_per_page = weather_plugin._frames_per_page
-        total_frames = 3 * frames_per_page
+        total_frames = 4 * frames_per_page
 
         # Render all frames
         for _ in range(total_frames):
@@ -209,13 +220,15 @@ class TestNoneAfterLastPage:
         """Multiple calls after completion should all return None."""
         config = make_config(page_duration_seconds=2)
 
-        with patch.object(weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock):
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
             await weather_plugin.initialize(config)
 
         weather_plugin._cache = make_weather_data()
 
         frames_per_page = weather_plugin._frames_per_page
-        total_frames = 3 * frames_per_page
+        total_frames = 4 * frames_per_page
 
         # Render all frames
         for _ in range(total_frames):
@@ -235,13 +248,15 @@ class TestTotalFrameCount:
         """Total frames should match formula with default config (4s, 100ms delay)."""
         config = make_config(page_duration_seconds=4)
 
-        with patch.object(weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock):
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
             await weather_plugin.initialize(config)
 
         weather_plugin._cache = make_weather_data()
 
         # Expected: 3 * ceil(4000 / 100) = 3 * 40 = 120
-        expected_total = 3 * math.ceil(4 * 1000 / 100)
+        expected_total = 4 * math.ceil(4 * 1000 / 100)
 
         frame_count = 0
         while True:
@@ -257,13 +272,15 @@ class TestTotalFrameCount:
         """Total frames should match formula with 2s duration."""
         config = make_config(page_duration_seconds=2)
 
-        with patch.object(weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock):
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
             await weather_plugin.initialize(config)
 
         weather_plugin._cache = make_weather_data()
 
         # Expected: 3 * ceil(2000 / 100) = 3 * 20 = 60
-        expected_total = 3 * math.ceil(2 * 1000 / 100)
+        expected_total = 4 * math.ceil(2 * 1000 / 100)
 
         frame_count = 0
         while True:
@@ -279,14 +296,16 @@ class TestTotalFrameCount:
         """Total frames should use ceiling division when duration doesn't divide evenly."""
         config = make_config(page_duration_seconds=3)
 
-        with patch.object(weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock):
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
             await weather_plugin.initialize(config)
 
         weather_plugin._cache = make_weather_data()
 
         # frame_delay_ms=100, page_duration=3s
         # Expected: 3 * ceil(3000 / 100) = 3 * 30 = 90
-        expected_total = 3 * math.ceil(3 * 1000 / weather_plugin._frame_delay_ms)
+        expected_total = 4 * math.ceil(3 * 1000 / weather_plugin._frame_delay_ms)
 
         frame_count = 0
         while True:
@@ -311,7 +330,7 @@ class TestWeatherPageCyclingProperty:
     @pytest.mark.asyncio
     async def test_property_total_frames_equals_formula(self, page_duration_seconds):
         """Property 15: For any configured page duration (2-30 seconds) and
-        frame_delay_ms, the Weather_Plugin SHALL render exactly 3 pages each
+        frame_delay_ms, the Weather_Plugin SHALL render exactly 4 pages each
         for the configured duration, then return None to signal completion.
         The total number of frames SHALL equal
         3 * ceil(page_duration_seconds * 1000 / frame_delay_ms).
@@ -332,7 +351,7 @@ class TestWeatherPageCyclingProperty:
         expected_frames_per_page = math.ceil(
             page_duration_seconds * 1000 / frame_delay_ms
         )
-        expected_total = 3 * expected_frames_per_page
+        expected_total = 4 * expected_frames_per_page
 
         # Render all frames and count
         frame_count = 0
@@ -342,9 +361,9 @@ class TestWeatherPageCyclingProperty:
                 break
             frame_count += 1
             # Safety: prevent infinite loop
-            assert frame_count <= expected_total + 1, (
-                f"Too many frames: got {frame_count}, expected at most {expected_total}"
-            )
+            assert (
+                frame_count <= expected_total + 1
+            ), f"Too many frames: got {frame_count}, expected at most {expected_total}"
 
         # Verify total frame count matches formula
         assert frame_count == expected_total, (

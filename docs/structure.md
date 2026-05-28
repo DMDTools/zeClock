@@ -28,23 +28,41 @@ zeClock/
 │       ├── pinball_plugin.py   # Built-in plugin: retro pinball .scn animation playback with DotBlt overlay
 │       ├── pong_plugin.py      # Built-in plugin: Pong game where the score displays the current time
 │       ├── gif_plugin.py       # Built-in plugin: plays random animated GIFs from a directory
+│       ├── stock_plugin.py     # Built-in plugin: stock prices, daily change, and extended hours data
 │       ├── weather_plugin.py   # Built-in plugin: weather conditions and forecast from Open-Meteo API
 │       └── weather_icons.py    # Weather condition code to pixel-art icon mapping
+├── deploy/                     # Deployment configurations
+│   └── nas/                    # NAS Docker deployment
+│       ├── docker-compose.yml  # Orchestrates dmdserver + zeclock containers
+│       ├── Dockerfile.dmdserver # Builds dmdserver image (python:3.11-slim + libdmdutil binary)
+│       ├── Dockerfile.zeclock  # Builds zeclock image with resources
+│       ├── entrypoint.sh       # Container entrypoint (waits for dmdserver, starts zeclock)
+│       ├── config/             # dmdserver.ini for NAS deployment
+│       └── zeclock-config/     # Synced ~/.zeclock/config (plugins.yaml, etc.)
+├── scripts/                    # Development and utility scripts
+│   ├── dev-start.sh            # Start dmdserver + zeclock locally (real or virtual mode)
+│   ├── dev-stop.sh             # Stop local dmdserver + zeclock
+│   └── fake-dmdserver.py       # Virtual DMD server with WebGL browser preview
 ├── examples/                   # Example and quick-test scripts
 │   ├── run_clock.py            # Minimal clock launcher
 │   ├── demo.py                 # Frame loading and sending demo
 │   └── test_readers.py         # Quick validation of .fnt and .scn readers
 ├── config/                     # Default configuration
-│   └── dmdserver.ini           # Reference ini file for dmdserver
+│   ├── dmdserver.ini           # Reference ini file for dmdserver (real ZeDMD)
+│   └── dmdserver-virtual.ini   # Config for virtual mode (no physical display)
 ├── docs/                       # Technical documentation
 │   ├── architecture.md         # Architecture and rendering pipeline
 │   ├── structure.md            # This file (project organization)
-│   └── tech.md                 # Detailed technical stack
+│   ├── tech.md                 # Detailed technical stack
+│   └── plugin_authoring.md     # Plugin development guide
+├── tests/                      # Test suite (pytest + hypothesis)
 ├── DotClk/                     # Git submodule - Original C++ DotClk project (Teensy)
 ├── dmd-simulator/              # Git submodule - Graphical DMD simulator (Python/SDL2)
 ├── libdmdutil.src/             # Git submodule - C++ source for libdmdutil/dmdserver
+├── Makefile                    # Dev workflow: make test, make dev-start, make nas-deploy, etc.
+├── mypy.ini                    # mypy type checker configuration
 ├── pyproject.toml              # Modern packaging configuration (PEP 621, setuptools)
-├── requirements.txt            # Minimal development dependencies
+├── .dockerignore               # Files excluded from Docker builds
 ├── README.md                   # User documentation and quickstart guide
 └── .gitignore                  # Files excluded from version control
 ```
@@ -77,6 +95,7 @@ This is the application core. It contains all the Python logic for reading resou
 | `plugins/pong_plugin.py` | Built-in Pong clock plugin: simulates a Pong game where the score always shows the current time (hours vs minutes) |
 | `plugins/gif_plugin.py` | Built-in GIF plugin: picks a random animated GIF from a configurable directory, plays it once respecting native frame delays, then signals completion |
 | `plugins/weather_plugin.py` | Built-in weather plugin: fetches data from Open-Meteo API, displays current conditions, tomorrow's forecast, and 3-day outlook |
+| `plugins/stock_plugin.py` | Built-in stock plugin: fetches quotes from Yahoo Finance, displays price, daily change, and extended hours data with market state detection |
 | `plugins/weather_icons.py` | WMO weather condition code to 16×16 pixel-art icon bitmap mapping |
 
 ### 🧪 Examples (`examples/`)
@@ -99,9 +118,12 @@ Scripts for quickly testing the installation or understanding the API:
 
 | File | Role |
 |------|------|
-| `pyproject.toml` | Single packaging configuration (PEP 621). Defines metadata, dependencies (`pillow>=9.0`, `numpy`), extras (`zedmd`, `dev`), and the CLI entry point `zeclock`. Backend: setuptools. |
-| `requirements.txt` | Minimal development list: `pillow>=9.0.0`, `numpy>=1.20.0`, `asyncio`, `colorama>=0.4.6` |
+| `pyproject.toml` | Single packaging configuration (PEP 621). Defines metadata, dependencies (`pillow>=9.0`, `aiohttp>=3.8`, `pyyaml>=6.0`, `colorama>=0.4.6`), extras (`zedmd`, `dev`), and the CLI entry point `zeclock`. Backend: setuptools. |
+| `Makefile` | Development workflow: `make test` (pytest+flake8+mypy+black), `make dev-start`/`dev-stop`, `make nas-deploy`/`nas-stop`, `make format` |
+| `mypy.ini` | mypy type checker configuration |
+| `.dockerignore` | Files excluded from Docker image builds |
 | `config/dmdserver.ini` | Reference configuration file for dmdserver (ports, ZeDMD USB/WiFi, brightness) |
+| `config/dmdserver-virtual.ini` | Configuration for virtual mode (no physical display attached) |
 
 ---
 

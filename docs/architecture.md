@@ -60,7 +60,7 @@ Handles the optimized network interface with the DMD server.
   - Buffered flag (uint8).
   - `disconnectOthers` flag (uint8).
   - Total pixel data size (uint32 big-endian).
-- **Optimized RGB565 Conversion**: Using NumPy, converts standard RGB24 channels (3 bytes) to compact 16-bit RGB565 format (5 bits Red, 6 bits Green, 5 bits Blue) in big-endian via vectorized bit shifts.
+- **Optimized RGB565 Conversion**: Converts standard RGB24 channels (3 bytes) to compact 16-bit RGB565 format (5 bits Red, 6 bits Green, 5 bits Blue) in big-endian via `struct.pack_into` per-pixel iteration.
 - **Persistent Connection**: Keeps the TCP socket open between frames for continuous streaming.
 
 ### 3. Binary File Readers (`readers/`)
@@ -78,9 +78,11 @@ Optimized parsers for decoding native DotClk hardware formats:
 
 ### 4. Composition Engine: `Overlay` (`overlay.py`)
 
-This module handles image merging (clock on one side, animation on the other). It faithfully implements the original DotClk hardware **`DotBlt`** algorithm:
+This module handles image merging (clock on one side, animation on the other). It faithfully implements the original DotClk hardware **`DotBlt`** algorithm.
 
-- Each animation frame or bitmap text contains a binary mask (`mask_data`).
+Mask metadata (`mask_data`, `mask_width_bytes`) is attached dynamically to PIL Image objects by the binary readers and accessed via typed `Any` casts in the overlay compositor.
+
+- Each animation frame or bitmap text carries a binary mask (`mask_data`).
 - **DotBlt Algorithm**:
   - If the upper layer's mask bit is `0`, the upper image pixel is applied (overwriting the background).
   - If the mask bit is `1`, the background pixel is preserved.
@@ -115,7 +117,7 @@ Extensible plugin architecture that allows contributors to author display plugin
   - **PongPlugin** (`pong_plugin.py`): Simulates a Pong game where the score always displays the current time (left paddle = hours, right paddle = minutes). Features AI-controlled paddles, ball physics with spin and speed-up, and renders using the MENU font for the score display.
   - **GifPlugin** (`gif_plugin.py`): Picks a random animated GIF from a configurable directory (`~/.zeclock/plugins/gif/` by default), extracts all frames with their native delays, resizes/crops to fit the display dimensions, plays the animation once, then signals completion.
   - **WeatherPlugin** (`weather_plugin.py`): Fetches weather data from the Open-Meteo API and cycles through display pages (current conditions, tomorrow's forecast, 3-day outlook) with configurable page duration. Supports 15-minute caching, staleness indicators, and Celsius/Fahrenheit units.
-  - **StockPlugin** (`stock_plugin.py`): Fetches stock quotes from Yahoo Finance (no API key required) and displays current price, daily change, and change percentage for configured ticker symbols. Shows one symbol per page with configurable page duration. Supports 10-minute caching with a staleness indicator.
+  - **StockPlugin** (`stock_plugin.py`): Fetches stock quotes from Yahoo Finance (no API key required) and displays current price, daily change, and change percentage for configured ticker symbols. Shows one symbol per page with configurable page duration. Detects market state (OPEN, PRE, POST, CLOSED) and displays extended hours price and variation when in pre/post market. Supports 10-minute caching with a staleness indicator.
 - **`PluginHelpers` (`helpers.py`)**: Shared rendering utilities injected into plugins at initialization. Provides:
   - `create_frame()`: Creates blank RGB PIL Images at the correct display dimensions.
   - `render_text()`: Renders text using the BitmapFont system with positioning and colorization.
@@ -143,26 +145,25 @@ sequenceDiagram
     participant C as clock.py (ZeClock)
     participant F as fnt_reader.py (BitmapFont)
     participant O as overlay.py (Overlay)
-    participant N as NumPy (Optimization)
     participant S as dmdserver_client.py (TCP)
 
     C->>C: Event loop tick (dynamic timing)
     C->>F: Render current time text ("12:34" or "12 34")
     F->>F: Assemble .fnt font glyphs (centered or custom)
-    F->>N: Compress text mask (np.packbits)
-    F-->>C: Return time image (PIL L-mode + mask)
+    F->>F: Pack text mask (bytearray bitwise ops)
+    F-->>C: Return PIL Image (L-mode + mask_data attribute)
     
     alt Retro pinball animation is active
         C->>O: Merge time and animation frame (overlay_or_rgb)
-        O->>N: Extract and apply DotBlt binary mask
-        O->>N: Apply RGB tints (Clock Color vs Animation Color)
+        O->>O: Extract and apply DotBlt binary mask
+        O->>O: Apply RGB tints (Clock Color vs Animation Color)
         O-->>C: Return merged frame (PIL RGB-mode)
     else No animation
-        C->>N: Colorize time image alone to RGB
+        C->>C: Colorize time image to RGB (per-pixel bytearray)
     end
     
     C->>S: Send final RGB image
-    S->>N: Vectorize RGB888 → RGB565 big-endian conversion
+    S->>S: Convert RGB888 → RGB565 big-endian (struct.pack_into)
     S->>S: Encapsulate frame with "DMDStream" header
     S->>S: Write to TCP Socket (port 6789)
 ```

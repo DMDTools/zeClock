@@ -20,11 +20,12 @@ This document details the technologies, libraries, protocols, and tools that mak
 
 ### 3. Numerical Computing & Pixel Manipulation
 
-- **NumPy >= 1.20**: Essential for optimizing high-frequency rendering performance.
-  - **Mask processing**: Converting compact binary masks to 2D arrays via `np.unpackbits` / `np.packbits` (bitorder='little').
-  - **Vectorized operations**: Mask extraction, DotBlt algorithm application, and colorization in a single NumPy pass.
-  - **RGB565 conversion**: Vectorized RGB888 → RGB565 big-endian transformation via bit shifts (`>> 3`, `>> 2`, `<< 11`, `<< 5`).
-  - **Matrix colorization**: Projecting grayscale levels into RGB space via intensity multiplication.
+- **Pure Python + Pillow**: All pixel operations are implemented without NumPy for maximum portability (runs on NAS CPUs without AVX support).
+  - **Grayscale colorization**: Per-pixel intensity × RGB color tuple via `bytearray` operations.
+  - **RGB565 conversion**: Per-pixel bit packing using `struct.pack_into` for big-endian output.
+  - **Mask processing**: Bit manipulation via Python `bytearray` and bitwise operators.
+  - **Image compositing**: Byte-level iteration over `Image.tobytes()` data for DotBlt blending.
+  - **Performance**: At 128×32 (4096 pixels), pure Python loops are fast enough for 25 FPS rendering.
 
 ### 4. Concurrency & Asynchronous Programming
 
@@ -72,21 +73,16 @@ Declared in `pyproject.toml`:
 | Package | Version | Role |
 |---------|---------|------|
 | `pillow` | >= 9.0 | Image processing, canvas, composition |
-| `numpy` | (latest) | Vectorized binary operations, RGB565 conversion |
 | `pyyaml` | >= 6.0 | YAML configuration parsing (plugin system) |
+| `aiohttp` | >= 3.8 | Async HTTP client (weather/stock API calls) |
+| `colorama` | >= 0.4.6 | ANSI terminal colors (bootstrap messages) |
 
 ### Optional Dependencies
 
 | Group | Packages | Role |
 |-------|----------|------|
 | `zedmd` | `pyserial` | Direct USB communication with ZeDMD (without dmdserver) |
-| `dev` | `pytest>=7.0`, `black>=22.0`, `flake8>=4.0`, `mypy>=0.950` | Code quality |
-
-### Additional Production Dependencies
-
-| Package | Version | Role |
-|---------|---------|------|
-| `colorama` | >= 0.4.6 | ANSI terminal colors (bootstrap messages) |
+| `dev` | `pytest>=7.0`, `pytest-asyncio>=0.21`, `hypothesis>=6.0`, `black>=22.0`, `flake8>=4.0`, `mypy>=0.950` | Code quality & testing |
 
 ---
 

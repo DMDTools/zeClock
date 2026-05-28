@@ -7,7 +7,7 @@ respecting each frame's native delay, then signals completion.
 import logging
 import random
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 from PIL import Image
 
@@ -52,9 +52,9 @@ class GifPlugin(ClockPlugin):
                            Default: ~/.zeclock/plugins/gif/
         """
         self._helpers = config.get("_helpers")
-        self._frames: List[Image.Image] = []
-        self._frame_delays: List[int] = []
-        self._frame_index: int = 0
+        self._frames = []
+        self._frame_delays = []
+        self._frame_index = 0
 
         # Resolve GIF directory
         gif_dir_str = config.get("gif_dir")
@@ -147,7 +147,7 @@ class GifPlugin(ClockPlugin):
         new_w = int(src_w * scale)
         new_h = int(src_h * scale)
 
-        frame = frame.resize((new_w, new_h), Image.LANCZOS)
+        frame = frame.resize((new_w, new_h), Image.Resampling.LANCZOS)
 
         # Center crop
         left = (new_w - target_w) // 2
@@ -156,9 +156,7 @@ class GifPlugin(ClockPlugin):
 
         return frame
 
-    async def render_frame(
-        self, width: int, height: int
-    ) -> Optional[Image.Image]:
+    async def render_frame(self, width: int, height: int) -> Optional[Image.Image]:
         """Return the next GIF frame, or None when done.
 
         Args:

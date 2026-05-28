@@ -117,7 +117,11 @@ def test_plugin_config_clock_seconds_always_clamped(value: int):
         "plugins": [{"name": "pinball", "frequency": 100}],
     }
     config._parse_config(data)
-    assert CLOCK_DISPLAY_SECONDS_MIN <= config.clock_display_seconds <= CLOCK_DISPLAY_SECONDS_MAX
+    assert (
+        CLOCK_DISPLAY_SECONDS_MIN
+        <= config.clock_display_seconds
+        <= CLOCK_DISPLAY_SECONDS_MAX
+    )
 
 
 @given(st.integers())
@@ -186,36 +190,46 @@ class TestConfigClamping:
         config = PluginConfig(config_path=None)
 
         # Below minimum
-        config._parse_config({
-            "clock_display_seconds": 5,
-            "plugins": [{"name": "p", "frequency": -1}],
-        })
+        config._parse_config(
+            {
+                "clock_display_seconds": 5,
+                "plugins": [{"name": "p", "frequency": -1}],
+            }
+        )
         assert config.plugin_entries[0]["frequency"] == 0
 
         # At minimum
-        config._parse_config({
-            "clock_display_seconds": 5,
-            "plugins": [{"name": "p", "frequency": 0}],
-        })
+        config._parse_config(
+            {
+                "clock_display_seconds": 5,
+                "plugins": [{"name": "p", "frequency": 0}],
+            }
+        )
         assert config.plugin_entries[0]["frequency"] == 0
 
         # At maximum
-        config._parse_config({
-            "clock_display_seconds": 5,
-            "plugins": [{"name": "p", "frequency": 100}],
-        })
+        config._parse_config(
+            {
+                "clock_display_seconds": 5,
+                "plugins": [{"name": "p", "frequency": 100}],
+            }
+        )
         assert config.plugin_entries[0]["frequency"] == 100
 
         # Above maximum
-        config._parse_config({
-            "clock_display_seconds": 5,
-            "plugins": [{"name": "p", "frequency": 101}],
-        })
+        config._parse_config(
+            {
+                "clock_display_seconds": 5,
+                "plugins": [{"name": "p", "frequency": 101}],
+            }
+        )
         assert config.plugin_entries[0]["frequency"] == 100
 
         # Large negative
-        config._parse_config({
-            "clock_display_seconds": 5,
-            "plugins": [{"name": "p", "frequency": -9999}],
-        })
+        config._parse_config(
+            {
+                "clock_display_seconds": 5,
+                "plugins": [{"name": "p", "frequency": -9999}],
+            }
+        )
         assert config.plugin_entries[0]["frequency"] == 0

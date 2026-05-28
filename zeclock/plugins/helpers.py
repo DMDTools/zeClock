@@ -52,9 +52,7 @@ class PluginHelpers:
                 return None
         return self._fonts[font_name]
 
-    def create_frame(
-        self, color: Tuple[int, int, int] = (0, 0, 0)
-    ) -> Image.Image:
+    def create_frame(self, color: Tuple[int, int, int] = (0, 0, 0)) -> Image.Image:
         """Create a blank RGB frame with the correct display dimensions.
 
         Args:
@@ -98,14 +96,14 @@ class PluginHelpers:
             grayscale = font.render_text(text, self.width, self.height)
             gray_data = grayscale.tobytes()
             rgb_data = bytearray(self.width * self.height * 3)
-            
+
             for i, pixel in enumerate(gray_data):
                 if pixel > 0:
                     offset = i * 3
                     rgb_data[offset] = (color[0] * pixel) // 255
                     rgb_data[offset + 1] = (color[1] * pixel) // 255
                     rgb_data[offset + 2] = (color[2] * pixel) // 255
-            
+
             frame = Image.frombytes("RGB", (self.width, self.height), bytes(rgb_data))
         else:
             # Render at a specific position
@@ -130,7 +128,7 @@ class PluginHelpers:
                             rgb_data[offset] = (color[0] * pixel_val) // 255
                             rgb_data[offset + 1] = (color[1] * pixel_val) // 255
                             rgb_data[offset + 2] = (color[2] * pixel_val) // 255
-            
+
             frame = Image.frombytes("RGB", (self.width, self.height), bytes(rgb_data))
 
         return frame
@@ -159,6 +157,7 @@ class PluginHelpers:
         """
         icon_width, icon_height = size
         pixels = frame.load()
+        assert pixels is not None
 
         for row in range(icon_height):
             for col in range(icon_width):
@@ -170,10 +169,7 @@ class PluginHelpers:
                     if (icon_data[byte_index] >> bit_offset) & 1:
                         dest_x = x + col
                         dest_y = y + row
-                        if (
-                            0 <= dest_x < frame.width
-                            and 0 <= dest_y < frame.height
-                        ):
+                        if 0 <= dest_x < frame.width and 0 <= dest_y < frame.height:
                             pixels[dest_x, dest_y] = color
 
         return frame
@@ -197,8 +193,8 @@ class PluginHelpers:
         bg_data = bytearray(background.tobytes())
         fg_data = foreground.tobytes()
         mode = background.mode
-        
-        if mode == 'RGB':
+
+        if mode == "RGB":
             # 3 bytes per pixel
             for i in range(0, len(fg_data), 3):
                 if fg_data[i] > 0 or fg_data[i + 1] > 0 or fg_data[i + 2] > 0:
@@ -210,7 +206,7 @@ class PluginHelpers:
             for i in range(len(fg_data)):
                 if fg_data[i] > 0:
                     bg_data[i] = fg_data[i]
-        
+
         return Image.frombytes(mode, background.size, bytes(bg_data))
 
     def get_font_names(self) -> List[str]:
@@ -222,9 +218,7 @@ class PluginHelpers:
         fonts_dir = self.resources_path / "Fonts"
         if not fonts_dir.exists():
             return []
-        return sorted(
-            [f.stem for f in fonts_dir.glob("*.fnt")]
-        )
+        return sorted([f.stem for f in fonts_dir.glob("*.fnt")])
 
     def get_text_width(self, text: str, font_name: str = "STANDARD") -> int:
         """Calculate the pixel width of rendered text without actually rendering.

@@ -117,5 +117,11 @@ dev-logs: ## Show local zeclock output (just re-run dev-start in foreground)
 # Common
 # ==============================================================================
 
-test: ## Run tests locally
-	uv run --extra dev pytest tests/ -x -q
+test: ## Run tests + linter + type check + format check (same as CI)
+	uv run --extra dev pytest tests/ -v --tb=short
+	uv run --extra dev flake8 zeclock/ --max-line-length=120 --ignore=E501,W503,E203,F841
+	uv run --extra dev mypy zeclock/ --ignore-missing-imports
+	uv run --extra dev black --check zeclock/ tests/
+
+format: ## Auto-format code with black
+	uv run --extra dev black zeclock/ tests/

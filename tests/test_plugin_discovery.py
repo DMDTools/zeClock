@@ -22,8 +22,8 @@ from hypothesis import strategies as st
 from zeclock.plugin_manager import PluginManager
 from zeclock.plugins.base import PLUGIN_NAME_PATTERN
 
-
 # --- Strategies for generating plugin file content ---
+
 
 def valid_plugin_name_strategy():
     """Generate valid plugin names matching ^[a-z0-9_-]{1,64}$."""
@@ -76,7 +76,9 @@ def invalid_plugin_file_import_error() -> str:
 
 def invalid_plugin_file_no_class() -> str:
     """Generate a Python file with no ClockPlugin subclass."""
-    return '"""A module with no plugin class."""\n\ndef some_function():\n    return 42\n'
+    return (
+        '"""A module with no plugin class."""\n\ndef some_function():\n    return 42\n'
+    )
 
 
 def invalid_plugin_file_abstract_class() -> str:
@@ -214,9 +216,9 @@ class TestPluginDiscoveryCorrectness:
             for entry in manager.registry.get_all_plugins():
                 registered_names.add(entry.name)
 
-            assert registered_names == expected_names, (
-                f"Expected {expected_names}, got {registered_names}"
-            )
+            assert (
+                registered_names == expected_names
+            ), f"Expected {expected_names}, got {registered_names}"
 
     @given(file_set=plugin_file_set())
     @settings(max_examples=50, deadline=30000)
@@ -267,9 +269,9 @@ class TestPluginDiscoveryCorrectness:
             with patch.object(manager.config, "load"):
                 manager._load_plugins_from_directory(plugin_dir, source="user")
 
-            assert manager.registry.has_plugin(name), (
-                f"Valid plugin '{name}' was not registered"
-            )
+            assert manager.registry.has_plugin(
+                name
+            ), f"Valid plugin '{name}' was not registered"
 
     @pytest.mark.asyncio
     async def test_import_error_logged_and_skipped(self, caplog):
@@ -299,10 +301,12 @@ class TestPluginDiscoveryCorrectness:
             assert manager.registry.has_plugin("good-plugin")
 
             # A warning should have been logged for the bad file
-            warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
-            assert any("bad_import.py" in msg for msg in warning_messages), (
-                f"Expected warning about bad_import.py, got: {warning_messages}"
-            )
+            warning_messages = [
+                r.message for r in caplog.records if r.levelno == logging.WARNING
+            ]
+            assert any(
+                "bad_import.py" in msg for msg in warning_messages
+            ), f"Expected warning about bad_import.py, got: {warning_messages}"
 
     @pytest.mark.asyncio
     async def test_syntax_error_logged_and_skipped(self, caplog):
@@ -332,10 +336,12 @@ class TestPluginDiscoveryCorrectness:
             assert manager.registry.has_plugin("good-plugin")
 
             # A warning should have been logged for the syntax error file
-            warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
-            assert any("syntax_error.py" in msg for msg in warning_messages), (
-                f"Expected warning about syntax_error.py, got: {warning_messages}"
-            )
+            warning_messages = [
+                r.message for r in caplog.records if r.levelno == logging.WARNING
+            ]
+            assert any(
+                "syntax_error.py" in msg for msg in warning_messages
+            ), f"Expected warning about syntax_error.py, got: {warning_messages}"
 
     @pytest.mark.asyncio
     async def test_invalid_name_plugin_skipped(self, caplog):
@@ -368,10 +374,13 @@ class TestPluginDiscoveryCorrectness:
             assert not manager.registry.has_plugin("INVALID_NAME")
 
             # A warning should have been logged
-            warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
-            assert any("invalid name" in msg.lower() or "INVALID_NAME" in msg for msg in warning_messages), (
-                f"Expected warning about invalid name, got: {warning_messages}"
-            )
+            warning_messages = [
+                r.message for r in caplog.records if r.levelno == logging.WARNING
+            ]
+            assert any(
+                "invalid name" in msg.lower() or "INVALID_NAME" in msg
+                for msg in warning_messages
+            ), f"Expected warning about invalid name, got: {warning_messages}"
 
     @pytest.mark.asyncio
     async def test_no_plugin_class_file_skipped(self):

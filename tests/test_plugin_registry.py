@@ -12,11 +12,8 @@ from zeclock.plugin_registry import PluginRegistry, PluginEntry
 from zeclock.plugins.base import validate_plugin_name
 from tests.conftest import DummyPlugin
 
-
 # Strategy for valid plugin names: 1-64 chars of lowercase alphanumeric, hyphens, underscores
-valid_plugin_name_chars = st.sampled_from(
-    "abcdefghijklmnopqrstuvwxyz0123456789_-"
-)
+valid_plugin_name_chars = st.sampled_from("abcdefghijklmnopqrstuvwxyz0123456789_-")
 valid_plugin_names = st.text(
     alphabet=valid_plugin_name_chars, min_size=1, max_size=64
 ).filter(lambda n: validate_plugin_name(n))

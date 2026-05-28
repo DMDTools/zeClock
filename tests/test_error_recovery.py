@@ -33,7 +33,6 @@ from PIL import Image
 from zeclock.plugin_manager import PluginManager
 from zeclock.plugins.base import ClockPlugin
 
-
 # --- Test plugin fixtures ---
 
 
@@ -173,7 +172,9 @@ class TestErrorRecoveryReturnsLastGoodFrame:
             async def initialize(self, config: dict) -> None:
                 self._call_count = 0
 
-            async def render_frame(self, width: int, height: int) -> Optional[Image.Image]:
+            async def render_frame(
+                self, width: int, height: int
+            ) -> Optional[Image.Image]:
                 self._call_count += 1
                 if self._call_count > 1:
                     await asyncio.sleep(10)
@@ -308,10 +309,14 @@ class TestErrorRecoveryProperty:
         assume(True in sequence)
         first_true_idx = sequence.index(True)
         # Ensure there's at least one failure after the first success
-        assume(any(not s for s in sequence[first_true_idx + 1:]))
+        assume(any(not s for s in sequence[first_true_idx + 1 :]))
 
-        pm = PluginManager(128, 32, config_path=Path(tempfile.mkdtemp()) / "plugins.yaml",
-                           resources_path=Path(tempfile.mkdtemp()))
+        pm = PluginManager(
+            128,
+            32,
+            config_path=Path(tempfile.mkdtemp()) / "plugins.yaml",
+            resources_path=Path(tempfile.mkdtemp()),
+        )
 
         plugin = ConfigurablePlugin(sequence)
         pm.active_plugin = plugin
@@ -333,12 +338,12 @@ class TestErrorRecoveryProperty:
                 # Failed frame: should return last good frame
                 if last_good_frame is not None:
                     # After at least one success, errors must return last good frame
-                    assert frame is not None, (
-                        "Error recovery must return last good frame, not None"
-                    )
-                    assert frame == last_good_frame, (
-                        "Error recovery must return the last successfully rendered frame"
-                    )
+                    assert (
+                        frame is not None
+                    ), "Error recovery must return last good frame, not None"
+                    assert (
+                        frame == last_good_frame
+                    ), "Error recovery must return the last successfully rendered frame"
 
 
 # --- Unit Tests: Consecutive Error Deactivation (Property 8) ---
@@ -362,7 +367,9 @@ class TestConsecutiveErrorDeactivation:
         assert plugin_manager.should_deactivate() is True
 
     @pytest.mark.asyncio
-    async def test_four_errors_plus_one_success_does_not_deactivate(self, plugin_manager):
+    async def test_four_errors_plus_one_success_does_not_deactivate(
+        self, plugin_manager
+    ):
         """4 errors followed by 1 success does NOT trigger deactivation."""
         # Pattern: 4 failures then 1 success
         plugin = ConfigurablePlugin([False, False, False, False, True])

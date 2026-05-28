@@ -9,7 +9,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 import aiohttp
 from PIL import Image
@@ -253,9 +253,7 @@ class WeatherPlugin(ClockPlugin):
             return None
 
         if self._cache is None:
-            logger.warning(
-                "[weather] No weather data available - signaling completion"
-            )
+            logger.warning("[weather] No weather data available - signaling completion")
             return None
 
         # Check if we've completed all 4 pages
@@ -320,12 +318,12 @@ class WeatherPlugin(ClockPlugin):
             return None
 
         # Build API request parameters
-        params = {
-            "latitude": self._latitude,
-            "longitude": self._longitude,
+        params: dict[str, str] = {
+            "latitude": str(self._latitude),
+            "longitude": str(self._longitude),
             "current_weather": "true",
             "daily": "temperature_2m_max,temperature_2m_min,weathercode",
-            "forecast_days": 8,  # today + 7 days
+            "forecast_days": "8",
             "timezone": "auto",
         }
 
@@ -335,11 +333,14 @@ class WeatherPlugin(ClockPlugin):
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(
-                    OPEN_METEO_API_URL, params=params, timeout=aiohttp.ClientTimeout(total=10)
+                    OPEN_METEO_API_URL,
+                    params=params,
+                    timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status != 200:
                         logger.warning(
-                            "[weather] Open-Meteo API returned status %d", response.status
+                            "[weather] Open-Meteo API returned status %d",
+                            response.status,
                         )
                         return None
 
@@ -387,7 +388,9 @@ class WeatherPlugin(ClockPlugin):
                     DayForecast(
                         high=temps_max[i],
                         low=temps_min[i],
-                        condition_code=weather_codes[i] if i < len(weather_codes) else 0,
+                        condition_code=(
+                            weather_codes[i] if i < len(weather_codes) else 0
+                        ),
                     )
                 )
 
@@ -524,7 +527,9 @@ class WeatherPlugin(ClockPlugin):
         Returns:
             PIL Image in RGB mode.
         """
+        assert self._helpers is not None
         frame = self._helpers.create_frame()
+        assert self._cache is not None
         cache = self._cache
 
         # Draw weather icon vertically centered left
@@ -568,7 +573,9 @@ class WeatherPlugin(ClockPlugin):
         Returns:
             PIL Image in RGB mode.
         """
+        assert self._helpers is not None
         frame = self._helpers.create_frame()
+        assert self._cache is not None
         cache = self._cache
 
         # Draw "DEMAIN" / "TOMORROW" label at top (MENU font)
@@ -622,7 +629,9 @@ class WeatherPlugin(ClockPlugin):
         Returns:
             PIL Image in RGB mode.
         """
+        assert self._helpers is not None
         frame = self._helpers.create_frame()
+        assert self._cache is not None
         cache = self._cache
 
         # Calculate column positions for 3 days
@@ -667,6 +676,7 @@ class WeatherPlugin(ClockPlugin):
 
         # Draw vertical separators between columns
         pixels = frame.load()
+        assert pixels is not None
         for sep in range(1, num_days):
             sep_x = sep * col_width
             for y in range(0, height):
@@ -691,7 +701,9 @@ class WeatherPlugin(ClockPlugin):
         Returns:
             PIL Image in RGB mode.
         """
+        assert self._helpers is not None
         frame = self._helpers.create_frame()
+        assert self._cache is not None
         cache = self._cache
 
         num_days = min(7, len(cache.forecast_days))
@@ -721,7 +733,7 @@ class WeatherPlugin(ClockPlugin):
 
             # 12x12 icon centered
             icon = get_weather_icon_image(day.condition_code)
-            icon_small = icon.resize((12, 12), Image.LANCZOS)
+            icon_small = icon.resize((12, 12), Image.Resampling.LANCZOS)
             ix = col_x + (col_width - 12) // 2
             frame.paste(icon_small, (ix, 9))
 
@@ -768,6 +780,7 @@ class WeatherPlugin(ClockPlugin):
         dot_x = width - 5  # 2px margin from right edge
         dot_y = 2  # 2px margin from top edge
         pixels = frame.load()
+        assert pixels is not None
 
         for dy in range(3):
             for dx in range(3):

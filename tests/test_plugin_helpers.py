@@ -155,7 +155,9 @@ class TestFrameDimensionsExamples:
         ],
     )
     def test_create_frame_various_sizes(self, width, height, resources_path):
-        helpers = PluginHelpers(width=width, height=height, resources_path=resources_path)
+        helpers = PluginHelpers(
+            width=width, height=height, resources_path=resources_path
+        )
         frame = helpers.create_frame()
         assert frame.mode == "RGB"
         assert frame.size == (width, height)
@@ -170,7 +172,9 @@ class TestFrameDimensionsExamples:
         ],
     )
     def test_render_text_various_sizes(self, width, height, resources_path):
-        helpers = PluginHelpers(width=width, height=height, resources_path=resources_path)
+        helpers = PluginHelpers(
+            width=width, height=height, resources_path=resources_path
+        )
         frame = helpers.render_text("12:00")
         assert frame.mode == "RGB"
         assert frame.size == (width, height)
@@ -183,7 +187,9 @@ class TestFrameDimensionsExamples:
         ],
     )
     def test_render_text_centered_various_sizes(self, width, height, resources_path):
-        helpers = PluginHelpers(width=width, height=height, resources_path=resources_path)
+        helpers = PluginHelpers(
+            width=width, height=height, resources_path=resources_path
+        )
         frame = helpers.render_text("12:00", centered=True)
         assert frame.mode == "RGB"
         assert frame.size == (width, height)

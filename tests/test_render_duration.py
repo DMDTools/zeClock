@@ -21,7 +21,6 @@ from PIL import Image
 from zeclock.plugin_manager import PluginManager
 from zeclock.plugins.base import ClockPlugin
 
-
 # --- Test Fixtures ---
 
 
@@ -51,7 +50,10 @@ class CountingPlugin(ClockPlugin):
 
     async def render_frame(self, width: int, height: int) -> Optional[Image.Image]:
         self.render_call_count += 1
-        if self._frames_before_none is not None and self.render_call_count > self._frames_before_none:
+        if (
+            self._frames_before_none is not None
+            and self.render_call_count > self._frames_before_none
+        ):
             return None
         return Image.new("RGB", (width, height), (255, 128, 0))
 
@@ -288,11 +290,15 @@ class TestPluginRenderDurationProperty:
 
     @given(
         frames_before_none=st.integers(min_value=0, max_value=50),
-        elapsed_seconds=st.floats(min_value=0.0, max_value=60.0, allow_nan=False, allow_infinity=False),
+        elapsed_seconds=st.floats(
+            min_value=0.0, max_value=60.0, allow_nan=False, allow_infinity=False
+        ),
     )
     @settings(max_examples=100)
     @pytest.mark.asyncio
-    async def test_plugin_stops_on_none_or_30s(self, frames_before_none, elapsed_seconds):
+    async def test_plugin_stops_on_none_or_30s(
+        self, frames_before_none, elapsed_seconds
+    ):
         """For any active plugin, the PluginManager stops calling render_frame()
         when either the plugin returns None or 30 seconds have elapsed since
         activation, whichever occurs first.
@@ -340,7 +346,9 @@ class TestPluginRenderDurationProperty:
             assert frames_rendered <= frames_before_none
 
     @given(
-        elapsed_seconds=st.floats(min_value=30.0, max_value=120.0, allow_nan=False, allow_infinity=False),
+        elapsed_seconds=st.floats(
+            min_value=30.0, max_value=120.0, allow_nan=False, allow_infinity=False
+        ),
     )
     @settings(max_examples=100)
     @pytest.mark.asyncio
@@ -366,7 +374,9 @@ class TestPluginRenderDurationProperty:
         assert pm.should_deactivate() is True
 
     @given(
-        elapsed_seconds=st.floats(min_value=0.0, max_value=29.9, allow_nan=False, allow_infinity=False),
+        elapsed_seconds=st.floats(
+            min_value=0.0, max_value=29.9, allow_nan=False, allow_infinity=False
+        ),
     )
     @settings(max_examples=100)
     @pytest.mark.asyncio

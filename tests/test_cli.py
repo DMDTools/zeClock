@@ -21,7 +21,6 @@ from zeclock.plugin_manager import PluginManager
 from zeclock.plugin_registry import PluginRegistry
 from tests.conftest import DummyPlugin
 
-
 # --- Helpers ---
 
 
@@ -63,10 +62,12 @@ class TestListPluginsOutput:
         args = make_args(list_plugins=True, plugin_config=None)
 
         # Mock the PluginManager to avoid filesystem access
-        manager = build_manager_with_plugins([
-            ("pinball", "Pinball animation plugin", 70),
-            ("weather", "Weather display plugin", 30),
-        ])
+        manager = build_manager_with_plugins(
+            [
+                ("pinball", "Pinball animation plugin", 70),
+                ("weather", "Weather display plugin", 30),
+            ]
+        )
 
         with patch("zeclock.plugin_manager.PluginManager", return_value=manager):
             with patch("asyncio.run"):
@@ -97,10 +98,12 @@ class TestListPluginsOutput:
 
         args = make_args(list_plugins=True, plugin_config=None)
 
-        manager = build_manager_with_plugins([
-            ("pinball", "Pinball animation plugin", 100),
-            ("broken", "A broken plugin", 50),
-        ])
+        manager = build_manager_with_plugins(
+            [
+                ("pinball", "Pinball animation plugin", 100),
+                ("broken", "A broken plugin", 50),
+            ]
+        )
         manager.registry.mark_failed("broken", "init error")
 
         with patch("zeclock.plugin_manager.PluginManager", return_value=manager):
@@ -165,10 +168,12 @@ class TestPluginsFrequencyAssignment:
         """Two plugins via --plugins each get frequency 50."""
         from zeclock.clock import _handle_plugins_override
 
-        manager = build_manager_with_plugins([
-            ("pinball", "Pinball animation", 100),
-            ("weather", "Weather display", 100),
-        ])
+        manager = build_manager_with_plugins(
+            [
+                ("pinball", "Pinball animation", 100),
+                ("weather", "Weather display", 100),
+            ]
+        )
 
         args = make_args(plugins="pinball,weather")
         result = _handle_plugins_override(args, manager)
@@ -181,11 +186,13 @@ class TestPluginsFrequencyAssignment:
         """Three plugins via --plugins each get frequency 33 (100//3)."""
         from zeclock.clock import _handle_plugins_override
 
-        manager = build_manager_with_plugins([
-            ("alpha", "Alpha plugin", 100),
-            ("beta", "Beta plugin", 100),
-            ("gamma", "Gamma plugin", 100),
-        ])
+        manager = build_manager_with_plugins(
+            [
+                ("alpha", "Alpha plugin", 100),
+                ("beta", "Beta plugin", 100),
+                ("gamma", "Gamma plugin", 100),
+            ]
+        )
 
         args = make_args(plugins="alpha,beta,gamma")
         result = _handle_plugins_override(args, manager)
@@ -199,10 +206,12 @@ class TestPluginsFrequencyAssignment:
         """Single plugin via --plugins gets frequency 100."""
         from zeclock.clock import _handle_plugins_override
 
-        manager = build_manager_with_plugins([
-            ("pinball", "Pinball animation", 50),
-            ("weather", "Weather display", 50),
-        ])
+        manager = build_manager_with_plugins(
+            [
+                ("pinball", "Pinball animation", 50),
+                ("weather", "Weather display", 50),
+            ]
+        )
 
         args = make_args(plugins="pinball")
         result = _handle_plugins_override(args, manager)
@@ -216,11 +225,13 @@ class TestPluginsFrequencyAssignment:
         """Plugins not in --plugins list get frequency 0."""
         from zeclock.clock import _handle_plugins_override
 
-        manager = build_manager_with_plugins([
-            ("pinball", "Pinball animation", 70),
-            ("weather", "Weather display", 30),
-            ("custom", "Custom plugin", 50),
-        ])
+        manager = build_manager_with_plugins(
+            [
+                ("pinball", "Pinball animation", 70),
+                ("weather", "Weather display", 30),
+                ("custom", "Custom plugin", 50),
+            ]
+        )
 
         args = make_args(plugins="pinball,weather")
         result = _handle_plugins_override(args, manager)
@@ -241,8 +252,11 @@ class TestPluginConfigMissingFile:
         """--plugin-config with non-existent path exits with non-zero code."""
         result = subprocess.run(
             [
-                sys.executable, "-m", "zeclock.clock",
-                "--plugin-config", "/tmp/nonexistent_zeclock_config_12345.yaml",
+                sys.executable,
+                "-m",
+                "zeclock.clock",
+                "--plugin-config",
+                "/tmp/nonexistent_zeclock_config_12345.yaml",
             ],
             capture_output=True,
             text=True,
@@ -254,8 +268,11 @@ class TestPluginConfigMissingFile:
         """--plugin-config with non-existent path outputs error message."""
         result = subprocess.run(
             [
-                sys.executable, "-m", "zeclock.clock",
-                "--plugin-config", "/tmp/nonexistent_zeclock_config_12345.yaml",
+                sys.executable,
+                "-m",
+                "zeclock.clock",
+                "--plugin-config",
+                "/tmp/nonexistent_zeclock_config_12345.yaml",
             ],
             capture_output=True,
             text=True,
@@ -275,9 +292,11 @@ class TestPluginsAllUnrecognized:
         """When all --plugins names are unrecognized, returns False (fallback)."""
         from zeclock.clock import _handle_plugins_override
 
-        manager = build_manager_with_plugins([
-            ("pinball", "Pinball animation", 100),
-        ])
+        manager = build_manager_with_plugins(
+            [
+                ("pinball", "Pinball animation", 100),
+            ]
+        )
 
         args = make_args(plugins="nonexistent-a,nonexistent-b")
         result = _handle_plugins_override(args, manager)
@@ -288,9 +307,11 @@ class TestPluginsAllUnrecognized:
         """When all --plugins names are unrecognized, logs an error."""
         from zeclock.clock import _handle_plugins_override
 
-        manager = build_manager_with_plugins([
-            ("pinball", "Pinball animation", 100),
-        ])
+        manager = build_manager_with_plugins(
+            [
+                ("pinball", "Pinball animation", 100),
+            ]
+        )
 
         args = make_args(plugins="ghost,phantom")
 
@@ -311,10 +332,12 @@ class TestPluginsMixedValidInvalid:
         """Invalid names in --plugins produce a warning log."""
         from zeclock.clock import _handle_plugins_override
 
-        manager = build_manager_with_plugins([
-            ("pinball", "Pinball animation", 100),
-            ("weather", "Weather display", 100),
-        ])
+        manager = build_manager_with_plugins(
+            [
+                ("pinball", "Pinball animation", 100),
+                ("weather", "Weather display", 100),
+            ]
+        )
 
         args = make_args(plugins="pinball,nonexistent,weather")
 
@@ -329,11 +352,13 @@ class TestPluginsMixedValidInvalid:
         """Only valid names from --plugins get frequency assigned."""
         from zeclock.clock import _handle_plugins_override
 
-        manager = build_manager_with_plugins([
-            ("pinball", "Pinball animation", 100),
-            ("weather", "Weather display", 100),
-            ("custom", "Custom plugin", 100),
-        ])
+        manager = build_manager_with_plugins(
+            [
+                ("pinball", "Pinball animation", 100),
+                ("weather", "Weather display", 100),
+                ("custom", "Custom plugin", 100),
+            ]
+        )
 
         args = make_args(plugins="pinball,nonexistent,weather")
 
@@ -350,9 +375,11 @@ class TestPluginsMixedValidInvalid:
         """Multiple invalid names each produce a warning."""
         from zeclock.clock import _handle_plugins_override
 
-        manager = build_manager_with_plugins([
-            ("pinball", "Pinball animation", 100),
-        ])
+        manager = build_manager_with_plugins(
+            [
+                ("pinball", "Pinball animation", 100),
+            ]
+        )
 
         args = make_args(plugins="pinball,ghost,phantom,specter")
 
