@@ -340,8 +340,6 @@ def _build_libzedmd_from_source(platform_id: str, version: str, temp_dir: Path) 
       - Docker with BuildKit support, OR
       - git, cmake, gcc/g++, make, libtool, automake, autoconf
     """
-    import subprocess
-
     print_color(BLUE, f"🌐 Platform: {platform_id} (building from source)")
 
     # Determine arch from platform_id
@@ -433,10 +431,10 @@ def _native_build_libzedmd(platform_id: str, arch: str, version: str, temp_dir: 
             error_msg = e.stderr[-500:] if e.stderr else "unknown error"
             if "libtool" in error_msg.lower() or "LIBTOOL" in error_msg:
                 raise RuntimeError(
-                    f"Build failed: missing 'libtool'. Install it with:\n"
-                    f"  sudo apt install libtool automake autoconf pkg-config\n"
-                    f"Or use the Docker-based builder:\n"
-                    f"  scripts/build-libzedmd.sh"
+                    "Build failed: missing 'libtool'. Install it with:\n"
+                    "  sudo apt install libtool automake autoconf pkg-config\n"
+                    "Or use the Docker-based builder:\n"
+                    "  scripts/build-libzedmd.sh"
                 ) from e
             raise RuntimeError(
                 f"Failed to build external dependencies: {error_msg}"
@@ -450,7 +448,7 @@ def _native_build_libzedmd(platform_id: str, arch: str, version: str, temp_dir: 
     print_color(YELLOW, "🔧 Building libzedmd with cmake...")
     try:
         subprocess.run(
-            ["cmake", f"-DPLATFORM=linux", f"-DARCH={arch}",
+            ["cmake", "-DPLATFORM=linux", f"-DARCH={arch}",
              "-DCMAKE_BUILD_TYPE=Release", "-B", str(build_dir)],
             check=True, capture_output=True, text=True,
             cwd=str(repo_dir),
