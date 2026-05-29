@@ -99,9 +99,7 @@ class TestParseConfigFile:
     def test_partial_config_zedmd_only(self, tmp_path):
         config_file = tmp_path / "zeclock.ini"
         config_file.write_text(
-            "[zedmd]\n"
-            "wifi_addr = 192.168.0.35\n"
-            "brightness = 5\n"
+            "[zedmd]\n" "wifi_addr = 192.168.0.35\n" "brightness = 5\n"
         )
         result = _parse_config_file(config_file)
         assert result["wifi_addr"] == "192.168.0.35"
@@ -112,10 +110,7 @@ class TestParseConfigFile:
     def test_empty_values_ignored(self, tmp_path):
         config_file = tmp_path / "zeclock.ini"
         config_file.write_text(
-            "[zedmd]\n"
-            "wifi_addr = \n"
-            "device = \n"
-            "brightness = \n"
+            "[zedmd]\n" "wifi_addr = \n" "device = \n" "brightness = \n"
         )
         result = _parse_config_file(config_file)
         assert "wifi_addr" not in result
@@ -124,11 +119,7 @@ class TestParseConfigFile:
 
     def test_invalid_port_uses_default(self, tmp_path, caplog):
         config_file = tmp_path / "zeclock.ini"
-        config_file.write_text(
-            "[dmdserver]\n"
-            "host = myhost\n"
-            "port = notanumber\n"
-        )
+        config_file.write_text("[dmdserver]\n" "host = myhost\n" "port = notanumber\n")
         with caplog.at_level(logging.WARNING):
             result = _parse_config_file(config_file)
         assert result["dmdserver_host"] == "myhost"
@@ -199,9 +190,7 @@ class TestLoadConfig:
         """Req 4.4: If both wifi_addr and device are configured, use WiFi."""
         config_file = tmp_path / "zeclock.ini"
         config_file.write_text(
-            "[zedmd]\n"
-            "wifi_addr = 192.168.0.35\n"
-            "device = /dev/ttyUSB0\n"
+            "[zedmd]\n" "wifi_addr = 192.168.0.35\n" "device = /dev/ttyUSB0\n"
         )
         with caplog.at_level(logging.INFO):
             config = load_config(config_path=config_file)
@@ -212,10 +201,7 @@ class TestLoadConfig:
     def test_wifi_addr_cli_overrides_device_in_file(self, tmp_path, caplog):
         """CLI wifi_addr should still trigger the wifi-over-device rule."""
         config_file = tmp_path / "zeclock.ini"
-        config_file.write_text(
-            "[zedmd]\n"
-            "device = /dev/ttyUSB0\n"
-        )
+        config_file.write_text("[zedmd]\n" "device = /dev/ttyUSB0\n")
         with caplog.at_level(logging.INFO):
             config = load_config(config_path=config_file, wifi_addr="10.0.0.1")
         assert config.wifi_addr == "10.0.0.1"
@@ -234,10 +220,7 @@ class TestLoadConfig:
     def test_device_only_no_wifi(self, tmp_path):
         """Req 4.9: Only device configured, no wifi_addr."""
         config_file = tmp_path / "zeclock.ini"
-        config_file.write_text(
-            "[zedmd]\n"
-            "device = /dev/ttyACM0\n"
-        )
+        config_file.write_text("[zedmd]\n" "device = /dev/ttyACM0\n")
         config = load_config(config_path=config_file)
         assert config.wifi_addr is None
         assert config.device == "/dev/ttyACM0"

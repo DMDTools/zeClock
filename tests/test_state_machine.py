@@ -373,9 +373,7 @@ class TestClockOnlyDuration:
         clock._plugin_manager.config.plugin_entries = []
 
         plugin = DummyPlugin(name="test-reset", frames_to_render=1)
-        clock._plugin_manager.registry.register(
-            plugin, source="builtin", frequency=100
-        )
+        clock._plugin_manager.registry.register(plugin, source="builtin", frequency=100)
 
         # Activate plugin
         await clock._plugin_manager.activate_plugin(plugin)
@@ -561,9 +559,7 @@ class TestStateTransitions:
 
         # Register and activate a plugin that renders 1 frame then completes
         plugin = DummyPlugin(name="short-plugin", frames_to_render=1)
-        clock._plugin_manager.registry.register(
-            plugin, source="builtin", frequency=100
-        )
+        clock._plugin_manager.registry.register(plugin, source="builtin", frequency=100)
 
         # Activate
         success = await clock._plugin_manager.activate_plugin(plugin)

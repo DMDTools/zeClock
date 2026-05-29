@@ -80,16 +80,14 @@ class ZeDMDBackend(DMDBackend):
         self._width = width
         self._height = height
         self._connected = False
-        self._instance = None
+        self._instance: Optional[int] = None
 
         # Load library — raises ImportError if not found
         lib_path = _find_library()
         try:
             self._lib = ctypes.CDLL(str(lib_path))
         except OSError as e:
-            raise ImportError(
-                f"Failed to load libzedmd from {lib_path}: {e}"
-            ) from e
+            raise ImportError(f"Failed to load libzedmd from {lib_path}: {e}") from e
         self._setup_ctypes()
 
     def _setup_ctypes(self) -> None:
@@ -148,9 +146,7 @@ class ZeDMDBackend(DMDBackend):
 
         # Connect via WiFi or USB
         if self._wifi_addr:
-            ok = self._lib.ZeDMD_OpenWiFi(
-                self._instance, self._wifi_addr.encode()
-            )
+            ok = self._lib.ZeDMD_OpenWiFi(self._instance, self._wifi_addr.encode())
         elif self._device:
             self._lib.ZeDMD_SetDevice(self._instance, self._device.encode())
             ok = self._lib.ZeDMD_Open(self._instance)

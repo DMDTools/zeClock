@@ -485,7 +485,9 @@ def main() -> None:
     backend_mode = args.backend or "auto"
 
     # Otherwise, check / initialize interactively (or non-interactively if --no-prompt)
-    if not check_and_install_resources(interactive=not args.no_prompt, backend=backend_mode):
+    if not check_and_install_resources(
+        interactive=not args.no_prompt, backend=backend_mode
+    ):
         print("❌ Cannot start: required resources are missing.")
         sys.exit(1)
 

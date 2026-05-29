@@ -150,9 +150,7 @@ class TestCheckAndInstallResources:
 
     @patch("zeclock.installer.are_resources_installed")
     @patch("zeclock.installer.is_libzedmd_installed")
-    def test_returns_true_when_all_installed(
-        self, mock_libzedmd, mock_resources
-    ):
+    def test_returns_true_when_all_installed(self, mock_libzedmd, mock_resources):
         mock_libzedmd.return_value = True
         mock_resources.return_value = True
         assert check_and_install_resources(interactive=False) is True

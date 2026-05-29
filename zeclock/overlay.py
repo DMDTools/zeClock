@@ -7,7 +7,9 @@ _colorize_lut_cache: Dict[
 ] = {}
 
 # Pre-built LUT: expand each byte value (0-255) into 8 mask pixels (0 or 255)
-_BYTE_TO_MASK = [bytes([255 if (b >> bit) & 1 else 0 for bit in range(8)]) for b in range(256)]
+_BYTE_TO_MASK = [
+    bytes([255 if (b >> bit) & 1 else 0 for bit in range(8)]) for b in range(256)
+]
 
 
 def _get_color_channels(
@@ -55,7 +57,9 @@ def colorize_grayscale(
 _colorize_grayscale = colorize_grayscale
 
 
-def _unpack_bitmask(mask_bytes: bytes, mask_width_bytes: int, width: int, height: int) -> Image.Image:
+def _unpack_bitmask(
+    mask_bytes: bytes, mask_width_bytes: int, width: int, height: int
+) -> Image.Image:
     """Unpack a packed bit-mask into a PIL 'L' mode Image.
 
     Uses a pre-built 256-entry lookup table to expand each byte into 8 pixels
@@ -75,11 +79,17 @@ def _unpack_bitmask(mask_bytes: bytes, mask_width_bytes: int, width: int, height
         row_offset = y * mask_width_bytes
         out_row = y * width
         for byte_idx in range(mask_width_bytes):
-            byte_val = mask_bytes[row_offset + byte_idx] if (row_offset + byte_idx) < len(mask_bytes) else 0
+            byte_val = (
+                mask_bytes[row_offset + byte_idx]
+                if (row_offset + byte_idx) < len(mask_bytes)
+                else 0
+            )
             if byte_val:
                 base_x = byte_idx * 8
                 end = min(8, width - base_x)
-                mask_data[out_row + base_x:out_row + base_x + end] = _BYTE_TO_MASK[byte_val][:end]
+                mask_data[out_row + base_x : out_row + base_x + end] = _BYTE_TO_MASK[
+                    byte_val
+                ][:end]
     return Image.frombytes("L", (width, height), bytes(mask_data))
 
 

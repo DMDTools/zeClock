@@ -54,10 +54,14 @@ def make_helpers_mock():
     helpers = MagicMock()
     helpers.create_frame.return_value = Image.new("RGB", (128, 32), (0, 0, 0))
 
-    def render_text_side_effect(text, x=0, y=0, color=(255, 128, 0), font_name="STANDARD"):
+    def render_text_side_effect(
+        text, x=0, y=0, color=(255, 128, 0), font_name="STANDARD"
+    ):
         return Image.new("RGB", (128, 32), (0, 0, 0))
 
-    def render_text_right_aligned_side_effect(text, y=0, margin=1, color=(255, 128, 0), font_name="STANDARD"):
+    def render_text_right_aligned_side_effect(
+        text, y=0, margin=1, color=(255, 128, 0), font_name="STANDARD"
+    ):
         return Image.new("RGB", (128, 32), (0, 0, 0))
 
     def composite_side_effect(bg, fg):
@@ -65,7 +69,9 @@ def make_helpers_mock():
         return bg
 
     helpers.render_text.side_effect = render_text_side_effect
-    helpers.render_text_right_aligned.side_effect = render_text_right_aligned_side_effect
+    helpers.render_text_right_aligned.side_effect = (
+        render_text_right_aligned_side_effect
+    )
     helpers.composite_frames.side_effect = composite_side_effect
     return helpers
 
@@ -120,12 +126,12 @@ class TestPageAlternation:
         ):
             await stock_plugin.initialize(config)
 
-        stock_plugin._cache = StockData(
-            quotes=[make_quote()], fetched_at=time.time()
-        )
+        stock_plugin._cache = StockData(quotes=[make_quote()], fetched_at=time.time())
 
-        with patch.object(stock_plugin, "_render_page") as mock_info, \
-             patch.object(stock_plugin, "_render_graph_page") as mock_graph:
+        with (
+            patch.object(stock_plugin, "_render_page") as mock_info,
+            patch.object(stock_plugin, "_render_graph_page") as mock_graph,
+        ):
             mock_info.return_value = Image.new("RGB", (128, 32))
             mock_graph.return_value = Image.new("RGB", (128, 32))
 
@@ -163,9 +169,7 @@ class TestGraphRendering:
         ):
             await stock_plugin.initialize(config)
 
-        stock_plugin._cache = StockData(
-            quotes=[make_quote()], fetched_at=time.time()
-        )
+        stock_plugin._cache = StockData(quotes=[make_quote()], fetched_at=time.time())
 
         frame = stock_plugin._render_graph_page(0, 128, 32)
         assert isinstance(frame, Image.Image)
@@ -189,9 +193,7 @@ class TestGraphRendering:
 
         # Quote with only 1 price point
         quote = make_quote(intraday_prices=[150.0])
-        stock_plugin._cache = StockData(
-            quotes=[quote], fetched_at=time.time()
-        )
+        stock_plugin._cache = StockData(quotes=[quote], fetched_at=time.time())
 
         stock_plugin._render_graph_page(0, 128, 32)
 
@@ -216,9 +218,7 @@ class TestGraphRendering:
             await stock_plugin.initialize(config)
 
         quote = make_quote(intraday_prices=[])
-        stock_plugin._cache = StockData(
-            quotes=[quote], fetched_at=time.time()
-        )
+        stock_plugin._cache = StockData(quotes=[quote], fetched_at=time.time())
 
         stock_plugin._render_graph_page(0, 128, 32)
 
@@ -246,9 +246,7 @@ class TestGraphRendering:
         # Create a quote with a clear upward trend
         prices = [100.0 + i * 0.5 for i in range(100)]
         quote = make_quote(price=149.5, change=49.5, intraday_prices=prices)
-        stock_plugin._cache = StockData(
-            quotes=[quote], fetched_at=time.time()
-        )
+        stock_plugin._cache = StockData(quotes=[quote], fetched_at=time.time())
 
         frame = stock_plugin._render_graph_page(0, 128, 32)
         pixels = frame.load()
@@ -279,9 +277,7 @@ class TestGraphRendering:
 
         prices = [100.0 + i * 0.1 for i in range(50)]
         quote = make_quote(price=105.0, change=5.0, intraday_prices=prices)
-        stock_plugin._cache = StockData(
-            quotes=[quote], fetched_at=time.time()
-        )
+        stock_plugin._cache = StockData(quotes=[quote], fetched_at=time.time())
 
         frame = stock_plugin._render_graph_page(0, 128, 32)
         pixels = frame.load()
@@ -313,9 +309,7 @@ class TestGraphRendering:
 
         prices = [105.0 - i * 0.1 for i in range(50)]
         quote = make_quote(price=100.0, change=-5.0, intraday_prices=prices)
-        stock_plugin._cache = StockData(
-            quotes=[quote], fetched_at=time.time()
-        )
+        stock_plugin._cache = StockData(quotes=[quote], fetched_at=time.time())
 
         frame = stock_plugin._render_graph_page(0, 128, 32)
         pixels = frame.load()
@@ -354,9 +348,7 @@ class TestGraphReferenceLine:
         quote = make_quote(
             price=109.75, change=-0.25, intraday_prices=prices, trading_minutes=390
         )
-        stock_plugin._cache = StockData(
-            quotes=[quote], fetched_at=time.time()
-        )
+        stock_plugin._cache = StockData(quotes=[quote], fetched_at=time.time())
 
         frame = stock_plugin._render_graph_page(0, 128, 32)
         pixels = frame.load()
@@ -390,9 +382,7 @@ class TestGraphReferenceLine:
         quote = make_quote(
             price=110.0, change=5.0, intraday_prices=prices, trading_minutes=390
         )
-        stock_plugin._cache = StockData(
-            quotes=[quote], fetched_at=time.time()
-        )
+        stock_plugin._cache = StockData(quotes=[quote], fetched_at=time.time())
 
         frame = stock_plugin._render_graph_page(0, 128, 32)
         pixels = frame.load()
@@ -477,11 +467,11 @@ class TestIntradayPricesExtraction:
             },
             "timestamp": [
                 reg_start - 60,  # pre-market (excluded)
-                reg_start,       # regular
+                reg_start,  # regular
                 reg_start + 60,  # regular
-                reg_start + 120, # regular (None close)
-                reg_start + 180, # regular
-                reg_end + 60,    # post-market (excluded)
+                reg_start + 120,  # regular (None close)
+                reg_start + 180,  # regular
+                reg_end + 60,  # post-market (excluded)
             ],
             "indicators": {
                 "quote": [{"close": [99.0, 100.0, 101.0, None, 102.0, 103.0]}]
@@ -495,9 +485,7 @@ class TestIntradayPricesExtraction:
         """Should return all non-None closes when no timestamps available."""
         result = {
             "meta": {},
-            "indicators": {
-                "quote": [{"close": [100.0, 101.0, None, 102.0]}]
-            },
+            "indicators": {"quote": [{"close": [100.0, 101.0, None, 102.0]}]},
         }
         prices = stock_plugin._extract_intraday_prices(result)
         assert prices == [100.0, 101.0, 102.0]
@@ -547,12 +535,10 @@ class TestIntradayPricesExtraction:
                 reg_start - 300,  # pre-market
                 reg_start - 240,  # pre-market
                 reg_start - 180,  # pre-market
-                reg_start,        # regular
-                reg_start + 60,   # regular
+                reg_start,  # regular
+                reg_start + 60,  # regular
             ],
-            "indicators": {
-                "quote": [{"close": [95.0, 96.0, 97.0, 100.0, 101.0]}]
-            },
+            "indicators": {"quote": [{"close": [95.0, 96.0, 97.0, 100.0, 101.0]}]},
         }
         prices = stock_plugin._extract_intraday_prices(result)
         assert prices == [100.0, 101.0]
@@ -568,14 +554,12 @@ class TestIntradayPricesExtraction:
                 }
             },
             "timestamp": [
-                reg_start,       # regular
+                reg_start,  # regular
                 reg_start + 60,  # regular
-                reg_end + 60,    # post-market
-                reg_end + 120,   # post-market
+                reg_end + 60,  # post-market
+                reg_end + 120,  # post-market
             ],
-            "indicators": {
-                "quote": [{"close": [100.0, 101.0, 105.0, 106.0]}]
-            },
+            "indicators": {"quote": [{"close": [100.0, 101.0, 105.0, 106.0]}]},
         }
         prices = stock_plugin._extract_intraday_prices(result)
         assert prices == [100.0, 101.0]
@@ -602,9 +586,7 @@ class TestGraphEdgeCases:
         # All prices the same
         prices = [150.0] * 100
         quote = make_quote(price=150.0, change=0.0, intraday_prices=prices)
-        stock_plugin._cache = StockData(
-            quotes=[quote], fetched_at=time.time()
-        )
+        stock_plugin._cache = StockData(quotes=[quote], fetched_at=time.time())
 
         # Should not raise
         frame = stock_plugin._render_graph_page(0, 128, 32)
@@ -627,9 +609,7 @@ class TestGraphEdgeCases:
 
         prices = [100.0, 105.0]
         quote = make_quote(price=105.0, change=5.0, intraday_prices=prices)
-        stock_plugin._cache = StockData(
-            quotes=[quote], fetched_at=time.time()
-        )
+        stock_plugin._cache = StockData(quotes=[quote], fetched_at=time.time())
 
         frame = stock_plugin._render_graph_page(0, 128, 32)
         assert isinstance(frame, Image.Image)
@@ -650,9 +630,7 @@ class TestGraphEdgeCases:
         ):
             await stock_plugin.initialize(config)
 
-        stock_plugin._cache = StockData(
-            quotes=[make_quote()], fetched_at=time.time()
-        )
+        stock_plugin._cache = StockData(quotes=[make_quote()], fetched_at=time.time())
 
         # Index 5 is out of range (only 1 quote)
         frame = stock_plugin._render_graph_page(5, 128, 32)
@@ -682,9 +660,7 @@ class TestProportionalGraph:
         quote = make_quote(
             price=109.75, change=9.75, intraday_prices=prices, trading_minutes=390
         )
-        stock_plugin._cache = StockData(
-            quotes=[quote], fetched_at=time.time()
-        )
+        stock_plugin._cache = StockData(quotes=[quote], fetched_at=time.time())
 
         frame = stock_plugin._render_graph_page(0, 128, 32)
         pixels = frame.load()
@@ -731,9 +707,7 @@ class TestProportionalGraph:
         quote = make_quote(
             price=119.45, change=19.45, intraday_prices=prices, trading_minutes=390
         )
-        stock_plugin._cache = StockData(
-            quotes=[quote], fetched_at=time.time()
-        )
+        stock_plugin._cache = StockData(quotes=[quote], fetched_at=time.time())
 
         frame = stock_plugin._render_graph_page(0, 128, 32)
         pixels = frame.load()
@@ -768,9 +742,7 @@ class TestProportionalGraph:
         quote = make_quote(
             price=109.6, change=9.6, intraday_prices=prices, trading_minutes=390
         )
-        stock_plugin._cache = StockData(
-            quotes=[quote], fetched_at=time.time()
-        )
+        stock_plugin._cache = StockData(quotes=[quote], fetched_at=time.time())
 
         frame = stock_plugin._render_graph_page(0, 128, 32)
         pixels = frame.load()
@@ -805,9 +777,7 @@ class TestProportionalGraph:
         quote = make_quote(
             price=115.0, change=10.0, intraday_prices=prices, trading_minutes=390
         )
-        stock_plugin._cache = StockData(
-            quotes=[quote], fetched_at=time.time()
-        )
+        stock_plugin._cache = StockData(quotes=[quote], fetched_at=time.time())
 
         frame = stock_plugin._render_graph_page(0, 128, 32)
         pixels = frame.load()

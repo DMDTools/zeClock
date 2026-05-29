@@ -141,9 +141,7 @@ class TestCreateBackendAutoMode:
         with patch("zeclock.backends.zedmd._find_library") as mock_find:
             mock_find.return_value = "/fake/path/libzedmd.so"
             with patch("ctypes.CDLL", return_value=mock_lib):
-                with caplog.at_level(
-                    logging.INFO, logger="zeclock.backends.factory"
-                ):
+                with caplog.at_level(logging.INFO, logger="zeclock.backends.factory"):
                     create_backend(backend="auto")
                     assert "Selected backend: zedmd" in caplog.text
 
@@ -157,9 +155,7 @@ class TestCreateBackendAutoMode:
                 "zeclock.backends.dmdserver.DMDServerBackend.__init__",
                 side_effect=Exception("Connection refused"),
             ):
-                with caplog.at_level(
-                    logging.ERROR, logger="zeclock.backends.factory"
-                ):
+                with caplog.at_level(logging.ERROR, logger="zeclock.backends.factory"):
                     with pytest.raises(SystemExit):
                         create_backend(backend="auto")
                     assert "libzedmd not found" in caplog.text

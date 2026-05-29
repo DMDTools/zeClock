@@ -303,7 +303,9 @@ def _download_libzedmd_release(platform_id: str, version: str, temp_dir: Path) -
     version_clean = version.lstrip("v")
     filename = _get_release_filename(platform_id, version_clean)
     extension = "zip" if filename.endswith(".zip") else "tar.gz"
-    url = f"https://github.com/{GITHUB_REPO_ZEDMD}/releases/download/{version}/{filename}"
+    url = (
+        f"https://github.com/{GITHUB_REPO_ZEDMD}/releases/download/{version}/{filename}"
+    )
 
     print_color(BLUE, f"🌐 Platform: {platform_id}")
     print_color(YELLOW, f"📥 Downloading: {filename}")
@@ -362,12 +364,16 @@ def _try_docker_build(version: str, temp_dir: Path) -> bool:
     try:
         subprocess.run(
             ["docker", "info"],
-            check=True, capture_output=True, text=True,
+            check=True,
+            capture_output=True,
+            text=True,
         )
     except (FileNotFoundError, subprocess.CalledProcessError):
         return False
 
-    print_color(YELLOW, "🐳 Building libzedmd via Docker (this may take a few minutes)...")
+    print_color(
+        YELLOW, "🐳 Building libzedmd via Docker (this may take a few minutes)..."
+    )
 
     # Find the Dockerfile
     # Look relative to this file's location
@@ -378,26 +384,41 @@ def _try_docker_build(version: str, temp_dir: Path) -> bool:
         # Try relative to CWD
         dockerfile = Path("scripts/build-libzedmd.Dockerfile")
         if not dockerfile.exists():
-            print_color(YELLOW, "   ⚠️  build-libzedmd.Dockerfile not found, skipping Docker build")
+            print_color(
+                YELLOW,
+                "   ⚠️  build-libzedmd.Dockerfile not found, skipping Docker build",
+            )
             return False
 
     try:
         subprocess.run(
-            ["docker", "build",
-             "-f", str(dockerfile),
-             "--output", f"type=local,dest={temp_dir}",
-             str(dockerfile.parent.parent)],
-            check=True, capture_output=True, text=True,
+            [
+                "docker",
+                "build",
+                "-f",
+                str(dockerfile),
+                "--output",
+                f"type=local,dest={temp_dir}",
+                str(dockerfile.parent.parent),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
             env={**os.environ, "DOCKER_BUILDKIT": "1"},
         )
         print_color(GREEN, "✅ Docker build complete")
         return True
     except subprocess.CalledProcessError as e:
-        print_color(YELLOW, f"   ⚠️  Docker build failed: {e.stderr[-200:] if e.stderr else 'unknown error'}")
+        print_color(
+            YELLOW,
+            f"   ⚠️  Docker build failed: {e.stderr[-200:] if e.stderr else 'unknown error'}",
+        )
         return False
 
 
-def _native_build_libzedmd(platform_id: str, arch: str, version: str, temp_dir: Path) -> Path:
+def _native_build_libzedmd(
+    platform_id: str, arch: str, version: str, temp_dir: Path
+) -> Path:
     """Build libzedmd natively. Requires git, cmake, gcc, make, libtool, automake, autoconf."""
     import subprocess
 
@@ -407,9 +428,19 @@ def _native_build_libzedmd(platform_id: str, arch: str, version: str, temp_dir: 
     repo_dir = temp_dir / "libzedmd"
     try:
         subprocess.run(
-            ["git", "clone", "--depth", "1", "--branch", version,
-             f"https://github.com/{GITHUB_REPO_ZEDMD}.git", str(repo_dir)],
-            check=True, capture_output=True, text=True,
+            [
+                "git",
+                "clone",
+                "--depth",
+                "1",
+                "--branch",
+                version,
+                f"https://github.com/{GITHUB_REPO_ZEDMD}.git",
+                str(repo_dir),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
         )
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"Failed to clone libzedmd: {e.stderr}") from e
@@ -424,7 +455,9 @@ def _native_build_libzedmd(platform_id: str, arch: str, version: str, temp_dir: 
         try:
             subprocess.run(
                 ["bash", str(external_script)],
-                check=True, capture_output=True, text=True,
+                check=True,
+                capture_output=True,
+                text=True,
                 cwd=str(repo_dir),
             )
         except subprocess.CalledProcessError as e:
@@ -441,27 +474,37 @@ def _native_build_libzedmd(platform_id: str, arch: str, version: str, temp_dir: 
             ) from e
         print_color(GREEN, "✅ External dependencies built")
     else:
-        print_color(YELLOW, f"⚠️  No external script found at {external_script}, skipping")
+        print_color(
+            YELLOW, f"⚠️  No external script found at {external_script}, skipping"
+        )
 
     # Build with cmake
     build_dir = repo_dir / "build"
     print_color(YELLOW, "🔧 Building libzedmd with cmake...")
     try:
         subprocess.run(
-            ["cmake", "-DPLATFORM=linux", f"-DARCH={arch}",
-             "-DCMAKE_BUILD_TYPE=Release", "-B", str(build_dir)],
-            check=True, capture_output=True, text=True,
+            [
+                "cmake",
+                "-DPLATFORM=linux",
+                f"-DARCH={arch}",
+                "-DCMAKE_BUILD_TYPE=Release",
+                "-B",
+                str(build_dir),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
             cwd=str(repo_dir),
         )
         subprocess.run(
             ["cmake", "--build", str(build_dir), "--", f"-j{os.cpu_count() or 2}"],
-            check=True, capture_output=True, text=True,
+            check=True,
+            capture_output=True,
+            text=True,
             cwd=str(repo_dir),
         )
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(
-            f"Failed to build libzedmd: {e.stderr[-500:]}"
-        ) from e
+        raise RuntimeError(f"Failed to build libzedmd: {e.stderr[-500:]}") from e
 
     print_color(GREEN, "✅ Build complete")
 
@@ -638,7 +681,9 @@ def are_resources_installed() -> bool:
     return has_fonts and has_animations
 
 
-def check_and_install_resources(interactive: bool = True, backend: str = "auto") -> bool:
+def check_and_install_resources(
+    interactive: bool = True, backend: str = "auto"
+) -> bool:
     """
     Checks user's local installations.
     Downloads and configures missing parts interactively or automatically.

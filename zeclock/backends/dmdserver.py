@@ -54,7 +54,9 @@ class DMDServerBackend(DMDBackend):
             self._connected = True
             return True
         except Exception as e:
-            logger.warning("Failed to connect to dmdserver at %s:%d: %s", self.host, self.port, e)
+            logger.warning(
+                "Failed to connect to dmdserver at %s:%d: %s", self.host, self.port, e
+            )
             self._connected = False
             return False
 

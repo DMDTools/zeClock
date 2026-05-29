@@ -115,7 +115,9 @@ class BitmapFont:
                 pixel_buf[out_row + x + 1] = _NIBBLE_TO_GRAY_FONT[hi]
             if dots_width % 2:
                 byte_val = dots_data[row_start + ((dots_width - 1) >> 1)]
-                pixel_buf[out_row + dots_width - 1] = _NIBBLE_TO_GRAY_FONT[byte_val & 0x0F]
+                pixel_buf[out_row + dots_width - 1] = _NIBBLE_TO_GRAY_FONT[
+                    byte_val & 0x0F
+                ]
 
         bitmap_img = Image.frombytes("L", (dots_width, dots_height), bytes(pixel_buf))
 
@@ -197,10 +199,15 @@ class BitmapFont:
                         for gx in range(glyph_w):
                             src_x = glyph_x_offset + gx
                             src_byte_idx = (src_x >> 3) + src_row
-                            if src_byte_idx < len(src_mask) and (src_mask[src_byte_idx] >> (src_x & 7)) & 1:
+                            if (
+                                src_byte_idx < len(src_mask)
+                                and (src_mask[src_byte_idx] >> (src_x & 7)) & 1
+                            ):
                                 dest_x = x_pos + gx
                                 if 0 <= dest_x < width:
-                                    mask_array[(dest_x >> 3) + dest_row] |= 1 << (dest_x & 7)
+                                    mask_array[(dest_x >> 3) + dest_row] |= 1 << (
+                                        dest_x & 7
+                                    )
                                     has_mask = True
 
                 x_pos += self.char_info[vc]["width"]

@@ -146,9 +146,7 @@ class TestZeDMDBackendSendFrame:
         assert result is True
         mock_lib.ZeDMD_RenderRgb888.assert_called_once()
 
-    def test_send_frame_returns_false_when_not_connected(
-        self, zedmd_backend, mock_lib
-    ):
+    def test_send_frame_returns_false_when_not_connected(self, zedmd_backend, mock_lib):
         """send_frame() returns False when not connected."""
         # Make connect fail so backend stays disconnected
         mock_lib.ZeDMD_GetInstance.return_value = 0

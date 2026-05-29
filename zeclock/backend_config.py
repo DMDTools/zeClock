@@ -65,7 +65,7 @@ def _parse_config_file(config_path: Path) -> dict:
     Returns:
         Dictionary with parsed config values (only keys that are present).
     """
-    result = {}
+    result: dict[str, object] = {}
 
     if not config_path.exists():
         logger.debug(f"Config file not found: {config_path}")
@@ -173,9 +173,7 @@ def load_config(
 
     # Req 4.4: If both wifi_addr and device are configured, use WiFi and ignore device
     if config.wifi_addr and config.device:
-        logger.info(
-            "Both wifi_addr and device configured; using WiFi, ignoring device"
-        )
+        logger.info("Both wifi_addr and device configured; using WiFi, ignoring device")
         config.device = None
 
     return config

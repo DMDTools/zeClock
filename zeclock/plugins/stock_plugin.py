@@ -400,9 +400,7 @@ class StockPlugin(PagedPlugin):
             List of close prices for the regular session only (may be empty).
         """
         try:
-            closes = (
-                result.get("indicators", {}).get("quote", [{}])[0].get("close", [])
-            )
+            closes = result.get("indicators", {}).get("quote", [{}])[0].get("close", [])
             timestamps = result.get("timestamp", [])
 
             # Get regular session boundaries

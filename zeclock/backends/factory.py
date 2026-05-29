@@ -136,9 +136,9 @@ def _create_auto(
     try:
         from .dmdserver import DMDServerBackend
 
-        instance = DMDServerBackend(host=dmdserver_host, port=dmdserver_port)
+        fallback = DMDServerBackend(host=dmdserver_host, port=dmdserver_port)
         logger.info("Selected backend: dmdserver")
-        return instance
+        return fallback
     except Exception as e:
         dmdserver_error = str(e)
         logger.debug("DMDServer backend unavailable: %s", e)
