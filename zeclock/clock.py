@@ -1,5 +1,5 @@
 """
-Horloge principale zeClock avec support DMDServer
+Horloge principale zeClock avec support multi-backend DMD
 """
 
 import asyncio
@@ -11,8 +11,8 @@ from typing import Any, Optional
 
 from PIL import Image
 
+from .backends import DMDBackend, create_backend
 from .colors import COLOR_LIST, COLOR_MAP, COLOR_NAMES
-from .dmdserver_client import DMDServerClient
 from .overlay import colorize_grayscale
 from .plugin_manager import PluginManager
 from .readers import load_font
@@ -36,6 +36,7 @@ class ZeClock:
         width: int = 128,
         height: int = 32,
         fps: int = 25,
+        backend: Optional[DMDBackend] = None,
         dmdserver_host: str = "localhost",
         dmdserver_port: int = 6789,
         test_mode: bool = False,
@@ -65,8 +66,14 @@ class ZeClock:
             else self.color
         )
 
-        # Client DMDServer
-        self.dmd_client = DMDServerClient(dmdserver_host, dmdserver_port)
+        # DMD backend (dependency injection with backward compatibility)
+        if backend is not None:
+            self.dmd_client = backend
+        else:
+            # Backward compatibility: create DMDServerBackend from host/port
+            from .backends.dmdserver import DMDServerBackend
+
+            self.dmd_client = DMDServerBackend(host=dmdserver_host, port=dmdserver_port)
 
         # Plugin system state
         self._state = ClockState.CLOCK_ONLY
@@ -96,12 +103,9 @@ class ZeClock:
     async def run(self) -> None:
         """Main asynchronous loop with plugin-driven state machine."""
         if not self.dmd_client.connect():
-            print("❌ Cannot start: dmdserver is not available.")
+            print("❌ Cannot start: DMD backend is not available.")
             print(
-                "👉 Please make sure that dmdserver is running. You can start it using:"
-            )
-            print(
-                "   ~/.zeclock/bin/dmdserver -c ~/.zeclock/config/dmdserver.ini -w -l"
+                "👉 Check your backend configuration (--backend, --wifi-addr, --device)"
             )
             return
 
@@ -181,10 +185,10 @@ class ZeClock:
 
                 # Reconnect if sending failed
                 if not success:
-                    print("⚠️ Reconnecting to dmdserver...")
+                    print("⚠️ Reconnecting to DMD backend...")
                     self.dmd_client.disconnect()
                     if not self.dmd_client.connect():
-                        print("❌ Cannot reconnect to dmdserver")
+                        print("❌ Cannot reconnect to DMD backend")
                         break
 
                 # Frame timing
@@ -370,6 +374,7 @@ def main() -> None:
     import argparse
     import logging
     import sys
+    from .backend_config import load_config
     from .installer import check_and_install_resources
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -406,6 +411,32 @@ def main() -> None:
         "--no-prompt",
         action="store_true",
         help="Disable interactive prompt during automatic bootstrap",
+    )
+
+    # Backend selection arguments
+    parser.add_argument(
+        "--backend",
+        choices=["auto", "zedmd", "dmdserver"],
+        default=None,
+        help="DMD backend to use (default: auto — try zedmd first, fall back to dmdserver)",
+    )
+    parser.add_argument(
+        "--wifi-addr",
+        type=str,
+        default=None,
+        help="ZeDMD WiFi IP address (e.g., 192.168.0.35)",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default=None,
+        help="ZeDMD USB serial device path (e.g., /dev/ttyUSB0)",
+    )
+    parser.add_argument(
+        "--brightness",
+        type=int,
+        default=None,
+        help="Display brightness (0-15, default: 10)",
     )
 
     # Plugin management arguments
@@ -450,12 +481,36 @@ def main() -> None:
         _handle_list_plugins(args)
         sys.exit(0)
 
+    # Determine backend mode for resource check (dmdserver doesn't need libzedmd)
+    backend_mode = args.backend or "auto"
+
     # Otherwise, check / initialize interactively (or non-interactively if --no-prompt)
-    if not check_and_install_resources(interactive=not args.no_prompt):
+    if not check_and_install_resources(
+        interactive=not args.no_prompt, backend=backend_mode
+    ):
         print("❌ Cannot start: required resources are missing.")
         sys.exit(1)
 
+    # Load backend configuration (config file + CLI args merged)
+    backend_config = load_config(
+        backend=args.backend,
+        wifi_addr=args.wifi_addr,
+        device=args.device,
+        brightness=args.brightness,
+    )
+
+    # Create the backend via factory
+    backend = create_backend(
+        backend=backend_config.backend,
+        wifi_addr=backend_config.wifi_addr,
+        device=backend_config.device,
+        brightness=backend_config.brightness,
+        dmdserver_host=backend_config.dmdserver_host,
+        dmdserver_port=backend_config.dmdserver_port,
+    )
+
     clock = ZeClock(
+        backend=backend,
         color=args.color,
         animation_color=args.animation_color,
         plugin_config_path=Path(args.plugin_config) if args.plugin_config else None,

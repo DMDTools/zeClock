@@ -241,30 +241,28 @@ class TestFallbackBehavior:
     @pytest.mark.asyncio
     async def test_zeclock_sets_fallback_flag_when_no_plugins(self):
         """ZeClock sets _fallback_to_legacy when no active plugins are available."""
-        # Create a ZeClock instance with mocked DMD client
-        with patch("zeclock.clock.DMDServerClient") as mock_dmd:
-            mock_dmd_instance = MagicMock()
-            mock_dmd.return_value = mock_dmd_instance
-            mock_dmd_instance.connect.return_value = True
+        # Create a mock backend
+        mock_backend = MagicMock()
+        mock_backend.connect.return_value = True
 
-            clock = ZeClock(test_mode=True)
-            clock._plugin_manager = PluginManager(128, 32)
-            clock._plugin_manager.config.load = MagicMock()
-            clock._plugin_manager.config.clock_display_seconds = 5
-            clock._plugin_manager.config.plugin_entries = []
+        clock = ZeClock(backend=mock_backend, test_mode=True)
+        clock._plugin_manager = PluginManager(128, 32)
+        clock._plugin_manager.config.load = MagicMock()
+        clock._plugin_manager.config.clock_display_seconds = 5
+        clock._plugin_manager.config.plugin_entries = []
 
-            # Register only a failing plugin
-            fail_plugin = AlwaysFailingInitPlugin(name="fail-only")
-            clock._plugin_manager.registry.register(
-                fail_plugin, source="builtin", frequency=100
-            )
+        # Register only a failing plugin
+        fail_plugin = AlwaysFailingInitPlugin(name="fail-only")
+        clock._plugin_manager.registry.register(
+            fail_plugin, source="builtin", frequency=100
+        )
 
-            # Simulate the state machine transition to PLUGIN_SELECT
-            clock._state = ClockState.PLUGIN_SELECT
+        # Simulate the state machine transition to PLUGIN_SELECT
+        clock._state = ClockState.PLUGIN_SELECT
 
-            # Try to select and activate - should fail and trigger fallback
-            activated = await clock._select_and_activate_plugin()
-            assert activated is False
+        # Try to select and activate - should fail and trigger fallback
+        activated = await clock._select_and_activate_plugin()
+        assert activated is False
 
     @pytest.mark.asyncio
     async def test_select_next_plugin_returns_none_when_all_failed(self):
@@ -295,111 +293,99 @@ class TestClockOnlyDuration:
     @pytest.mark.asyncio
     async def test_clock_display_seconds_from_config(self):
         """ZeClock uses clock_display_seconds from plugin config."""
-        with patch("zeclock.clock.DMDServerClient") as mock_dmd:
-            mock_dmd_instance = MagicMock()
-            mock_dmd.return_value = mock_dmd_instance
+        mock_backend = MagicMock()
 
-            clock = ZeClock(test_mode=True)
-            clock._plugin_manager = PluginManager(128, 32)
-            clock._plugin_manager.config.load = MagicMock()
-            clock._plugin_manager.config.clock_display_seconds = 10
-            clock._plugin_manager.config.plugin_entries = []
+        clock = ZeClock(backend=mock_backend, test_mode=True)
+        clock._plugin_manager = PluginManager(128, 32)
+        clock._plugin_manager.config.load = MagicMock()
+        clock._plugin_manager.config.clock_display_seconds = 10
+        clock._plugin_manager.config.plugin_entries = []
 
-            result = clock._get_clock_display_seconds()
-            assert result == 10
+        result = clock._get_clock_display_seconds()
+        assert result == 10
 
     @pytest.mark.asyncio
     async def test_clock_display_seconds_default_without_manager(self):
         """Without a plugin manager, default clock display seconds is 5."""
-        with patch("zeclock.clock.DMDServerClient") as mock_dmd:
-            mock_dmd_instance = MagicMock()
-            mock_dmd.return_value = mock_dmd_instance
+        mock_backend = MagicMock()
 
-            clock = ZeClock(test_mode=True)
-            clock._plugin_manager = None
+        clock = ZeClock(backend=mock_backend, test_mode=True)
+        clock._plugin_manager = None
 
-            result = clock._get_clock_display_seconds()
-            assert result == 5.0
+        result = clock._get_clock_display_seconds()
+        assert result == 5.0
 
     @pytest.mark.asyncio
     async def test_transition_from_clock_only_after_duration_elapsed(self):
         """State transitions from CLOCK_ONLY to PLUGIN_SELECT after duration elapses."""
-        with patch("zeclock.clock.DMDServerClient") as mock_dmd:
-            mock_dmd_instance = MagicMock()
-            mock_dmd.return_value = mock_dmd_instance
+        mock_backend = MagicMock()
 
-            clock = ZeClock(test_mode=True)
-            clock._plugin_manager = PluginManager(128, 32)
-            clock._plugin_manager.config.load = MagicMock()
-            clock._plugin_manager.config.clock_display_seconds = 2
-            clock._plugin_manager.config.plugin_entries = []
+        clock = ZeClock(backend=mock_backend, test_mode=True)
+        clock._plugin_manager = PluginManager(128, 32)
+        clock._plugin_manager.config.load = MagicMock()
+        clock._plugin_manager.config.clock_display_seconds = 2
+        clock._plugin_manager.config.plugin_entries = []
 
-            # Set state to CLOCK_ONLY with start time in the past
-            clock._state = ClockState.CLOCK_ONLY
-            clock._clock_only_start = time.time() - 3  # 3 seconds ago (> 2s config)
+        # Set state to CLOCK_ONLY with start time in the past
+        clock._state = ClockState.CLOCK_ONLY
+        clock._clock_only_start = time.time() - 3  # 3 seconds ago (> 2s config)
 
-            # The state machine logic checks if duration has elapsed
-            clock_display_seconds = clock._get_clock_display_seconds()
-            now = time.time()
-            elapsed = now - clock._clock_only_start
+        # The state machine logic checks if duration has elapsed
+        clock_display_seconds = clock._get_clock_display_seconds()
+        now = time.time()
+        elapsed = now - clock._clock_only_start
 
-            assert elapsed >= clock_display_seconds
-            # This means the state machine would transition to PLUGIN_SELECT
+        assert elapsed >= clock_display_seconds
+        # This means the state machine would transition to PLUGIN_SELECT
 
     @pytest.mark.asyncio
     async def test_no_transition_before_duration_elapsed(self):
         """State stays CLOCK_ONLY before the configured duration elapses."""
-        with patch("zeclock.clock.DMDServerClient") as mock_dmd:
-            mock_dmd_instance = MagicMock()
-            mock_dmd.return_value = mock_dmd_instance
+        mock_backend = MagicMock()
 
-            clock = ZeClock(test_mode=True)
-            clock._plugin_manager = PluginManager(128, 32)
-            clock._plugin_manager.config.load = MagicMock()
-            clock._plugin_manager.config.clock_display_seconds = 10
-            clock._plugin_manager.config.plugin_entries = []
+        clock = ZeClock(backend=mock_backend, test_mode=True)
+        clock._plugin_manager = PluginManager(128, 32)
+        clock._plugin_manager.config.load = MagicMock()
+        clock._plugin_manager.config.clock_display_seconds = 10
+        clock._plugin_manager.config.plugin_entries = []
 
-            # Set state to CLOCK_ONLY with start time just now
-            clock._state = ClockState.CLOCK_ONLY
-            clock._clock_only_start = time.time()
+        # Set state to CLOCK_ONLY with start time just now
+        clock._state = ClockState.CLOCK_ONLY
+        clock._clock_only_start = time.time()
 
-            # Check that duration has NOT elapsed
-            clock_display_seconds = clock._get_clock_display_seconds()
-            now = time.time()
-            elapsed = now - clock._clock_only_start
+        # Check that duration has NOT elapsed
+        clock_display_seconds = clock._get_clock_display_seconds()
+        now = time.time()
+        elapsed = now - clock._clock_only_start
 
-            assert elapsed < clock_display_seconds
-            # State machine would NOT transition yet
+        assert elapsed < clock_display_seconds
+        # State machine would NOT transition yet
 
     @pytest.mark.asyncio
     async def test_clock_only_start_reset_after_plugin_deactivation(self):
         """After a plugin is deactivated, clock_only_start is reset."""
-        with patch("zeclock.clock.DMDServerClient") as mock_dmd:
-            mock_dmd_instance = MagicMock()
-            mock_dmd.return_value = mock_dmd_instance
+        mock_backend = MagicMock()
 
-            clock = ZeClock(test_mode=True)
-            clock._plugin_manager = PluginManager(128, 32)
-            clock._plugin_manager.config.load = MagicMock()
-            clock._plugin_manager.config.clock_display_seconds = 5
-            clock._plugin_manager.config.plugin_entries = []
+        clock = ZeClock(backend=mock_backend, test_mode=True)
+        clock._plugin_manager = PluginManager(128, 32)
+        clock._plugin_manager.config.load = MagicMock()
+        clock._plugin_manager.config.clock_display_seconds = 5
+        clock._plugin_manager.config.plugin_entries = []
 
-            plugin = DummyPlugin(name="test-reset", frames_to_render=1)
-            clock._plugin_manager.registry.register(
-                plugin, source="builtin", frequency=100
-            )
+        plugin = DummyPlugin(name="test-reset", frames_to_render=1)
+        clock._plugin_manager.registry.register(plugin, source="builtin", frequency=100)
 
-            # Activate plugin
-            await clock._plugin_manager.activate_plugin(plugin)
-            clock._state = ClockState.PLUGIN_ACTIVE
+        # Activate plugin
+        await clock._plugin_manager.activate_plugin(plugin)
+        clock._state = ClockState.PLUGIN_ACTIVE
 
-            # Simulate plugin completion and deactivation
-            await clock._plugin_manager.deactivate_plugin()
-            clock._state = ClockState.CLOCK_ONLY
-            clock._clock_only_start = time.time()
+        # Simulate plugin completion and deactivation
+        await clock._plugin_manager.deactivate_plugin()
+        clock._state = ClockState.CLOCK_ONLY
+        clock._clock_only_start = time.time()
 
-            # Verify clock_only_start is recent (within last second)
-            assert time.time() - clock._clock_only_start < 1.0
+        # Verify clock_only_start is recent (within last second)
+        assert time.time() - clock._clock_only_start < 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -555,70 +541,62 @@ class TestStateTransitions:
     @pytest.mark.asyncio
     async def test_state_starts_at_clock_only(self):
         """ZeClock starts in CLOCK_ONLY state."""
-        with patch("zeclock.clock.DMDServerClient") as mock_dmd:
-            mock_dmd_instance = MagicMock()
-            mock_dmd.return_value = mock_dmd_instance
+        mock_backend = MagicMock()
 
-            clock = ZeClock(test_mode=True)
-            assert clock._state == ClockState.CLOCK_ONLY
+        clock = ZeClock(backend=mock_backend, test_mode=True)
+        assert clock._state == ClockState.CLOCK_ONLY
 
     @pytest.mark.asyncio
     async def test_plugin_active_to_clock_only_on_completion(self):
         """When a plugin signals completion, state returns to CLOCK_ONLY."""
-        with patch("zeclock.clock.DMDServerClient") as mock_dmd:
-            mock_dmd_instance = MagicMock()
-            mock_dmd.return_value = mock_dmd_instance
+        mock_backend = MagicMock()
 
-            clock = ZeClock(test_mode=True)
-            clock._plugin_manager = PluginManager(128, 32)
-            clock._plugin_manager.config.load = MagicMock()
-            clock._plugin_manager.config.clock_display_seconds = 5
-            clock._plugin_manager.config.plugin_entries = []
+        clock = ZeClock(backend=mock_backend, test_mode=True)
+        clock._plugin_manager = PluginManager(128, 32)
+        clock._plugin_manager.config.load = MagicMock()
+        clock._plugin_manager.config.clock_display_seconds = 5
+        clock._plugin_manager.config.plugin_entries = []
 
-            # Register and activate a plugin that renders 1 frame then completes
-            plugin = DummyPlugin(name="short-plugin", frames_to_render=1)
-            clock._plugin_manager.registry.register(
-                plugin, source="builtin", frequency=100
-            )
+        # Register and activate a plugin that renders 1 frame then completes
+        plugin = DummyPlugin(name="short-plugin", frames_to_render=1)
+        clock._plugin_manager.registry.register(plugin, source="builtin", frequency=100)
 
-            # Activate
-            success = await clock._plugin_manager.activate_plugin(plugin)
-            assert success is True
-            clock._state = ClockState.PLUGIN_ACTIVE
+        # Activate
+        success = await clock._plugin_manager.activate_plugin(plugin)
+        assert success is True
+        clock._state = ClockState.PLUGIN_ACTIVE
 
-            # Get frames until completion
-            frame = await clock._plugin_manager.get_frame()
-            assert frame is not None  # First frame
+        # Get frames until completion
+        frame = await clock._plugin_manager.get_frame()
+        assert frame is not None  # First frame
 
-            frame = await clock._plugin_manager.get_frame()
-            assert frame is None  # Completion signal
+        frame = await clock._plugin_manager.get_frame()
+        assert frame is None  # Completion signal
 
-            # Deactivate and transition
-            await clock._plugin_manager.deactivate_plugin()
-            clock._state = ClockState.CLOCK_ONLY
-            clock._clock_only_start = time.time()
+        # Deactivate and transition
+        await clock._plugin_manager.deactivate_plugin()
+        clock._state = ClockState.CLOCK_ONLY
+        clock._clock_only_start = time.time()
 
-            assert clock._state == ClockState.CLOCK_ONLY
+        assert clock._state == ClockState.CLOCK_ONLY
 
     @pytest.mark.asyncio
     async def test_plugin_select_to_clock_only_when_no_plugins(self):
         """PLUGIN_SELECT transitions back to CLOCK_ONLY when no plugins available."""
-        with patch("zeclock.clock.DMDServerClient") as mock_dmd:
-            mock_dmd_instance = MagicMock()
-            mock_dmd.return_value = mock_dmd_instance
+        mock_backend = MagicMock()
 
-            clock = ZeClock(test_mode=True)
-            clock._plugin_manager = PluginManager(128, 32)
-            clock._plugin_manager.config.load = MagicMock()
-            clock._plugin_manager.config.clock_display_seconds = 5
-            clock._plugin_manager.config.plugin_entries = []
+        clock = ZeClock(backend=mock_backend, test_mode=True)
+        clock._plugin_manager = PluginManager(128, 32)
+        clock._plugin_manager.config.load = MagicMock()
+        clock._plugin_manager.config.clock_display_seconds = 5
+        clock._plugin_manager.config.plugin_entries = []
 
-            # No plugins registered - select should fail
-            clock._state = ClockState.PLUGIN_SELECT
-            activated = await clock._select_and_activate_plugin()
+        # No plugins registered - select should fail
+        clock._state = ClockState.PLUGIN_SELECT
+        activated = await clock._select_and_activate_plugin()
 
-            assert activated is False
-            # The state machine in run() would set state back to CLOCK_ONLY
+        assert activated is False
+        # The state machine in run() would set state back to CLOCK_ONLY
 
     @pytest.mark.asyncio
     async def test_should_deactivate_after_30_seconds(self):

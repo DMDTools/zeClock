@@ -22,7 +22,8 @@ This document details the technologies, libraries, protocols, and tools that mak
 
 - **Pure Python + Pillow**: All pixel operations are implemented without NumPy for maximum portability (runs on NAS CPUs without AVX support).
   - **Grayscale colorization**: Per-pixel intensity × RGB color tuple via `bytearray` operations.
-  - **RGB565 conversion**: Per-pixel bit packing using `struct.pack_into` for big-endian output.
+  - **RGB565 conversion** (DMDServerBackend only): Per-pixel bit packing using `struct.pack_into` for big-endian TCP output.
+  - **RGB888 passthrough** (ZeDMDBackend): Raw PIL Image bytes sent directly to libzedmd — no Python-level pixel conversion needed.
   - **Mask processing**: Bit manipulation via Python `bytearray` and bitwise operators.
   - **Image compositing**: Byte-level iteration over `Image.tobytes()` data for DotBlt blending.
   - **Performance**: At 128×32 (4096 pixels), pure Python loops are fast enough for 25 FPS rendering.
@@ -36,7 +37,13 @@ This document details the technologies, libraries, protocols, and tools that mak
 
 ### 5. Network Protocol & Communication
 
-- **TCP Sockets (standard `socket` module)**: Communication with the DMD server via TCP/IP socket.
+- **Direct Hardware (libzedmd via ctypes)**: Default communication path using the `ZeDMDBackend`.
+  - Loads `libzedmd.so` / `.dylib` / `.dll` from `~/.zeclock/lib/` via `ctypes.CDLL`.
+  - C API calls: `ZeDMD_GetInstance`, `ZeDMD_OpenWiFi` / `ZeDMD_Open`, `ZeDMD_SetFrameSize`, `ZeDMD_SetBrightness`, `ZeDMD_RenderRgb888`, `ZeDMD_Close`.
+  - **RGB888 passthrough**: Raw RGB bytes from PIL Image are sent directly to libzedmd without any Python-level pixel conversion (3 bytes per pixel: Red, Green, Blue).
+  - **Connection modes**: WiFi (IP address) or USB serial (device path or auto-detection).
+
+- **TCP Sockets (standard `socket` module)**: Alternative communication via `DMDServerBackend` for development.
   - **DMDStream network header** (big-endian):
     - Magic word: `DMDStream\x00` (10 bytes)
     - Version: 1 (uint8)
@@ -52,15 +59,18 @@ This document details the technologies, libraries, protocols, and tools that mak
 - **argparse** (standard module): CLI argument parsing.
   - `--color`: Clock color (orange, blue, red, purple, green, yellow, cyan, pink, auto).
   - `--animation-color`: Animation color (independent from clock).
+  - `--backend`: Backend selection (auto, zedmd, dmdserver). Default: auto.
+  - `--wifi-addr`: ZeDMD WiFi IP address (overrides config file).
+  - `--device`: ZeDMD USB serial device path (overrides config file).
+  - `--brightness`: Display brightness 0-15 (overrides config file).
   - `--bootstrap`: Non-interactive automatic resource installation.
   - `--no-prompt`: Disables interactive prompts.
 
-### 7. DMD Server and Hardware Layer (C++)
+### 7. DMD Hardware Layer
 
-The zeClock ecosystem relies on native C++ system components:
-
-- **dmdserver** (built from `libdmdutil`): C++ daemon running locally. Listens for TCP connections (port 6789 by default), decodes RGB565 frames sent by zeClock, and forwards them to the hardware display controller.
-- **ZeDMD**: Open-source firmware for ESP32 / Teensy boards designed to drive RGB LED panels (128x32 or 256x64 pixels). Receives data from `dmdserver` via USB Serial or WiFi.
+- **libzedmd** (C shared library from `PPUC/libzedmd`): Provides direct communication with ZeDMD hardware via an `extern "C"` API. Called through Python ctypes. Supports WiFi and USB connections.
+- **ZeDMD**: Open-source firmware for ESP32 / Teensy boards designed to drive RGB LED panels (128x32 or 256x64 pixels). Receives data from libzedmd via USB Serial or WiFi.
+- **dmdserver** (optional, built from `libdmdutil`): C++ daemon for development use. Listens for TCP connections (port 6789 by default), decodes RGB565 frames, and forwards them to hardware or a simulator. Used with `--backend dmdserver`.
 
 ---
 
@@ -113,7 +123,7 @@ zeclock = "zeclock.clock:main"
 
 Rather than post-install hooks (incompatible with Wheels and sandboxed environments), zeClock uses a **first-launch bootstrap**:
 
-1. On startup, `installer.py` checks for `~/.zeclock/bin/dmdserver` and `~/.zeclock/resources/`.
+1. On startup, `installer.py` checks for `~/.zeclock/lib/libzedmd.so` and `~/.zeclock/resources/`.
 2. If elements are missing, an interactive wizard offers automatic download.
 3. Non-interactive alternative: `zeclock --bootstrap`.
 
@@ -187,7 +197,8 @@ Rather than post-install hooks (incompatible with Wheels and sandboxed environme
 |--------|-------|
 | Framerate | 25 FPS (40ms/frame) or per-animation |
 | Resolution | 128×32 or 256×64 pixels |
-| Network format | RGB565 big-endian (2 bytes/pixel) |
+| ZeDMD format | RGB888 (3 bytes/pixel, sent directly) |
+| DMDServer format | RGB565 big-endian (2 bytes/pixel, over TCP) |
 | End-to-end latency | < 50ms |
 | RAM (pre-computation) | ~50-200 MB depending on frame count |
 | Clock colon blink | 500ms on / 500ms off |

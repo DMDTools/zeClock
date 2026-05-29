@@ -7,7 +7,7 @@ and common drawing operations for DMD displays.
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from PIL import Image
+from PIL import Image, ImageChops
 
 from ..colors import COLOR_MAP
 from ..readers.fnt_reader import BitmapFont, load_font
@@ -228,6 +228,7 @@ class PluginHelpers:
         """Composite foreground onto background using OR blending (DotBlt style).
 
         Non-black pixels in the foreground overwrite the background.
+        Uses PIL's C-native operations for performance.
 
         Args:
             background: Base frame.
@@ -236,24 +237,17 @@ class PluginHelpers:
         Returns:
             Composited frame.
         """
-        bg_data = bytearray(background.tobytes())
-        fg_data = foreground.tobytes()
-        mode = background.mode
-
-        if mode == "RGB":
-            # 3 bytes per pixel
-            for i in range(0, len(fg_data), 3):
-                if fg_data[i] > 0 or fg_data[i + 1] > 0 or fg_data[i + 2] > 0:
-                    bg_data[i] = fg_data[i]
-                    bg_data[i + 1] = fg_data[i + 1]
-                    bg_data[i + 2] = fg_data[i + 2]
+        # Create a binary mask where foreground is non-black
+        if foreground.mode == "RGB":
+            # Max of channels — any non-zero channel means non-black
+            r, g, b = foreground.split()
+            combined = ImageChops.lighter(ImageChops.lighter(r, g), b)
+            # Threshold to binary: any value > 0 becomes 255
+            mask = combined.point(lambda p: 255 if p > 0 else 0)
         else:
-            # Grayscale - 1 byte per pixel
-            for i in range(len(fg_data)):
-                if fg_data[i] > 0:
-                    bg_data[i] = fg_data[i]
+            mask = foreground.point(lambda p: 255 if p > 0 else 0)
 
-        return Image.frombytes(mode, background.size, bytes(bg_data))
+        return Image.composite(foreground, background, mask)
 
     def get_font_names(self) -> List[str]:
         """List available .fnt font names in the resources directory.

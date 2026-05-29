@@ -6,6 +6,11 @@ _colorize_lut_cache: Dict[
     Tuple[int, int, int], Tuple[List[int], List[int], List[int]]
 ] = {}
 
+# Pre-built LUT: expand each byte value (0-255) into 8 mask pixels (0 or 255)
+_BYTE_TO_MASK = [
+    bytes([255 if (b >> bit) & 1 else 0 for bit in range(8)]) for b in range(256)
+]
+
 
 def _get_color_channels(
     gray_img: Image.Image, color: Tuple[int, int, int]
@@ -52,6 +57,42 @@ def colorize_grayscale(
 _colorize_grayscale = colorize_grayscale
 
 
+def _unpack_bitmask(
+    mask_bytes: bytes, mask_width_bytes: int, width: int, height: int
+) -> Image.Image:
+    """Unpack a packed bit-mask into a PIL 'L' mode Image.
+
+    Uses a pre-built 256-entry lookup table to expand each byte into 8 pixels
+    via slice assignment, avoiding per-bit Python loops.
+
+    Args:
+        mask_bytes: Packed bit-mask data.
+        mask_width_bytes: Number of bytes per row in the mask.
+        width: Image width in pixels.
+        height: Image height in pixels.
+
+    Returns:
+        PIL Image in 'L' mode where 255 = mask set, 0 = mask unset.
+    """
+    mask_data = bytearray(width * height)
+    for y in range(height):
+        row_offset = y * mask_width_bytes
+        out_row = y * width
+        for byte_idx in range(mask_width_bytes):
+            byte_val = (
+                mask_bytes[row_offset + byte_idx]
+                if (row_offset + byte_idx) < len(mask_bytes)
+                else 0
+            )
+            if byte_val:
+                base_x = byte_idx * 8
+                end = min(8, width - base_x)
+                mask_data[out_row + base_x : out_row + base_x + end] = _BYTE_TO_MASK[
+                    byte_val
+                ][:end]
+    return Image.frombytes("L", (width, height), bytes(mask_data))
+
+
 def overlay_or(base: Image.Image, overlay: Image.Image) -> Image.Image:
     """Combine images using DotClk DotBlt logic: mask=1 preserves dest, mask=0 copies source.
 
@@ -65,20 +106,7 @@ def overlay_or(base: Image.Image, overlay: Image.Image) -> Image.Image:
         mask_width_bytes = overlay_any.mask_width_bytes
         width, height = base.size
 
-        # Unpack bit-mask to a full byte mask image (C-level composite)
-        mask_data = bytearray(width * height)
-        for y in range(height):
-            row_offset = y * mask_width_bytes
-            for x in range(width):
-                byte_idx = (x >> 3) + row_offset
-                bit_pos = x & 7
-                if byte_idx < len(mask_bytes):
-                    # mask_bit=1 means keep base (255 in composite mask)
-                    # mask_bit=0 means copy overlay (0 in composite mask)
-                    if (mask_bytes[byte_idx] >> bit_pos) & 1:
-                        mask_data[y * width + x] = 255
-
-        mask_img = Image.frombytes("L", (width, height), bytes(mask_data))
+        mask_img = _unpack_bitmask(mask_bytes, mask_width_bytes, width, height)
         # Image.composite: result = base where mask=255, overlay where mask=0
         return Image.composite(base, overlay, mask_img)
     else:
@@ -109,20 +137,7 @@ def overlay_or_rgb(
         mask_bytes = overlay_any.mask_data
         mask_width_bytes = overlay_any.mask_width_bytes
 
-        # Unpack bit-mask to a full byte mask image
-        mask_data = bytearray(width * height)
-        for y in range(height):
-            row_offset = y * mask_width_bytes
-            for x in range(width):
-                byte_idx = (x >> 3) + row_offset
-                bit_pos = x & 7
-                if byte_idx < len(mask_bytes):
-                    # mask_bit=1 means keep base (255 in composite mask)
-                    # mask_bit=0 means use overlay (0 in composite mask)
-                    if (mask_bytes[byte_idx] >> bit_pos) & 1:
-                        mask_data[y * width + x] = 255
-
-        mask_img = Image.frombytes("L", (width, height), bytes(mask_data))
+        mask_img = _unpack_bitmask(mask_bytes, mask_width_bytes, width, height)
         return Image.composite(base_rgb, overlay_rgb, mask_img)
     else:
         # No mask: overlay replaces everything
