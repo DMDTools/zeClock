@@ -77,7 +77,9 @@ class ZeClock:
 
         # Clock caching
         self.cached_clock_frame: Optional[Image.Image] = None
+        self.cached_clock_rgb: Optional[Image.Image] = None
         self.last_clock_time = ""
+        self.last_clock_color: Optional[tuple] = None
 
         # Load font
         self.dotclk_font = None
@@ -318,11 +320,18 @@ class ZeClock:
         return success
 
     def _render_clock_frame(self) -> Image.Image:
-        """Render a clock-only frame with colon blinking."""
+        """Render a clock-only frame with colon blinking.
+
+        Uses two-level caching:
+        1. Grayscale text frame (changes every 500ms on blink)
+        2. Colorized RGB frame (invalidated on color or text change)
+        """
         # Generate clock with 500ms blink timing
         milliseconds = int(time.time() * 1000)
         blink_state = (milliseconds // 500) % 2
         cache_key = f"{time.strftime('%H:%M:%S')}_{blink_state}"
+
+        needs_colorize = False
 
         if cache_key != self.last_clock_time:
             if blink_state == 0:
@@ -336,12 +345,19 @@ class ZeClock:
                 display_time, self.width, self.height
             )
             self.last_clock_time = cache_key
+            needs_colorize = True
 
-        assert self.cached_clock_frame is not None
-        clock_frame = self.cached_clock_frame
+        if self.last_clock_color != self.color:
+            self.last_clock_color = self.color
+            needs_colorize = True
 
-        # Colorize the grayscale clock frame
-        return colorize_grayscale(clock_frame, self.color)
+        if needs_colorize or self.cached_clock_rgb is None:
+            assert self.cached_clock_frame is not None
+            self.cached_clock_rgb = colorize_grayscale(
+                self.cached_clock_frame, self.color
+            )
+
+        return self.cached_clock_rgb
 
     def stop(self):
         """Stop the clock"""

@@ -9,6 +9,12 @@ from PIL import Image
 
 from .overlay import colorize_grayscale
 
+# Pre-computed RGB565 lookup tables (computed once at import time)
+# Avoids per-pixel bit shifting in the hot loop
+_RGB565_R = [((r >> 3) << 11) for r in range(256)]
+_RGB565_G = [((g >> 2) << 5) for g in range(256)]
+_RGB565_B = [(b >> 3) for b in range(256)]
+
 
 class DMDServerClient:
     """Client to send RGB565 frames to dmdserver"""
@@ -18,6 +24,9 @@ class DMDServerClient:
         self.port = port
         self.sock: Optional[socket.socket] = None
         self.connected = False
+        # Frame cache: avoid re-encoding identical frames
+        self._last_frame_id: Optional[int] = None
+        self._last_msg: Optional[bytes] = None
 
     def connect(self) -> bool:
         """Establishes connection with dmdserver"""
@@ -43,32 +52,44 @@ class DMDServerClient:
         buffered: bool = True,
         color: Tuple[int, int, int] = (255, 128, 0),
     ) -> bool:
-        """Sends an RGB565 frame to DMDServer"""
+        """Sends an RGB565 frame to DMDServer.
+
+        Uses frame identity caching: if the same Image object is sent again,
+        skips colorization and RGB565 conversion entirely.
+        """
         if not self.connected:
             if not self.connect():
                 return False
 
-        if image.mode != "RGB":
-            # Convert grayscale to RGB using color palette
-            image = self._grayscale_to_rgb(image, color)
+        # Check if this is the exact same frame object (identity check)
+        frame_id = id(image)
+        if frame_id == self._last_frame_id and self._last_msg is not None:
+            msg = self._last_msg
+        else:
+            if image.mode != "RGB":
+                # Convert grayscale to RGB using color palette
+                image = self._grayscale_to_rgb(image, color)
 
-        width, height = image.size
+            width, height = image.size
 
-        # Convert to RGB565
-        rgb565_data = self._rgb_to_rgb565(image)
+            # Convert to RGB565
+            rgb565_data = self._rgb_to_rgb565(image)
 
-        # Create header (big-endian like dmd-simulator)
-        header = bytearray("DMDStream", "utf-8") + b"\x00"
-        header += (1).to_bytes(1, "big")  # version
-        header += (3).to_bytes(4, "big")  # mode RGB565
-        header += width.to_bytes(2, "big")  # width
-        header += height.to_bytes(2, "big")  # height
-        header += (1 if buffered else 0).to_bytes(1, "big")  # buffered
-        header += (1).to_bytes(1, "big")  # disconnectOthers
-        header += len(rgb565_data).to_bytes(4, "big")  # length
+            # Create header (big-endian like dmd-simulator)
+            header = bytearray("DMDStream", "utf-8") + b"\x00"
+            header += (1).to_bytes(1, "big")  # version
+            header += (3).to_bytes(4, "big")  # mode RGB565
+            header += width.to_bytes(2, "big")  # width
+            header += height.to_bytes(2, "big")  # height
+            header += (1 if buffered else 0).to_bytes(1, "big")  # buffered
+            header += (1).to_bytes(1, "big")  # disconnectOthers
+            header += len(rgb565_data).to_bytes(4, "big")  # length
+
+            msg = bytes(header + rgb565_data)
+            self._last_frame_id = frame_id
+            self._last_msg = msg
 
         try:
-            msg = header + rgb565_data
             assert self.sock is not None
             self.sock.sendall(msg)
             return True
@@ -83,23 +104,21 @@ class DMDServerClient:
         """Convert grayscale DMD image to RGB using color palette"""
         return colorize_grayscale(image, color)
 
-    def _rgb_to_rgb565(self, image: Image.Image) -> bytearray:
-        """Convert RGB image to RGB565 format (big-endian)"""
+    def _rgb_to_rgb565(self, image: Image.Image) -> bytes:
+        """Convert RGB image to RGB565 format (big-endian).
+
+        Optimized: uses pre-computed LUTs to avoid per-pixel bit shifting,
+        and struct.pack in a single call instead of per-pixel pack_into.
+        """
         import struct
 
         rgb_data = image.tobytes()
         pixel_count = len(rgb_data) // 3
-        result = bytearray(pixel_count * 2)
-
-        for i in range(pixel_count):
-            offset = i * 3
-            r = rgb_data[offset] >> 3
-            g = rgb_data[offset + 1] >> 2
-            b = rgb_data[offset + 2] >> 3
-            rgb565 = (r << 11) | (g << 5) | b
-            struct.pack_into(">H", result, i * 2, rgb565)
-
-        return result
+        values = [
+            _RGB565_R[rgb_data[i]] | _RGB565_G[rgb_data[i + 1]] | _RGB565_B[rgb_data[i + 2]]
+            for i in range(0, len(rgb_data), 3)
+        ]
+        return struct.pack(f">{pixel_count}H", *values)
 
     def __enter__(self):
         self.connect()
