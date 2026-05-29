@@ -1,0 +1,36 @@
+# zeClock — Personal deployment targets (template)
+#
+# Copy this file to Makefile.local and adjust to your setup.
+# Makefile.local is gitignored and automatically included by the main Makefile.
+#
+# This lets you add custom deployment targets (NAS, Raspberry Pi, remote server...)
+# without polluting the shared Makefile.
+#
+# All targets defined here will appear in `make help`.
+
+# Example: deploy to a remote host via SSH + docker-compose
+#
+# REMOTE_HOST  := myserver
+# REMOTE_DIR   := ~/zeclock
+# COMPOSE      := docker compose
+#
+# EXCLUDES := --exclude='.git' --exclude='.venv' --exclude='.hypothesis' \
+#             --exclude='.pytest_cache' --exclude='__pycache__' \
+#             --exclude='*.egg-info' --exclude='build' \
+#             --exclude='.amazonq' --exclude='.kiro'
+#
+# remote-sync: ## Sync code to remote host
+# 	@echo "📤 Syncing to $(REMOTE_HOST):$(REMOTE_DIR)..."
+# 	@tar czf - $(EXCLUDES) -C . . | ssh $(REMOTE_HOST) "mkdir -p $(REMOTE_DIR) && tar xzf - -C $(REMOTE_DIR)"
+# 	@echo "✅ Synced"
+#
+# remote-deploy: remote-sync ## Sync + rebuild + restart on remote
+# 	@ssh $(REMOTE_HOST) "cd $(REMOTE_DIR)/deploy && $(COMPOSE) up -d --build"
+# 	@echo "✅ Deployed"
+#
+# remote-stop: ## Stop containers on remote
+# 	@ssh $(REMOTE_HOST) "cd $(REMOTE_DIR)/deploy && $(COMPOSE) down"
+# 	@echo "🛑 Stopped"
+#
+# remote-logs: ## Tail logs on remote
+# 	@ssh $(REMOTE_HOST) "cd $(REMOTE_DIR)/deploy && $(COMPOSE) logs --tail 30 -f"

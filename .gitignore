@@ -56,7 +56,11 @@ htmlcov/
 *.tmp
 *.temp
 
+# Personal Makefile (deployment targets, secrets, etc.)
+Makefile.local
+
 # References
 dmd-simulator
 libdmdutil.src
 DotClk
+deploy

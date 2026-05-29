@@ -1,19 +1,36 @@
 """
 Horloge principale zeClock avec support DMDServer
 """
+
 import asyncio
+import enum
+import logging
 import time
-import random
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFont
+from typing import Any, Optional
+
+from PIL import Image
+
+from .colors import COLOR_LIST, COLOR_MAP, COLOR_NAMES
 from .dmdserver_client import DMDServerClient
-from .readers import load_font, load_scene
-from .overlay import overlay_or, overlay_or_rgb
+from .overlay import colorize_grayscale
+from .plugin_manager import PluginManager
+from .readers import load_font
+
+logger = logging.getLogger(__name__)
+
+
+class ClockState(enum.Enum):
+    """State machine states for the clock display."""
+
+    CLOCK_ONLY = "clock_only"
+    PLUGIN_SELECT = "plugin_select"
+    PLUGIN_ACTIVE = "plugin_active"
 
 
 class ZeClock:
     """Horloge animée avec affichage sur ZeDMD via DMDServer"""
-    
+
     def __init__(
         self,
         width: int = 128,
@@ -23,63 +40,47 @@ class ZeClock:
         dmdserver_port: int = 6789,
         test_mode: bool = False,
         color: str = "orange",
-        animation_color: str = None
+        animation_color: Optional[str] = None,
+        plugin_config_path: Optional[Path] = None,
+        plugins_override: Optional[str] = None,
     ):
         self.width = width
         self.height = height
         self.fps = fps
         self.running = True
-        
-        # Color mapping
-        self.colors = [
-            (255, 128, 0),   # orange
-            (0, 128, 255),   # blue
-            (255, 0, 0),     # red
-            (255, 0, 255),   # purple
-            (0, 255, 128),   # green
-            (255, 255, 0),   # yellow
-            (0, 255, 255),   # cyan
-            (255, 64, 128)   # pink
-        ]
-        color_map = {"orange": 0, "blue": 1, "red": 2, "purple": 3, "green": 4, "yellow": 5, "cyan": 6, "pink": 7}
+
+        # Color configuration
         self.color_mode = color
         if color == "auto":
-            self.color = self.colors[0]
+            self.color = COLOR_LIST[0]
             self.last_color_change = time.time()
         else:
-            self.color = self.colors[color_map.get(color, 0)]
-        
+            self.color = COLOR_MAP.get(color, COLOR_LIST[0])
+
         # Animation color (defaults to same as clock if not specified)
-        self.animation_color = self.colors[color_map.get(animation_color, 0)] if animation_color else self.color
-        
+        self.animation_color_name = animation_color
+        self.animation_color = (
+            COLOR_MAP.get(animation_color, COLOR_LIST[0])
+            if animation_color
+            else self.color
+        )
+
         # Client DMDServer
         self.dmd_client = DMDServerClient(dmdserver_host, dmdserver_port)
-        
-        # Animation state
-        if test_mode:
-            test_scenes = ["RD1500.scn"] #, "RD1245.scn", "RD1893.scn", "RD1719.scn"]
-            all_scenes = list(Path.home().glob(".zeclock/resources/animations/**/*.scn"))
-            self.scene_files = [s for s in all_scenes if s.name in test_scenes]
-        else:
-            self.scene_files = list(Path.home().glob(".zeclock/resources/animations/**/*.scn"))
-        self.current_scene = None
-        self.scene_frame_index = 0
-        self.precomputed_frames = []
-        self.precomputed_frames_noblink = []
-        self.precomputing = False
-        self.millis_scene_start = 0
-        self.millis_scene_frame_delay = 0
-        self.cur_scene = 0
-        self.scene_start = 0
-        self.scene_duration = 0
-        self.cfg_clock_delay_value = 5000  # 5 seconds default
-        self.animation_playing = False
-        
+
+        # Plugin system state
+        self._state = ClockState.CLOCK_ONLY
+        self._clock_only_start = time.time()
+        self._plugin_config_path = plugin_config_path
+        self._plugins_override = plugins_override
+        self._plugin_manager: Optional[PluginManager] = None
+
         # Clock caching
-        self.cached_clock_frame = None
+        self.cached_clock_frame: Optional[Image.Image] = None
+        self.cached_clock_rgb: Optional[Image.Image] = None
         self.last_clock_time = ""
-        self.current_clock_style = 0  # Track current clock style
-        
+        self.last_clock_color: Optional[tuple] = None
+
         # Load font
         self.dotclk_font = None
         font_path = Path.home() / ".zeclock" / "resources" / "Fonts" / "STANDARD.fnt"
@@ -91,50 +92,93 @@ class ZeClock:
                 print(f"⚠️ Failed to load font: {e}")
         else:
             print("❌ No font found")
-        
-        # Load first scene if available
-        if self.scene_files:
-            print(f"🎬 Found {len(self.scene_files)} scene files")
-            self.scene_end_time = time.time()
-            # Initialize with standard clock style
-            self.current_clock_style = 0
-        else:
-            print("⚠️ No scene files found")
-            # Initialize with standard clock style
-            self.current_clock_style = 0
-    
-    async def run(self):
-        """Main asynchronous loop"""
+
+    async def run(self) -> None:
+        """Main asynchronous loop with plugin-driven state machine."""
         if not self.dmd_client.connect():
             print("❌ Cannot start: dmdserver is not available.")
-            print("👉 Please make sure that dmdserver is running. You can start it using:")
-            print("   ~/.zeclock/bin/dmdserver -c ~/.zeclock/config/dmdserver.ini -w -l")
+            print(
+                "👉 Please make sure that dmdserver is running. You can start it using:"
+            )
+            print(
+                "   ~/.zeclock/bin/dmdserver -c ~/.zeclock/config/dmdserver.ini -w -l"
+            )
             return
-        
+
+        # Initialize plugin system
+        await self._init_plugin_system()
+
         frame_time = 1 / self.fps
         print(f"🕒 Starting zeClock at {self.fps} FPS")
-        
+
         try:
             while self.running:
                 t0 = time.monotonic()
-                
-                # Check if we need to start new animation (5s after last one ended)
                 now = time.time()
-                if not self.animation_playing and not self.precomputing and now - self.scene_end_time >= 5:
-                    asyncio.create_task(self._precompute_animation())
-                
+
                 # Change color every minute if auto mode
                 if self.color_mode == "auto" and now - self.last_color_change >= 60:
-                    self.color = self.colors[int(now // 60) % len(self.colors)]
+                    self.color = COLOR_LIST[int(now // 60) % len(COLOR_LIST)]
                     self.last_color_change = now
                     self.last_clock_time = ""  # Force refresh
-                
-                # Create DMD frame (clock + animation)
-                frame = self.create_dmd_frame()
-                
+
+                # State machine transitions
+                if self._state == ClockState.CLOCK_ONLY:
+                    frame = self._render_clock_frame()
+                    frame_time = 0.5  # Refresh every 500ms for colon blinking
+
+                    # Check if clock-only duration has elapsed
+                    clock_display_seconds = self._get_clock_display_seconds()
+                    if now - self._clock_only_start >= clock_display_seconds:
+                        self._state = ClockState.PLUGIN_SELECT
+
+                elif self._state == ClockState.PLUGIN_SELECT:
+                    frame = self._render_clock_frame()
+                    frame_time = 0.5
+
+                    # Try to select and activate a plugin
+                    activated = await self._select_and_activate_plugin()
+                    if activated:
+                        self._state = ClockState.PLUGIN_ACTIVE
+                    else:
+                        # No plugins available - stay in clock-only
+                        self._state = ClockState.CLOCK_ONLY
+                        self._clock_only_start = now
+
+                elif self._state == ClockState.PLUGIN_ACTIVE:
+                    # Check if plugin should be deactivated
+                    if (
+                        self._plugin_manager
+                        and self._plugin_manager.should_deactivate()
+                    ):
+                        await self._plugin_manager.deactivate_plugin()
+                        self._state = ClockState.CLOCK_ONLY
+                        self._clock_only_start = time.time()
+                        frame = self._render_clock_frame()
+                        frame_time = 0.5
+                    else:
+                        # Get frame from active plugin
+                        assert self._plugin_manager is not None
+                        plugin_frame = await self._plugin_manager.get_frame()
+                        if plugin_frame is None:
+                            # Plugin signals completion
+                            await self._plugin_manager.deactivate_plugin()
+                            self._state = ClockState.CLOCK_ONLY
+                            self._clock_only_start = time.time()
+                            frame = self._render_clock_frame()
+                            frame_time = 0.5
+                        else:
+                            frame = plugin_frame
+                            # Use plugin's frame delay
+                            active = self._plugin_manager.active_plugin
+                            if active:
+                                frame_time = active.frame_delay_ms / 1000.0
+                            else:
+                                frame_time = 0.04  # 40ms default
+
                 # Send to DMD
                 success = self.dmd_client.send_frame(frame)
-                
+
                 # Reconnect if sending failed
                 if not success:
                     print("⚠️ Reconnecting to dmdserver...")
@@ -142,286 +186,336 @@ class ZeClock:
                     if not self.dmd_client.connect():
                         print("❌ Cannot reconnect to dmdserver")
                         break
-                
-                # Use scene-specific timing
-                if self.animation_playing and self.current_scene:
-                    frame_time = (self.current_scene.frame_delay_ms if self.current_scene.frame_delay_ms > 0 else 40) / 1000.0
-                else:
-                    frame_time = 0.5  # Refresh every 500ms for colon blinking
-                
+
                 # Frame timing
                 elapsed = time.monotonic() - t0
                 sleep_time = max(0, frame_time - elapsed)
                 if sleep_time > 0:
                     await asyncio.sleep(sleep_time)
-                    
+
         except KeyboardInterrupt:
             print("\n🛑 Stopping zeClock...")
         finally:
+            # Cleanup active plugin if any
+            if self._plugin_manager and self._plugin_manager.is_plugin_active():
+                await self._plugin_manager.deactivate_plugin()
             self.dmd_client.disconnect()
-    
-    def create_dmd_frame(self) -> Image.Image:
-        """Create a DMD frame with current time and optional animation"""
-        # If precomputed animation is available, use it directly
-        if self.animation_playing and self.precomputed_frames:
-            if self.scene_frame_index < len(self.precomputed_frames):
-                # Alternate between blink/noblink every 500ms
-                elapsed_ms = int((time.time() - self.animation_start_time) * 1000)
-                blink_state = (elapsed_ms // 500) % 2
-                frame = self.precomputed_frames[self.scene_frame_index] if blink_state == 0 else self.precomputed_frames_noblink[self.scene_frame_index]
-                self.scene_frame_index += 1
-                return frame
+
+    async def _init_plugin_system(self) -> None:
+        """Initialize the PluginManager, discover and load plugins."""
+        self._plugin_manager = PluginManager(
+            width=self.width,
+            height=self.height,
+            config_path=self._plugin_config_path,
+        )
+
+        try:
+            await self._plugin_manager.discover_and_load()
+        except Exception as e:
+            logger.error(f"Failed to initialize plugin system: {e}")
+            return
+
+        # Log discovered and active plugins with their configured frequency
+        all_plugins = self._plugin_manager.registry.get_all_plugins()
+        active_plugins = self._plugin_manager.registry.get_active_plugins()
+        all_names = [e.name for e in all_plugins]
+        active_with_freq = [
+            f"{e.name} ({e.frequency}%)" for e in active_plugins if e.frequency > 0
+        ]
+        logger.info(f"Plugins found: {all_names}")
+        logger.info(f"Plugins activated: {active_with_freq}")
+
+        # Wire --color and --animation-color to PinballPlugin config
+        clock_color_name = COLOR_NAMES.get(self.color, "orange")
+        anim_color_name = self.animation_color_name or clock_color_name
+
+        # Inject color settings into pinball plugin config
+        pinball_entry = self._plugin_manager.registry.get_plugin("pinball")
+        if pinball_entry:
+            # Update the config that will be passed to pinball plugin on activation
+            for entry in self._plugin_manager.config.plugin_entries:
+                if entry["name"] == "pinball":
+                    entry["settings"]["color"] = clock_color_name
+                    entry["settings"]["animation_color"] = anim_color_name
+                    entry["settings"]["width"] = self.width
+                    entry["settings"]["height"] = self.height
+                    break
             else:
-                # Animation finished
-                self.animation_playing = False
-                self.precomputed_frames = []
-                self.precomputed_frames_noblink = []
-                self.current_scene = None
-                self.current_clock_style = 0
-                self.last_clock_time = ""
-                self.scene_end_time = time.time()
-        
+                # Pinball not in config entries, add it
+                self._plugin_manager.config.plugin_entries.append(
+                    {
+                        "name": "pinball",
+                        "frequency": 100,
+                        "settings": {
+                            "color": clock_color_name,
+                            "animation_color": anim_color_name,
+                            "width": self.width,
+                            "height": self.height,
+                        },
+                    }
+                )
+
+        # Apply --plugins override if specified
+        if self._plugins_override:
+            success = self._apply_plugins_override(self._plugins_override)
+            if not success:
+                logger.error("All plugin names unrecognized, no plugins active")
+
+        # Check if any plugins are available
+        active_plugins = self._plugin_manager.registry.get_active_plugins()
+        if not active_plugins:
+            logger.warning("No active plugins available, clock-only mode")
+
+    def _apply_plugins_override(self, plugins_str: str) -> bool:
+        """Apply --plugins CLI override to the plugin manager.
+
+        Args:
+            plugins_str: Comma-separated list of plugin names.
+
+        Returns:
+            True if at least one valid plugin was found, False otherwise.
+        """
+        assert self._plugin_manager is not None
+        plugin_names = [name.strip() for name in plugins_str.split(",") if name.strip()]
+        valid_names = []
+
+        for name in plugin_names:
+            if self._plugin_manager.registry.has_plugin(name):
+                valid_names.append(name)
+            else:
+                logger.warning(f"Unrecognized plugin name: '{name}'")
+
+        if not valid_names:
+            return False
+
+        # Set equal frequency for valid plugins, zero out others
+        equal_frequency = 100 // len(valid_names)
+        for entry in self._plugin_manager.registry.get_all_plugins():
+            if entry.name in valid_names:
+                self._plugin_manager.registry.set_frequency(entry.name, equal_frequency)
+            else:
+                self._plugin_manager.registry.set_frequency(entry.name, 0)
+
+        return True
+
+    def _get_clock_display_seconds(self) -> float:
+        """Get the clock-only display duration from plugin config."""
+        if self._plugin_manager:
+            return self._plugin_manager.config.clock_display_seconds
+        return 5.0  # Default fallback
+
+    async def _select_and_activate_plugin(self) -> bool:
+        """Select and activate the next plugin.
+
+        Returns:
+            True if a plugin was successfully activated, False otherwise.
+        """
+        if not self._plugin_manager:
+            return False
+
+        plugin = self._plugin_manager.select_next_plugin()
+        if plugin is None:
+            return False
+
+        success = await self._plugin_manager.activate_plugin(plugin)
+        return success
+
+    def _render_clock_frame(self) -> Image.Image:
+        """Render a clock-only frame with colon blinking.
+
+        Uses two-level caching:
+        1. Grayscale text frame (changes every 500ms on blink)
+        2. Colorized RGB frame (invalidated on color or text change)
+        """
         # Generate clock with 500ms blink timing
         milliseconds = int(time.time() * 1000)
         blink_state = (milliseconds // 500) % 2
         cache_key = f"{time.strftime('%H:%M:%S')}_{blink_state}"
-        
+
+        needs_colorize = False
+
         if cache_key != self.last_clock_time:
-            # Second beat - alternate colon display every 500ms
             if blink_state == 0:
-                # Show the colon dots
                 display_time = time.strftime("%H:%M")
             else:
-                # Hide the colon dots (use space)
                 display_time = time.strftime("%H %M")
-            
-            # Generate clock dotmap based on current clock style (set at animation start)
-            if self.current_clock_style == 1:  # ClockStyleCustom
-                # Custom positioning - remove AM/PM
-                if len(display_time) > 5:
-                    display_time = display_time[:5]  # Truncate AM/PM
-                
-                # Use menu font for custom style (smaller font)
-                text_width = self.dotclk_font.get_text_width(display_time)
-                text_height = self.dotclk_font.char_height
-                
-                # Calculate position from custom coordinates (center at custom point)
-                x_pos = self.current_scene.custom_x - (text_width // 2) if self.current_scene else 64
-                y_pos = self.current_scene.custom_y - (text_height // 2) if self.current_scene else 16
-                
-                # Create blank canvas and paste text at custom position
-                self.cached_clock_frame = Image.new('L', (self.width, self.height), 0)
-                text_img = self.dotclk_font.render_text(display_time, text_width, text_height)
-                
-                # Ensure position is within bounds
-                x_pos = max(0, min(x_pos, self.width - text_width))
-                y_pos = max(0, min(y_pos, self.height - text_height))
-                
-                self.cached_clock_frame.paste(text_img, (x_pos, y_pos))
-                
-                # Reposition mask to full canvas
-                if hasattr(text_img, 'mask_data'):
-                    import numpy as np
-                    full_mask = np.zeros((self.height, self.width), dtype=np.uint8)
-                    text_mask_bytes = np.frombuffer(text_img.mask_data, dtype=np.uint8)
-                    text_mask = np.unpackbits(text_mask_bytes, bitorder='little').reshape(text_height, -1)[:, :text_width]
-                    full_mask[y_pos:y_pos+text_height, x_pos:x_pos+text_width] = text_mask
-                    mask_packed = np.packbits(full_mask.reshape(-1, self.width), axis=1, bitorder='little')
-                    self.cached_clock_frame.mask_data = mask_packed.tobytes()
-                    self.cached_clock_frame.mask_width_bytes = (self.width // 8) + (1 if self.width % 8 else 0)
-            else:
-                # ClockStyleStd (0) - Standard centered positioning
-                self.cached_clock_frame = self.dotclk_font.render_text(display_time, self.width, self.height)
-            
+
+            # Standard centered positioning
+            assert self.dotclk_font is not None
+            self.cached_clock_frame = self.dotclk_font.render_text(
+                display_time, self.width, self.height
+            )
             self.last_clock_time = cache_key
-        
-        clock_frame = self.cached_clock_frame
-        
-        # Get animation frame if playing
-        animation_frame = None
-        show_blank_frame = False
-        
-        # Create final frame with dual colors
-        if show_blank_frame:
-            # During blank periods, show clock only
-            import numpy as np
-            gray_array = np.array(clock_frame)
-            rgb_array = np.zeros((self.height, self.width, 3), dtype=np.uint8)
-            intensity = gray_array / 255.0
-            for i in range(3):
-                rgb_array[:, :, i] = (self.color[i] * intensity).astype(np.uint8)
-            return Image.fromarray(rgb_array, 'RGB')
-        elif animation_frame:
-            # Animation is active - apply layering with dual colors
-            if hasattr(self.current_scene, 'frame_layer') and self.current_scene.frame_layer == 1:
-                # Clock above animation: animation_color for base, clock_color for overlay
-                return overlay_or_rgb(animation_frame, clock_frame, self.animation_color, self.color)
-            else:
-                # Clock behind animation: clock_color for base, animation_color for overlay
-                return overlay_or_rgb(clock_frame, animation_frame, self.color, self.animation_color)
-        else:
-            # No animation - show only clock
-            import numpy as np
-            gray_array = np.array(clock_frame)
-            rgb_array = np.zeros((self.height, self.width, 3), dtype=np.uint8)
-            intensity = gray_array / 255.0
-            for i in range(3):
-                rgb_array[:, :, i] = (self.color[i] * intensity).astype(np.uint8)
-            return Image.fromarray(rgb_array, 'RGB')
-    
-    async def _precompute_animation(self):
-        """Precomputes all DMD frames of an animation in the background"""
-        if not self.scene_files:
-            return
-        
-        self.precomputing = True
-        scene_path = random.choice(self.scene_files)
-        
-        print(f"🎯 Loading scene: {scene_path.name}")
-        try:
-            scene = load_scene(scene_path, self.width, self.height)
-        except Exception as e:
-            print(f"⚠️ Failed to load scene {scene_path.name}: {e}")
-            self.precomputing = False
-            return
-        
-        print(f"⚙️ Pre-computing {len(scene.frames)} frames...")
-        print(f"   📊 Storyboard: first_delay={scene.first_frame_delay}ms, frame_delay={scene.frame_delay_ms}ms, last_delay={scene.last_frame_delay}ms")
-        print(f"   🎭 Blank frames: first={scene.first_blank}, last={scene.last_blank}")
-        print(f"   🔧 State machine: do_first={scene.do_first}, do_last={scene.do_last}")
-        print(f"   🎨 Frame layer: {scene.frame_layer} (0=clock behind, 1=clock above)")
-        
-        import numpy as np
-        precomputed_blink = []
-        precomputed_noblink = []
-        
-        # Helper to create a frame  
-        def create_frame(animation_frame, display_time, debug=False):
-            if scene.clock_style == 1:
-                text_width = self.dotclk_font.get_text_width(display_time)
-                text_height = self.dotclk_font.char_height
-                x_pos = max(0, min(scene.custom_x - (text_width // 2), self.width - text_width))
-                y_pos = max(0, min(scene.custom_y - (text_height // 2), self.height - text_height))
-                clock_frame = Image.new('L', (self.width, self.height), 0)
-                text_img = self.dotclk_font.render_text(display_time, text_width, text_height)
-                clock_frame.paste(text_img, (x_pos, y_pos))
-                # Reposition mask to full canvas
-                if hasattr(text_img, 'mask_data'):
-                    full_mask = np.zeros((self.height, self.width), dtype=np.uint8)
-                    text_mask_bytes = np.frombuffer(text_img.mask_data, dtype=np.uint8)
-                    text_mask = np.unpackbits(text_mask_bytes, bitorder='little').reshape(text_height, -1)[:, :text_width]
-                    full_mask[y_pos:y_pos+text_height, x_pos:x_pos+text_width] = text_mask
-                    mask_packed = np.packbits(full_mask.reshape(-1, self.width), axis=1, bitorder='little')
-                    clock_frame.mask_data = mask_packed.tobytes()
-                    clock_frame.mask_width_bytes = (self.width // 8) + (1 if self.width % 8 else 0)
-            else:
-                clock_frame = self.dotclk_font.render_text(display_time, self.width, self.height)
-            
+            needs_colorize = True
 
-            
-            # Apply dual colors
-            if hasattr(scene, 'frame_layer') and scene.frame_layer == 1:
-                merged_frame = overlay_or_rgb(animation_frame, clock_frame, self.animation_color, self.color)
-            else:
-                merged_frame = overlay_or_rgb(clock_frame, animation_frame, self.color, self.animation_color)
-            
-            # Debug RGB
-            if debug:
-                rgb_array = np.array(merged_frame)
-                r_channel = rgb_array[:, :, 0]
-                g_channel = rgb_array[:, :, 1]
-                black_pixels = np.count_nonzero((r_channel == 0) & (g_channel == 0))
-                print(f"   🎨 RGB: black={black_pixels}, clock_color={self.color}, animation_color={self.animation_color}")
-            
-            return merged_frame
-        
-        # Debug clock mask and pixels
-        test_clock = self.dotclk_font.render_text(time.strftime("%H:%M"), self.width, self.height)
-        has_clock_mask = hasattr(test_clock, 'mask_data') and test_clock.mask_data is not None
-        clock_arr = np.array(test_clock)
-        unique_vals = np.unique(clock_arr)
-        print(f"   🔤 Clock mask: present={has_clock_mask}")
-        print(f"   🎨 Clock unique pixel values: {unique_vals.tolist()}")
-        print(f"   🎨 Clock pixels: 32={np.count_nonzero(clock_arr == 32)}, 96={np.count_nonzero(clock_arr == 96)}, 255={np.count_nonzero(clock_arr == 255)}")
-        if has_clock_mask:
-            mask_bits = np.frombuffer(test_clock.mask_data, dtype=np.uint8)
-            print(f"   🔤 Clock mask: {np.count_nonzero(mask_bits)} non-zero bytes")
-        
-        # Precompute 2 versions of each frame
-        for frame_idx, animation_frame in enumerate(scene.frames):
-            if frame_idx == 0:
-                has_mask = hasattr(animation_frame, 'mask_data') and animation_frame.mask_data is not None
-                anim_array = np.array(animation_frame)
-                non_zero = np.count_nonzero(anim_array)
-                anim_unique = np.unique(anim_array)
-                print(f"   🖼️ Frame 0: size={animation_frame.size}, has_mask={has_mask}, unique_values={anim_unique.tolist()}, non_zero={non_zero}")
-            
-            precomputed_blink.append(create_frame(animation_frame, time.strftime("%H:%M"), debug=(frame_idx==0)))
-            precomputed_noblink.append(create_frame(animation_frame, time.strftime("%H %M")))
-            
-            if frame_idx % 10 == 0:
-                await asyncio.sleep(0)
-        
-        # Add first/last delay frames
-        frame_delay = scene.frame_delay_ms if scene.frame_delay_ms > 0 else 40
-        
-        if scene.first_frame_delay > 0:
-            first_frame_count = int(scene.first_frame_delay / frame_delay)
-            precomputed_blink = [precomputed_blink[0]] * first_frame_count + precomputed_blink
-            precomputed_noblink = [precomputed_noblink[0]] * first_frame_count + precomputed_noblink
-        
-        if scene.last_frame_delay > 0:
-            last_frame_count = int(scene.last_frame_delay / frame_delay)
-            precomputed_blink = precomputed_blink + [precomputed_blink[-1]] * last_frame_count
-            precomputed_noblink = precomputed_noblink + [precomputed_noblink[-1]] * last_frame_count
-        
-        # Activate animation
-        self.precomputed_frames = precomputed_blink
-        self.precomputed_frames_noblink = precomputed_noblink
-        self.current_scene = scene
-        self.scene_frame_index = 0
-        self.animation_playing = True
-        self.animation_start_time = time.time()
-        self.current_clock_style = scene.clock_style
-        self.last_clock_time = ""
-        self.precomputing = False
-        
-        fps = 1000.0 / scene.frame_delay_ms if scene.frame_delay_ms > 0 else 25.0
-        total_duration = len(precomputed_blink) * (scene.frame_delay_ms if scene.frame_delay_ms > 0 else 40) / 1000.0
-        print(f"✅ Animation ready: {scene_path.name} ({len(precomputed_blink)} total frames, {fps:.1f} FPS, {total_duration:.1f}s total)")
-    
+        if self.last_clock_color != self.color:
+            self.last_clock_color = self.color
+            needs_colorize = True
 
-    
-    def stop(self):
+        if needs_colorize or self.cached_clock_rgb is None:
+            assert self.cached_clock_frame is not None
+            self.cached_clock_rgb = colorize_grayscale(
+                self.cached_clock_frame, self.color
+            )
+
+        return self.cached_clock_rgb
+
+    def stop(self) -> None:
         """Stop the clock"""
         self.running = False
 
 
-def main():
+def main() -> None:
     """Point d'entrée principal"""
     import argparse
+    import logging
     import sys
     from .installer import check_and_install_resources
-    
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    logger = logging.getLogger(__name__)
+
     parser = argparse.ArgumentParser(description="zeClock - Animated DMD clock")
-    parser.add_argument("--color", choices=["orange", "blue", "red", "purple", "green", "yellow", "cyan", "pink", "auto"], default="auto", help="Clock color (default: auto-rotate every minute)")
-    parser.add_argument("--animation-color", choices=["orange", "blue", "red", "purple", "green", "yellow", "cyan", "pink"], help="Animation color (default: same as clock)")
-    parser.add_argument("--bootstrap", action="store_true", help="Automatically install dmdserver and all resources without running the clock")
-    parser.add_argument("--no-prompt", action="store_true", help="Disable interactive prompt during automatic bootstrap")
+    parser.add_argument(
+        "--color",
+        choices=[
+            "orange",
+            "blue",
+            "red",
+            "purple",
+            "green",
+            "yellow",
+            "cyan",
+            "pink",
+            "auto",
+        ],
+        default="auto",
+        help="Clock color (default: auto-rotate every minute)",
+    )
+    parser.add_argument(
+        "--animation-color",
+        choices=["orange", "blue", "red", "purple", "green", "yellow", "cyan", "pink"],
+        help="Animation color (default: same as clock)",
+    )
+    parser.add_argument(
+        "--bootstrap",
+        action="store_true",
+        help="Automatically install dmdserver and all resources without running the clock",
+    )
+    parser.add_argument(
+        "--no-prompt",
+        action="store_true",
+        help="Disable interactive prompt during automatic bootstrap",
+    )
+
+    # Plugin management arguments
+    parser.add_argument(
+        "--list-plugins",
+        action="store_true",
+        help="List all discovered plugins with name, description, and active status, then exit",
+    )
+    parser.add_argument(
+        "--plugins",
+        type=str,
+        default=None,
+        help="Comma-separated list of plugin names to activate with equal frequency (overrides config)",
+    )
+    parser.add_argument(
+        "--plugin-config",
+        type=str,
+        default=None,
+        help="Path to custom plugin configuration YAML file",
+    )
+
     args = parser.parse_args()
-    
+
+    # Handle --plugin-config path validation (must check before any plugin operations)
+    if args.plugin_config is not None:
+        config_path = Path(args.plugin_config)
+        if not config_path.exists():
+            logger.error(f"Plugin config file not found: {args.plugin_config}")
+            print(
+                f"Error: plugin config file not found: {args.plugin_config}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
     # If --bootstrap flag is active, force installation and exit
     if args.bootstrap:
         success = check_and_install_resources(interactive=False)
         sys.exit(0 if success else 1)
-        
+
+    # Handle --list-plugins: discover plugins and print info, then exit
+    if args.list_plugins:
+        _handle_list_plugins(args)
+        sys.exit(0)
+
     # Otherwise, check / initialize interactively (or non-interactively if --no-prompt)
     if not check_and_install_resources(interactive=not args.no_prompt):
         print("❌ Cannot start: required resources are missing.")
         sys.exit(1)
-        
-    clock = ZeClock(color=args.color, animation_color=args.animation_color)
+
+    clock = ZeClock(
+        color=args.color,
+        animation_color=args.animation_color,
+        plugin_config_path=Path(args.plugin_config) if args.plugin_config else None,
+        plugins_override=args.plugins,
+    )
     asyncio.run(clock.run())
+
+
+def _handle_list_plugins(args: Any) -> None:
+    """Discover plugins and print their name, description, and active status."""
+    from .plugin_manager import PluginManager
+
+    config_path = Path(args.plugin_config) if args.plugin_config else None
+    manager = PluginManager(width=128, height=32, config_path=config_path)
+    asyncio.run(manager.discover_and_load())
+
+    all_plugins = manager.registry.get_all_plugins()
+    if not all_plugins:
+        print("No plugins discovered.")
+        return
+
+    for entry in all_plugins:
+        status = "active" if entry.state != "failed" else "inactive"
+        print(f"{entry.name}\t{entry.plugin.description}\t{status}")
+
+
+def _handle_plugins_override(args: Any, manager: Any) -> bool:
+    """Apply --plugins CLI override: activate only specified plugins with equal frequency.
+
+    Args:
+        args: Parsed CLI arguments (must have .plugins attribute).
+        manager: The PluginManager instance (after discover_and_load).
+
+    Returns:
+        True if at least one valid plugin was found, False if all names are unrecognized.
+    """
+    plugin_names = [name.strip() for name in args.plugins.split(",") if name.strip()]
+    valid_names = []
+
+    for name in plugin_names:
+        if manager.registry.has_plugin(name):
+            valid_names.append(name)
+        else:
+            logger.warning(f"Unrecognized plugin name: '{name}'")
+
+    if not valid_names:
+        logger.error(
+            f"All plugin names unrecognized: {plugin_names}. Falling back to pinball."
+        )
+        return False
+
+    # Override registry: set equal frequency for valid plugins, zero out others
+    equal_frequency = 100 // len(valid_names)
+    for entry in manager.registry.get_all_plugins():
+        if entry.name in valid_names:
+            manager.registry.set_frequency(entry.name, equal_frequency)
+        else:
+            manager.registry.set_frequency(entry.name, 0)
+
+    return True
 
 
 if __name__ == "__main__":

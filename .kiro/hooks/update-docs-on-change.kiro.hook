@@ -1,18 +1,16 @@
 {
-  "enabled": true,
   "name": "Update docs on source change",
-  "description": "When Python source files in the zeclock/ package are edited, reminds the agent to review and update the docs/ folder (architecture.md, structure.md, tech.md) to reflect any architectural, structural, or technical changes.",
-  "version": "1",
+  "description": "After the agent writes to Python source files in zeclock/ or pyproject.toml, reminds the agent to review and update docs/.",
+  "version": "1.0.0",
   "when": {
     "type": "fileEdited",
     "patterns": [
-      "zeclock/*.py",
       "zeclock/**/*.py",
       "pyproject.toml"
     ]
   },
   "then": {
     "type": "askAgent",
-    "prompt": "A source file in the zeclock/ package or pyproject.toml was just edited. Check if the change affects the project's architecture, structure, or technical stack. If it does, update the relevant documentation files in docs/ (architecture.md, structure.md, tech.md) to stay in sync with the code. All documentation MUST be written in English. Only update docs if there is a meaningful change (new module, changed protocol, new dependency, restructured components). Minor bug fixes or logic tweaks do not require doc updates."
+    "prompt": "A source file in zeclock/ or pyproject.toml was just edited. Check if the change affects the project architecture, structure, or technical stack. If it does, update the relevant docs in docs/ (architecture.md, structure.md, tech.md, plugin_authoring.md). Only update for meaningful changes (new module, changed protocol, removed dependency, restructured components). All docs MUST be in English."
   }
 }
