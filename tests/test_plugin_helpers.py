@@ -15,6 +15,16 @@ from PIL import Image
 
 from zeclock.plugins.helpers import PluginHelpers
 
+# DotClk fonts are not available in CI (local submodule only)
+DOTCLK_PATH = Path(__file__).parent.parent / "DotClk"
+HAS_DOTCLK_FONTS = (DOTCLK_PATH / "Fonts").is_dir() and any(
+    (DOTCLK_PATH / "Fonts").glob("*.fnt")
+)
+requires_fonts = pytest.mark.skipif(
+    not HAS_DOTCLK_FONTS,
+    reason="DotClk fonts not available (local resource, not in CI)",
+)
+
 
 def _frame_has_content(frame: Image.Image) -> bool:
     """Check if a frame has any non-black pixels."""
@@ -259,10 +269,12 @@ class TestRenderText:
         frame = helpers.render_text("")
         assert _frame_is_black(frame)
 
+    @requires_fonts
     def test_centered_text_has_content(self, helpers):
         frame = helpers.render_text("12:00", centered=True)
         assert _frame_has_content(frame)
 
+    @requires_fonts
     def test_positioned_text_has_content(self, helpers):
         # STANDARD font only has digits, ':', '/', 'A', 'M', 'P', ' '
         frame = helpers.render_text("12:00", x=10, y=5)
@@ -354,6 +366,7 @@ class TestCompositeFrames:
         assert result.mode == "RGB"
 
 
+@requires_fonts
 class TestGetFontNames:
     """Tests for get_font_names()."""
 
@@ -383,6 +396,7 @@ class TestGetFontNames:
             assert names == []
 
 
+@requires_fonts
 class TestGetTextWidth:
     """Tests for get_text_width()."""
 
@@ -407,6 +421,7 @@ class TestGetTextWidth:
 
 
 # Feature: plugin-system, Property 18: PluginHelpers Text Width Consistency
+@requires_fonts
 class TestTextWidthConsistencyProperty:
     """Property 18: PluginHelpers Text Width Consistency.
 

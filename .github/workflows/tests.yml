@@ -41,7 +41,7 @@ jobs:
 
       - name: Run type checker
         run: |
-          mypy zeclock/ --ignore-missing-imports
+          mypy zeclock/
 
       - name: Check formatting
         run: |
