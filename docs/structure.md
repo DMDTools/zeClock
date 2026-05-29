@@ -43,14 +43,14 @@ zeClock/
 ├── scripts/                    # Development and utility scripts
 │   ├── dev-start.sh            # Start dmdserver + zeclock locally (real or virtual mode)
 │   ├── dev-stop.sh             # Stop local dmdserver + zeclock
-│   └── fake-dmdserver.py       # Virtual DMD server with WebGL browser preview
+│   └── virtual-dmd.py          # Virtual DMD server with WebGL browser preview
 ├── examples/                   # Example and quick-test scripts
 │   ├── run_clock.py            # Minimal clock launcher
 │   ├── demo.py                 # Frame loading and sending demo
 │   └── test_readers.py         # Quick validation of .fnt and .scn readers
 ├── config/                     # Default configuration
 │   ├── dmdserver.ini           # Reference ini file for dmdserver (real ZeDMD)
-│   └── dmdserver-virtual.ini   # Config for virtual mode (no physical display)
+│   └── dmdserver-virtual.ini   # Config for virtual DMD mode (no physical display)
 ├── docs/                       # Technical documentation
 │   ├── architecture.md         # Architecture and rendering pipeline
 │   ├── structure.md            # This file (project organization)
@@ -125,7 +125,7 @@ Scripts for quickly testing the installation or understanding the API:
 | `mypy.ini` | mypy type checker configuration |
 | `.dockerignore` | Files excluded from Docker image builds |
 | `config/dmdserver.ini` | Reference configuration file for dmdserver (ports, ZeDMD USB/WiFi, brightness) |
-| `config/dmdserver-virtual.ini` | Configuration for virtual mode (no physical display attached) |
+| `config/dmdserver-virtual.ini` | Configuration for virtual DMD mode (no physical display attached) |
 
 ---
 

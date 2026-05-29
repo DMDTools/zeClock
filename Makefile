@@ -19,7 +19,7 @@ help: ## Show this help
 dev-start: ## Start dmdserver + zeclock locally (real ZeDMD)
 	@scripts/dev-start.sh $(COLOR)
 
-dev-start-virtual: ## Start dmdserver (no display) + zeclock locally (for code testing)
+dev-start-virtual: ## Start zeclock in virtual mode (DMD rendered in browser, no physical display needed)
 	@scripts/dev-start.sh $(COLOR) virtual
 
 dev-stop: ## Stop local dmdserver + zeclock

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fake dmdserver with browser preview.
+"""Virtual DMD server with browser preview.
 
 Accepts DMDStream protocol on port 6789 (like real dmdserver).
 Serves a live DMD preview at http://localhost:8080 via WebSocket.
@@ -536,7 +536,7 @@ def main():
         print("   uv pip install websockets")
         sys.exit(1)
 
-    print(f"🎮 Fake dmdserver with browser preview")
+    print(f"🎮 Virtual DMD server (browser preview)")
     print(f"  DMD protocol: port {DMD_PORT}")
     print(f"  Browser view: http://localhost:{WEB_PORT}")
     print()

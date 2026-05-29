@@ -13,8 +13,8 @@ PIDFILE="/tmp/zeclock-dmdserver.pid"
 scripts/dev-stop.sh 2>/dev/null || true
 
 if [ "$MODE" = "virtual" ]; then
-    echo "▶️  Starting fake dmdserver (virtual — browser preview)..."
-    uv run python scripts/fake-dmdserver.py 6789 &
+    echo "▶️  Starting virtual mode (DMD in browser at http://localhost:8080)..."
+    uv run python scripts/virtual-dmd.py 6789 &
 else
     echo "▶️  Starting dmdserver (real ZeDMD)..."
     $DMDSERVER_BIN -c "$DMDSERVER_INI" -w -l 2>&1 &
