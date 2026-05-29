@@ -20,7 +20,7 @@ class BitmapFont:
         self.char_info: Dict[str, Dict[str, int]] = {}
         self._load()
 
-    def _load(self):
+    def _load(self) -> None:
         """Loads the .fnt file"""
         with open(self.path, "rb") as f:
             data = f.read()
@@ -58,7 +58,7 @@ class BitmapFont:
         bitmap_data = data[offset:]
         self._parse_bitmap(bitmap_data)
 
-    def _parse_bitmap(self, bitmap_data: bytes):
+    def _parse_bitmap(self, bitmap_data: bytes) -> None:
         """Parse bitmap format with dotmap header"""
         if len(bitmap_data) < 8:
             return

@@ -36,7 +36,7 @@ except ImportError:
     GREEN = YELLOW = RED = BLUE = NC = ""
 
 
-def print_color(color, text):
+def print_color(color: str, text: str) -> None:
     """Prints colored text to console"""
     print(f"{color}{text}{NC}")
 
@@ -89,7 +89,7 @@ def download_dmd_release(platform_id: str, version: str, temp_dir: Path) -> Path
     archive_path = temp_dir / filename
 
     # Simple progress hook
-    def progress_hook(block_num, block_size, total_size):
+    def progress_hook(block_num: int, block_size: int, total_size: int) -> None:
         if total_size > 0:
             percent = min(100, block_num * block_size * 100 / total_size)
             sys.stdout.write(f"\r   Progress: {percent:.1f}%")
@@ -110,7 +110,7 @@ def download_dmd_release(platform_id: str, version: str, temp_dir: Path) -> Path
     return temp_dir
 
 
-def install_dmd_files(source_dir: Path):
+def install_dmd_files(source_dir: Path) -> None:
     """Installs dmdserver files to destination directory"""
     INSTALL_DIR.mkdir(parents=True, exist_ok=True)
     print_color(BLUE, f"📦 Installing to: {INSTALL_DIR}")
@@ -136,7 +136,7 @@ def install_dmd_files(source_dir: Path):
         )
 
 
-def create_default_config():
+def create_default_config() -> None:
     """Generates default dmdserver config if missing"""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     config_file = CONFIG_DIR / "dmdserver.ini"
@@ -195,7 +195,7 @@ def download_resources_archive(temp_dir: Path) -> Path:
 
     print_color(YELLOW, f"🌐 Downloading from: {download_url}")
 
-    def progress_hook(block_num, block_size, total_size):
+    def progress_hook(block_num: int, block_size: int, total_size: int) -> None:
         if total_size > 0:
             percent = min(100, block_num * block_size * 100 / total_size)
             sys.stdout.write(f"\r   Progress: {percent:.1f}%")
@@ -216,7 +216,7 @@ def download_resources_archive(temp_dir: Path) -> Path:
     return extracted_dirs[0]
 
 
-def install_dotclk_files(source_dir: Path):
+def install_dotclk_files(source_dir: Path) -> None:
     """Installs fonts and animations into ~/.zeclock"""
     RESOURCES_DIR.mkdir(parents=True, exist_ok=True)
     print_color(BLUE, f"📦 Installing resources to: {RESOURCES_DIR}")
@@ -246,7 +246,7 @@ def install_dotclk_files(source_dir: Path):
         print_color(YELLOW, "   ⚠️ Scenes directory missing from downloaded resources.")
 
 
-def create_resources_readme():
+def create_resources_readme() -> None:
     """Generates informative README.txt file inside resources folder"""
     readme_path = RESOURCES_DIR / "README.txt"
     readme_content = """DotClk Resources for zeClock

@@ -76,7 +76,7 @@ class StockPlugin(PagedPlugin):
     def _cache(self, value: Optional["StockData"]) -> None:
         StockPlugin._shared_cache = value
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize StockPlugin with default state."""
         super().__init__()
         self._symbols: List[str] = []

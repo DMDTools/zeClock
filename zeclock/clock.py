@@ -7,7 +7,7 @@ import enum
 import logging
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from PIL import Image
 
@@ -93,7 +93,7 @@ class ZeClock:
         else:
             print("❌ No font found")
 
-    async def run(self):
+    async def run(self) -> None:
         """Main asynchronous loop with plugin-driven state machine."""
         if not self.dmd_client.connect():
             print("❌ Cannot start: dmdserver is not available.")
@@ -158,6 +158,7 @@ class ZeClock:
                         frame_time = 0.5
                     else:
                         # Get frame from active plugin
+                        assert self._plugin_manager is not None
                         plugin_frame = await self._plugin_manager.get_frame()
                         if plugin_frame is None:
                             # Plugin signals completion
@@ -200,7 +201,7 @@ class ZeClock:
                 await self._plugin_manager.deactivate_plugin()
             self.dmd_client.disconnect()
 
-    async def _init_plugin_system(self):
+    async def _init_plugin_system(self) -> None:
         """Initialize the PluginManager, discover and load plugins."""
         self._plugin_manager = PluginManager(
             width=self.width,
@@ -359,12 +360,12 @@ class ZeClock:
 
         return self.cached_clock_rgb
 
-    def stop(self):
+    def stop(self) -> None:
         """Stop the clock"""
         self.running = False
 
 
-def main():
+def main() -> None:
     """Point d'entrée principal"""
     import argparse
     import logging
@@ -463,7 +464,7 @@ def main():
     asyncio.run(clock.run())
 
 
-def _handle_list_plugins(args):
+def _handle_list_plugins(args: Any) -> None:
     """Discover plugins and print their name, description, and active status."""
     from .plugin_manager import PluginManager
 
@@ -481,7 +482,7 @@ def _handle_list_plugins(args):
         print(f"{entry.name}\t{entry.plugin.description}\t{status}")
 
 
-def _handle_plugins_override(args, manager):
+def _handle_plugins_override(args: Any, manager: Any) -> bool:
     """Apply --plugins CLI override: activate only specified plugins with equal frequency.
 
     Args:

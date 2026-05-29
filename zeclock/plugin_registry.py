@@ -29,7 +29,7 @@ class PluginRegistry:
     frequency normalization for scheduling.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._plugins: Dict[str, PluginEntry] = {}
 
     def register(self, plugin: ClockPlugin, source: str, frequency: int = 100) -> None:

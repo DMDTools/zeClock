@@ -40,7 +40,7 @@ class DMDServerClient:
             self.connected = False
             return False
 
-    def disconnect(self):
+    def disconnect(self) -> None:
         """Closes the connection"""
         if self.sock:
             self.sock.close()
@@ -122,9 +122,9 @@ class DMDServerClient:
         ]
         return struct.pack(f">{pixel_count}H", *values)
 
-    def __enter__(self):
+    def __enter__(self) -> "DMDServerClient":
         self.connect()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
         self.disconnect()

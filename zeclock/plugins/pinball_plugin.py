@@ -45,7 +45,7 @@ class PinballPlugin(ClockPlugin):
     def frame_delay_ms(self) -> int:
         return self._frame_delay_ms
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize PinballPlugin with default state."""
         self._frame_delay_ms: int = DEFAULT_FRAME_DELAY_MS
         self._frames: List[Image.Image] = []

@@ -30,7 +30,7 @@ def validate_plugin_name(name: str) -> bool:
         True if the name is valid, False otherwise.
     """
     if not isinstance(name, str):
-        return False
+        return False  # type: ignore[unreachable]
     return bool(PLUGIN_NAME_PATTERN.match(name))
 
 
@@ -46,7 +46,7 @@ def validate_plugin_description(description: str) -> bool:
         True if the description is valid, False otherwise.
     """
     if not isinstance(description, str):
-        return False
+        return False  # type: ignore[unreachable]
     return 0 < len(description) <= PLUGIN_DESCRIPTION_MAX_LENGTH
 
 
@@ -62,7 +62,7 @@ def validate_frame_delay_ms(delay: int) -> bool:
         True if the delay is valid, False otherwise.
     """
     if not isinstance(delay, int):
-        return False
+        return False  # type: ignore[unreachable]
     return FRAME_DELAY_MIN_MS <= delay <= FRAME_DELAY_MAX_MS
 
 
@@ -138,7 +138,7 @@ class PagedPlugin(ClockPlugin):
         page_duration_seconds (int): Duration per page, 2-30s (default: 4).
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize paging state."""
         self._frame_delay_ms: int = 100  # 10 FPS default
         self._page_duration_seconds: int = 4

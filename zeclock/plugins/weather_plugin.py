@@ -150,7 +150,7 @@ class WeatherPlugin(PagedPlugin):
     def description(self) -> str:
         return "Current weather and forecast display"
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize WeatherPlugin with default state."""
         super().__init__()
         self._cache: Optional[WeatherData] = None

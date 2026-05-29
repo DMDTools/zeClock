@@ -34,7 +34,7 @@ class Scene:
 
         self._load()
 
-    def _load(self):
+    def _load(self) -> None:
         """Loads the .scn file"""
         with open(self.path, "rb") as f:
             data = f.read()

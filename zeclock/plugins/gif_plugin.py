@@ -22,7 +22,7 @@ DEFAULT_GIF_DIR = Path.home() / ".zeclock" / "plugins" / "gif"
 class GifPlugin(ClockPlugin):
     """Plays a random animated GIF from a directory on the DMD display."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize with empty state."""
         self._helpers = None
         self._frames: List[Image.Image] = []
