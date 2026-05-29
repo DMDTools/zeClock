@@ -12,9 +12,16 @@ zeClock/
 │   ├── __init__.py             # Package initialization, version
 │   ├── clock.py                # Main async loop + CLI (entry point)
 │   ├── colors.py               # Shared color constants (palette, auto-rotate list, reverse lookup)
-│   ├── dmdserver_client.py     # TCP Socket client (DMDStream RGB565 protocol)
+│   ├── backend_config.py       # BackendConfig dataclass and config file parsing
+│   ├── dmdserver_client.py     # Backward-compatible alias (imports DMDServerBackend as DMDServerClient)
 │   ├── overlay.py              # Image composition via DotBlt masking
-│   ├── installer.py            # Automatic bootstrap (downloads dmdserver + resources)
+│   ├── installer.py            # Automatic bootstrap (downloads libzedmd + resources)
+│   ├── backends/               # Pluggable DMD backend system
+│   │   ├── __init__.py         # Exports DMDBackend, create_backend
+│   │   ├── base.py             # DMDBackend abstract base class (ABC)
+│   │   ├── zedmd.py            # ZeDMDBackend: direct hardware via libzedmd ctypes
+│   │   ├── dmdserver.py        # DMDServerBackend: TCP client (DMDStream protocol)
+│   │   └── factory.py          # create_backend() factory function (auto/zedmd/dmdserver)
 │   ├── readers/                # Binary format parsers for DotClk files
 │   │   ├── __init__.py         # Exports load_font, load_scene, BitmapFont, Scene
 │   │   ├── fnt_reader.py       # Bitmap font .fnt loader (4-bit per pixel)
@@ -33,24 +40,20 @@ zeClock/
 │       ├── weather_plugin.py   # Built-in plugin: weather conditions and forecast from Open-Meteo API
 │       └── weather_icons.py    # Weather condition code to pixel-art icon mapping
 ├── deploy/                     # Deployment configurations
-│   └── nas/                    # NAS Docker deployment
-│       ├── docker-compose.yml  # Orchestrates dmdserver + zeclock containers
-│       ├── Dockerfile.dmdserver # Builds dmdserver image (python:3.11-slim + libdmdutil binary)
-│       ├── Dockerfile.zeclock  # Builds zeclock image with resources
-│       ├── entrypoint.sh       # Container entrypoint (waits for dmdserver, starts zeclock)
-│       ├── config/             # dmdserver.ini for NAS deployment
-│       └── zeclock-config/     # Synced ~/.zeclock/config (plugins.yaml, etc.)
+│   └── nas/                    # NAS Docker deployment (single container with libzedmd)
+│       ├── Dockerfile          # Single unified Dockerfile (libzedmd embedded)
+│       ├── docker-compose.yml  # Single zeclock service
+│       └── zeclock-config/     # Mounted config (zeclock.ini, plugins.yaml)
 ├── scripts/                    # Development and utility scripts
-│   ├── dev-start.sh            # Start dmdserver + zeclock locally (real or virtual mode)
-│   ├── dev-stop.sh             # Stop local dmdserver + zeclock
+│   ├── dev-start.sh            # Start zeclock locally (real or virtual mode)
+│   ├── dev-stop.sh             # Stop local zeclock
 │   └── virtual-dmd.py          # Virtual DMD server with WebGL browser preview
 ├── examples/                   # Example and quick-test scripts
 │   ├── run_clock.py            # Minimal clock launcher
 │   ├── demo.py                 # Frame loading and sending demo
 │   └── test_readers.py         # Quick validation of .fnt and .scn readers
 ├── config/                     # Default configuration
-│   ├── dmdserver.ini           # Reference ini file for dmdserver (real ZeDMD)
-│   └── dmdserver-virtual.ini   # Config for virtual DMD mode (no physical display)
+│   └── zeclock.ini             # Reference config file (zedmd + dmdserver sections)
 ├── docs/                       # Technical documentation
 │   ├── architecture.md         # Architecture and rendering pipeline
 │   ├── structure.md            # This file (project organization)
@@ -79,11 +82,17 @@ This is the application core. It contains all the Python logic for reading resou
 | File | Role |
 |------|------|
 | `__init__.py` | Initializes the Python package and exposes the version (`0.1.0`) |
-| `clock.py` | Main application: async loop, state machine, animation pre-computation, CLI (`--color`, `--animation-color`, `--bootstrap`) |
+| `clock.py` | Main application: async loop, state machine, animation pre-computation, CLI (`--color`, `--animation-color`, `--backend`, `--wifi-addr`, `--device`, `--brightness`, `--bootstrap`) |
 | `colors.py` | Shared color constants: canonical `COLOR_MAP` (name → RGB), `COLOR_LIST` (for auto-rotate), and `COLOR_NAMES` (reverse lookup) |
-| `dmdserver_client.py` | Lightweight TCP client: forges DMDStream packets (header + RGB565 big-endian), manages persistent connection |
+| `backend_config.py` | `BackendConfig` dataclass and config file parsing (`~/.zeclock/config/zeclock.ini`); merges CLI args over config values |
+| `dmdserver_client.py` | Backward-compatible alias: imports `DMDServerBackend` as `DMDServerClient` for external code compatibility |
 | `overlay.py` | Image merging via DotBlt algorithm: `overlay_or` (monochrome) and `overlay_or_rgb` (dual color) |
-| `installer.py` | Runtime bootstrap: detects platform, downloads dmdserver from GitHub, installs DotClk resources |
+| `installer.py` | Runtime bootstrap: detects platform, downloads libzedmd from GitHub (`PPUC/libzedmd`), installs DotClk resources |
+| `backends/__init__.py` | Backend package: exports `DMDBackend` ABC and `create_backend()` factory function |
+| `backends/base.py` | `DMDBackend` abstract base class: defines `connect()`, `send_frame()`, `disconnect()`, `connected` property, and context manager protocol |
+| `backends/zedmd.py` | `ZeDMDBackend`: loads libzedmd via ctypes, sends frames as RGB888 directly (no pixel conversion), communicates directly with ZeDMD hardware (WiFi/USB) |
+| `backends/dmdserver.py` | `DMDServerBackend`: TCP client using DMDStream protocol, refactored from the original `dmdserver_client.py` |
+| `backends/factory.py` | `create_backend()`: instantiates the correct backend based on `--backend` argument (auto/zedmd/dmdserver) |
 | `readers/__init__.py` | Exports `BitmapFont`, `load_font`, `Scene`, `load_scene` |
 | `readers/fnt_reader.py` | Parses bitmap `.fnt` fonts: headers, character info (width, kerning), 4-bit bitmap, masks |
 | `readers/scn_reader.py` | Parses `.scn` animations: storyboard (delays, blanks, clock_style, positions), 4-bit dotmap frames with masks |
@@ -124,8 +133,7 @@ Scripts for quickly testing the installation or understanding the API:
 | `Makefile` | Development workflow: `make test` (pytest+flake8+mypy+black), `make dev-start`/`dev-stop`, `make nas-deploy`/`nas-stop`, `make format` |
 | `mypy.ini` | mypy type checker configuration |
 | `.dockerignore` | Files excluded from Docker image builds |
-| `config/dmdserver.ini` | Reference configuration file for dmdserver (ports, ZeDMD USB/WiFi, brightness) |
-| `config/dmdserver-virtual.ini` | Configuration for virtual DMD mode (no physical display attached) |
+| `config/zeclock.ini` | Reference configuration file for backend selection, ZeDMD (WiFi/USB/brightness), and dmdserver (host/port) |
 
 ---
 
@@ -135,13 +143,13 @@ During normal operation, the application expects the following directories in th
 
 ```text
 ~/.zeclock/
-├── bin/
-│   ├── dmdserver                # Native dmdserver executable
-│   ├── libdmdutil.so            # Dynamic libraries
-│   ├── libzedmd.so
-│   └── ...
+├── lib/
+│   ├── libzedmd.so              # ZeDMD shared library (or .dylib / .dll)
+│   ├── libsockpp.so             # Socket library dependency
+│   ├── libserialport.so         # Serial port library dependency
+│   └── .libzedmd-version        # Installed version tag (for update detection)
 ├── config/
-│   ├── dmdserver.ini            # TCP server and ZeDMD connection configuration
+│   ├── zeclock.ini              # Backend and ZeDMD connection configuration
 │   └── plugins.yaml             # Plugin configuration (active plugins, frequencies, settings)
 ├── plugins/                     # User-installed plugins (override built-in by name)
 │   └── *.py                     # Custom ClockPlugin implementations

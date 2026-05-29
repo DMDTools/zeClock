@@ -8,6 +8,10 @@ from typing import Any, List, Iterator, Optional, Tuple
 from PIL import Image
 import struct
 
+# Pre-computed 4-bit nibble to 8-bit grayscale lookup (16 entries)
+# 0=black, 1=shadow(64), 2-15=linear brightness (val*17)
+_NIBBLE_TO_GRAY = [0, 64] + [v * 17 for v in range(2, 16)]
+
 
 class Scene:
     """Represents an animation"""
@@ -143,29 +147,25 @@ class Scene:
             mask_data = data[offset : offset + mask_size]
             offset += mask_size
 
-        # Create image from dots data
-        img = Image.new("L", (dots_width, dots_height))
-        pixels = img.load()
-        assert pixels is not None
-
-        # Parse 4-bit data (2 pixels per byte) - preserve original values
+        # Parse 4-bit data (2 pixels per byte) using pre-built lookup
+        # Build pixel buffer directly as bytes (much faster than pixel-by-pixel)
+        pixel_buf = bytearray(dots_width * dots_height)
         for y in range(dots_height):
-            for x in range(dots_width):
-                byte_idx = (x // 2) + (y * width_bytes_dots)
-                if byte_idx < len(dots_data):
-                    byte_val = dots_data[byte_idx]
-                    if x % 2 == 0:
-                        pixel_val = byte_val & 0x0F
-                    else:
-                        pixel_val = (byte_val >> 4) & 0x0F
+            row_start = y * width_bytes_dots
+            out_row = y * dots_width
+            for x in range(0, dots_width - 1, 2):
+                byte_val = dots_data[row_start + (x >> 1)]
+                # Even pixel: lower nibble, Odd pixel: upper nibble
+                lo = byte_val & 0x0F
+                hi = (byte_val >> 4) & 0x0F
+                pixel_buf[out_row + x] = _NIBBLE_TO_GRAY[lo]
+                pixel_buf[out_row + x + 1] = _NIBBLE_TO_GRAY[hi]
+            # Handle last pixel if width is odd
+            if dots_width % 2:
+                byte_val = dots_data[row_start + ((dots_width - 1) >> 1)]
+                pixel_buf[out_row + dots_width - 1] = _NIBBLE_TO_GRAY[byte_val & 0x0F]
 
-                    # Map 4-bit values with better shadow visibility
-                    if pixel_val == 0:
-                        pixels[x, y] = 0
-                    elif pixel_val == 1:
-                        pixels[x, y] = 64
-                    else:
-                        pixels[x, y] = pixel_val * 17
+        img = Image.frombytes("L", (dots_width, dots_height), bytes(pixel_buf))
 
         # Store mask data as dynamic attributes for overlay use
         if mask_data:

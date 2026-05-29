@@ -6,7 +6,7 @@ This document describes the overall architecture, rendering data flow, and hardw
 
 ## 🗺️ Global Architecture (Data Flow)
 
-**zeClock** is an asynchronous Python client application that communicates over the network with a low-level C++ server (`dmdserver`), which handles display output on a physical ZeDMD LED panel or an emulated display.
+**zeClock** is an asynchronous Python client application that communicates with ZeDMD hardware through a pluggable backend system. The default backend (`ZeDMDBackend`) drives the display directly via `libzedmd` (C shared library called through Python ctypes). An alternative backend (`DMDServerBackend`) communicates over TCP with a separate `dmdserver` process, useful for development with `virtual-dmd.py`.
 
 ```mermaid
 graph TD
@@ -14,21 +14,24 @@ graph TD
         A["zeclock (clock.py)"] -->|Initializes| B["BitmapFont (fnt_reader.py)"]
         A -->|Initializes| C["Scene (scn_reader.py)"]
         A -->|Pre-computes frames| D["Overlay (overlay.py)"]
-        A -->|Sends RGB565 frames| E["DMDServerClient (dmdserver_client.py)"]
+        A -->|Sends frames via| E["DMDBackend (backends/)"]
         A -->|Auto bootstrap| F2["Installer (installer.py)"]
     end
 
-    subgraph "Middleware Layer (C++)"
-        F["dmdserver (TCP Daemon)"]
+    subgraph "Backend Layer"
+        E -->|"--backend zedmd (default)"| E1["ZeDMDBackend (ctypes/libzedmd)"]
+        E -->|"--backend dmdserver"| E2["DMDServerBackend (TCP socket)"]
     end
 
     subgraph "Hardware & Rendering Layer"
         G["ZeDMD (ESP32 / Teensy Hardware)"]
         H["RGB LED Panels (128x32 / 256x64)"]
         I["dmd-simulator (SDL2 Graphical Simulation)"]
+        F["dmdserver (TCP Daemon)"]
     end
 
-    E -->|TCP Socket: Port 6789| F
+    E1 -->|USB Serial / WiFi via libzedmd| G
+    E2 -->|TCP Socket: Port 6789| F
     F -->|USB Serial / WiFi| G
     G -->|Matrix Bus| H
     F -->|Local Simulation| I
@@ -48,20 +51,31 @@ Manages global state and the time-based execution loop.
 - **Dual Color**: Supports independent colors for the clock and animations, with an `auto` mode that rotates colors every 60 seconds.
 - **CLI Entry Point**: The `main()` function exposes `--color`, `--animation-color`, and `--bootstrap` arguments.
 
-### 2. Network Client: `DMDServerClient` (`dmdserver_client.py`)
+### 2. Backend Abstraction Layer (`backends/`)
 
-Handles the optimized network interface with the DMD server.
+Pluggable backend system for DMD communication. All backends implement the `DMDBackend` abstract base class, ensuring the clock and plugins remain backend-agnostic.
 
-- **DMDStream Protocol Serialization**: Forges a binary network header (big-endian) containing:
-  - Magic word: `DMDStream\x00` (10 bytes).
-  - Protocol version: 1 (uint8).
-  - Payload format: 3 = RGB565 (uint32 big-endian).
-  - Screen geometry: width, height (uint16 big-endian).
-  - Buffered flag (uint8).
-  - `disconnectOthers` flag (uint8).
-  - Total pixel data size (uint32 big-endian).
-- **Optimized RGB565 Conversion**: Converts standard RGB24 channels (3 bytes) to compact 16-bit RGB565 format (5 bits Red, 6 bits Green, 5 bits Blue) in big-endian via `struct.pack_into` per-pixel iteration.
-- **Persistent Connection**: Keeps the TCP socket open between frames for continuous streaming.
+- **`DMDBackend` ABC (`backends/base.py`)**: Defines the common interface:
+  - `connect() -> bool`: Establish connection to the display.
+  - `send_frame(image, buffered, color) -> bool`: Send a frame to the display.
+  - `disconnect() -> None`: Close the connection.
+  - `connected` property: Whether the backend is currently connected.
+  - Context manager protocol (`__enter__` / `__exit__`): Calls `connect()` / `disconnect()` automatically.
+- **`ZeDMDBackend` (`backends/zedmd.py`)**: Direct hardware communication via `libzedmd` (C shared library loaded through ctypes). Sends frames as RGB888 directly via `ZeDMD_RenderRgb888`, avoiding any Python-level pixel conversion. Supports WiFi and USB connections.
+- **`DMDServerBackend` (`backends/dmdserver.py`)**: TCP client using the DMDStream protocol (refactored from `dmdserver_client.py`). Used for development with `virtual-dmd.py`.
+- **`BackendFactory` (`backends/factory.py`)**: Instantiates the correct backend based on `--backend` CLI argument (`auto`, `zedmd`, `dmdserver`). In `auto` mode, tries ZeDMD first, falls back to dmdserver.
+
+#### DMDStream Protocol (used by DMDServerBackend)
+
+- **Header** (big-endian):
+  - Magic word: `DMDStream\x00` (10 bytes)
+  - Version: 1 (uint8)
+  - Mode: 3 = RGB565 (uint32 big-endian)
+  - Dimensions: width, height (uint16 big-endian)
+  - Flags: buffered, disconnectOthers (uint8 each)
+  - Data size: payload length (uint32 big-endian)
+- **Payload**: RGB565 big-endian data (2 bytes per pixel).
+- **Persistent connection**: Socket stays open between frames for continuous streaming.
 
 ### 3. Binary File Readers (`readers/`)
 
@@ -132,9 +146,10 @@ Extensible plugin architecture that allows contributors to author display plugin
 Runtime initialization module that detects and automatically installs system dependencies:
 
 - **Platform Detection**: Linux x64/aarch64, macOS arm64/x64, Windows x64.
-- **dmdserver Installation**: Downloads the latest release from `vpinball/libdmdutil` on GitHub.
+- **libzedmd Installation**: Downloads the latest release from `PPUC/libzedmd` on GitHub to `~/.zeclock/lib/`.
 - **DotClk Resources Installation**: Downloads fonts and 2300+ animations from `sigmafx/DotClk-Resources`.
 - **Interactive or Automatic Mode**: User prompt by default, or `--bootstrap` for silent installation.
+- **dmdserver Installation** (optional): Available via `--with-dmdserver` for development setups.
 
 ---
 
@@ -147,7 +162,7 @@ sequenceDiagram
     participant C as clock.py (ZeClock)
     participant F as fnt_reader.py (BitmapFont)
     participant O as overlay.py (Overlay)
-    participant S as dmdserver_client.py (TCP)
+    participant B as DMDBackend (backends/)
 
     C->>C: Event loop tick (dynamic timing)
     C->>F: Render current time text ("12:34" or "12 34")
@@ -164,10 +179,10 @@ sequenceDiagram
         C->>C: Colorize time image to RGB (per-pixel bytearray)
     end
     
-    C->>S: Send final RGB image
-    S->>S: Convert RGB888 → RGB565 big-endian (struct.pack_into)
-    S->>S: Encapsulate frame with "DMDStream" header
-    S->>S: Write to TCP Socket (port 6789)
+    C->>B: Send final RGB image via send_frame()
+    B->>B: ZeDMDBackend: send RGB888 directly (no conversion needed)
+    B->>B: DMDServerBackend: convert RGB888 → RGB565 big-endian for TCP
+    B->>B: Transmit to hardware (libzedmd ctypes) or TCP socket
 ```
 
 ---

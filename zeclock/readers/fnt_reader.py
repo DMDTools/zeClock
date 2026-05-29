@@ -8,6 +8,10 @@ from typing import Any, Dict, List, Optional
 from PIL import Image
 import struct
 
+# Pre-computed 4-bit nibble to 8-bit grayscale lookup for fonts
+# 0=outline(2, distinguishes from background 0), 1=shadow(64), 2-15=brightness(val*17)
+_NIBBLE_TO_GRAY_FONT = [2, 64] + [v * 17 for v in range(2, 16)]
+
 
 class BitmapFont:
     """Represents a bitmap font"""
@@ -97,33 +101,23 @@ class BitmapFont:
             mask_data = bitmap_data[offset : offset + mask_size]
             offset += mask_size
 
-        # Create bitmap image (preserve 4-bit grayscale)
-        bitmap_img = Image.new("L", (dots_width, dots_height))  # 'L' for grayscale
-        pixels = bitmap_img.load()
-        assert pixels is not None
-
-        # Parse bitmap data (4 bits per pixel, 2 pixels per byte)
+        # Create bitmap image using LUT (fast byte-level parsing)
+        # Font uses: 0=outline(2), 1=shadow(64), 2-15=brightness(val*17)
+        pixel_buf = bytearray(dots_width * dots_height)
         for y in range(dots_height):
-            for x in range(dots_width):
-                byte_idx = (x // 2) + (y * width_bytes_dots)
-                if byte_idx < len(dots_data):
-                    byte_val = dots_data[byte_idx]
-                    if x % 2 == 0:
-                        # Even column: lower 4 bits
-                        pixel_val = byte_val & 0x0F
-                    else:
-                        # Odd column: upper 4 bits
-                        pixel_val = (byte_val >> 4) & 0x0F
+            row_start = y * width_bytes_dots
+            out_row = y * dots_width
+            for x in range(0, dots_width - 1, 2):
+                byte_val = dots_data[row_start + (x >> 1)]
+                lo = byte_val & 0x0F
+                hi = (byte_val >> 4) & 0x0F
+                pixel_buf[out_row + x] = _NIBBLE_TO_GRAY_FONT[lo]
+                pixel_buf[out_row + x + 1] = _NIBBLE_TO_GRAY_FONT[hi]
+            if dots_width % 2:
+                byte_val = dots_data[row_start + ((dots_width - 1) >> 1)]
+                pixel_buf[out_row + dots_width - 1] = _NIBBLE_TO_GRAY_FONT[byte_val & 0x0F]
 
-                    # Map 4-bit values: 0=outline, 1=shadow, 2-15=brightness
-                    if pixel_val == 0:
-                        pixels[x, y] = (
-                            2  # Black outline (value 2 to distinguish from background)
-                        )
-                    elif pixel_val == 1:
-                        pixels[x, y] = 64  # Shadow (3D effect)
-                    else:
-                        pixels[x, y] = pixel_val * 17  # Linear for other values
+        bitmap_img = Image.frombytes("L", (dots_width, dots_height), bytes(pixel_buf))
 
         # Store mask data on bitmap for later use
         if mask_data:
@@ -186,30 +180,28 @@ class BitmapFont:
                 glyph = self.glyphs[vc]
                 img.paste(glyph, (x_pos, y_pos))
 
-                # Copy mask for this glyph
+                # Copy mask for this glyph (byte-level iteration)
                 if hasattr(glyph, "mask_data") and getattr(glyph, "mask_data", None):
                     glyph_any: Any = glyph
                     glyph_x_offset = getattr(glyph, "mask_x_offset", 0)
-                    for gy in range(glyph.size[1]):
-                        for gx in range(glyph.size[0]):
+                    glyph_w = glyph.size[0]
+                    glyph_h = glyph.size[1]
+                    src_mask = glyph_any.mask_data
+                    src_wb = glyph_any.mask_width_bytes
+                    for gy in range(glyph_h):
+                        dest_y = y_pos + gy
+                        if dest_y < 0 or dest_y >= height:
+                            continue
+                        src_row = gy * src_wb
+                        dest_row = dest_y * mask_width_bytes
+                        for gx in range(glyph_w):
                             src_x = glyph_x_offset + gx
-                            byte_idx = (src_x // 8) + (gy * glyph_any.mask_width_bytes)
-                            bit_pos = src_x % 8
-                            if byte_idx < len(glyph_any.mask_data):
-                                mask_bit = (
-                                    glyph_any.mask_data[byte_idx] >> bit_pos
-                                ) & 1
+                            src_byte_idx = (src_x >> 3) + src_row
+                            if src_byte_idx < len(src_mask) and (src_mask[src_byte_idx] >> (src_x & 7)) & 1:
                                 dest_x = x_pos + gx
-                                dest_y = y_pos + gy
-                                if 0 <= dest_x < width and 0 <= dest_y < height:
-                                    if mask_bit:
-                                        # Set bit in packed mask
-                                        mask_byte_idx = (dest_x // 8) + (
-                                            dest_y * mask_width_bytes
-                                        )
-                                        mask_bit_pos = dest_x % 8
-                                        mask_array[mask_byte_idx] |= 1 << mask_bit_pos
-                                        has_mask = True
+                                if 0 <= dest_x < width:
+                                    mask_array[(dest_x >> 3) + dest_row] |= 1 << (dest_x & 7)
+                                    has_mask = True
 
                 x_pos += self.char_info[vc]["width"]
                 if (

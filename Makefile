@@ -13,20 +13,27 @@ help: ## Show this help
 		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-22s\033[0m %s\n", $$1, $$2}'
 
 # ==============================================================================
-# Local dev targets (runs dmdserver + zeclock locally)
+# Local dev targets
 # ==============================================================================
 
-dev-start: ## Start dmdserver + zeclock locally (real ZeDMD)
+dev-start: ## Start zeclock locally with auto backend (libzedmd → real ZeDMD)
 	@scripts/dev-start.sh $(COLOR)
 
-dev-start-virtual: ## Start zeclock in virtual mode (DMD rendered in browser, no physical display needed)
+dev-start-virtual: ## Start zeclock in virtual mode (--backend dmdserver, DMD in browser)
 	@scripts/dev-start.sh $(COLOR) virtual
 
-dev-stop: ## Stop local dmdserver + zeclock
+dev-stop: ## Stop local zeclock + virtual-dmd
 	@scripts/dev-stop.sh
 
 dev-logs: ## Show local zeclock output (just re-run dev-start in foreground)
 	@echo "ℹ️  Local dev runs in foreground — use dev-start and watch stdout"
+
+# ==============================================================================
+# Build targets
+# ==============================================================================
+
+build-libzedmd: ## Build libzedmd from source via Docker → ~/.zeclock/lib/
+	@scripts/build-libzedmd.sh
 
 # ==============================================================================
 # Quality & CI
