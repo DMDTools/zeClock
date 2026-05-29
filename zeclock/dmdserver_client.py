@@ -115,7 +115,9 @@ class DMDServerClient:
         rgb_data = image.tobytes()
         pixel_count = len(rgb_data) // 3
         values = [
-            _RGB565_R[rgb_data[i]] | _RGB565_G[rgb_data[i + 1]] | _RGB565_B[rgb_data[i + 2]]
+            _RGB565_R[rgb_data[i]]
+            | _RGB565_G[rgb_data[i + 1]]
+            | _RGB565_B[rgb_data[i + 2]]
             for i in range(0, len(rgb_data), 3)
         ]
         return struct.pack(f">{pixel_count}H", *values)

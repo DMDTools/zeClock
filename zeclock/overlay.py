@@ -1,9 +1,10 @@
 from PIL import Image
 from typing import Any, Dict, List, Tuple
 
-
 # LUT cache: maps color tuple -> (r_lut, g_lut, b_lut) as lists of ints
-_colorize_lut_cache: Dict[Tuple[int, int, int], Tuple[List[int], List[int], List[int]]] = {}
+_colorize_lut_cache: Dict[
+    Tuple[int, int, int], Tuple[List[int], List[int], List[int]]
+] = {}
 
 
 def _get_color_channels(
