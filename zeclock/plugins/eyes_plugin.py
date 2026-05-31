@@ -100,7 +100,7 @@ class EyesPlugin(ClockPlugin):
         """
         self._helpers = config.get("_helpers")
         self._duration_seconds = config.get("duration_seconds", 20)
-        self._show_time = config.get("show_time", True)
+        self._show_time = config.get("show_time", False)
 
         # Colors
         self._eye_color: Tuple[int, int, int] = (0, 255, 255)  # Cyan default
@@ -125,9 +125,24 @@ class EyesPlugin(ClockPlugin):
         self._frames_rendered = 0
         self._max_frames = int(self._duration_seconds * 1000 / self.frame_delay_ms)
 
-        # Display dimensions (will be set on first render)
+        # Display dimensions (will be updated on first render)
         self._width = 128
         self._height = 32
+
+        # Scaled geometry (SD defaults, updated in render_frame when size is known)
+        self._eye_w = EYE_WIDTH
+        self._eye_h = EYE_HEIGHT
+        self._eye_spacing = EYE_SPACING
+        self._eye_border_radius = EYE_BORDER_RADIUS
+        self._pupil_radius = PUPIL_RADIUS
+        self._pupil_max_offset_x = PUPIL_MAX_OFFSET_X
+        self._pupil_max_offset_y = PUPIL_MAX_OFFSET_Y
+        self._fly_size = FLY_SIZE
+        self._fly_buzz_amplitude = FLY_BUZZ_AMPLITUDE
+        self._fly_close_distance = float(FLY_CLOSE_DISTANCE)
+        self._fly_cross_eye_distance = float(FLY_CROSS_EYE_DISTANCE)
+        self._fly_speed_min = FLY_SPEED_MIN
+        self._fly_speed_max = FLY_SPEED_MAX
 
         # Eye animation state
         self._current_pupil_x = 0.0  # Current pupil offset (-1 to 1)
@@ -226,10 +241,10 @@ class EyesPlugin(ClockPlugin):
             if random.random() < 0.07:
                 self._fly_state = FlyState.LANDING
                 self._landing_end_time = now + random.uniform(2.0, 4.0)
-                # Land between the eyes but lower — just below the eyes, above the clock
+                # Land between the eyes but lower
                 nose_x = (self._left_eye_cx + self._right_eye_cx) / 2
                 nose_y = (
-                    (self._left_eye_cy + self._right_eye_cy) / 2 + EYE_HEIGHT // 2 - 1
+                    (self._left_eye_cy + self._right_eye_cy) / 2 + self._eye_h // 2 - 1
                 )
                 self._fly_x = nose_x
                 self._fly_y = nose_y
@@ -238,7 +253,7 @@ class EyesPlugin(ClockPlugin):
                 return
 
             # New random direction with speed variation
-            speed = random.uniform(FLY_SPEED_MIN, FLY_SPEED_MAX)
+            speed = random.uniform(self._fly_speed_min, self._fly_speed_max)
             angle = random.uniform(0, 2 * math.pi)
             self._fly_vx = speed * math.cos(angle)
             self._fly_vy = speed * math.sin(angle)
@@ -259,9 +274,11 @@ class EyesPlugin(ClockPlugin):
         self._fly_y += self._fly_vy
 
         # Add buzz jitter
-        self._fly_x += random.uniform(-FLY_BUZZ_AMPLITUDE, FLY_BUZZ_AMPLITUDE)
+        self._fly_x += random.uniform(
+            -self._fly_buzz_amplitude, self._fly_buzz_amplitude
+        )
         self._fly_y += random.uniform(
-            -FLY_BUZZ_AMPLITUDE * 0.5, FLY_BUZZ_AMPLITUDE * 0.5
+            -self._fly_buzz_amplitude * 0.5, self._fly_buzz_amplitude * 0.5
         )
 
         # Bounce off screen edges - use full display area
@@ -313,7 +330,7 @@ class EyesPlugin(ClockPlugin):
     def _update_expression(self, fly_dist: float) -> None:
         """Update eye expression based on fly behavior."""
         now = time.time()
-        fly_is_close = fly_dist < FLY_CLOSE_DISTANCE
+        fly_is_close = fly_dist < self._fly_close_distance
 
         # Detect transitions
         fly_just_arrived = fly_is_close and not self._fly_was_close
@@ -348,7 +365,7 @@ class EyesPlugin(ClockPlugin):
         # Sleepy: fly is far away and has been resting a while
         elif (
             self._fly_state == FlyState.LANDING
-            and fly_dist > 40
+            and fly_dist > self._fly_close_distance * 1.6
             and self._expression == Expression.FOCUSED
             and random.random() < 0.01
         ):
@@ -360,7 +377,9 @@ class EyesPlugin(ClockPlugin):
         # Wink: occasional playful wink when fly is at medium distance
         elif (
             self._expression == Expression.NORMAL
-            and 30 < fly_dist < 50
+            and self._fly_close_distance * 1.2
+            < fly_dist
+            < self._fly_close_distance * 2.0
             and random.random() < 0.003
             and self._wink_eye == "none"
         ):
@@ -440,18 +459,18 @@ class EyesPlugin(ClockPlugin):
 
         # Check if fly is close (triggers reaction)
         fly_dist = self._get_fly_distance_to_eyes()
-        if fly_dist < FLY_CLOSE_DISTANCE:
-            target_squish = 0.3 * (1.0 - fly_dist / FLY_CLOSE_DISTANCE)
+        if fly_dist < self._fly_close_distance:
+            target_squish = 0.3 * (1.0 - fly_dist / self._fly_close_distance)
             self._eye_squish += (target_squish - self._eye_squish) * 0.15
         else:
             self._eye_squish = max(0.0, self._eye_squish - 0.02)
 
         # Progressive cross-eye - extra strong when fly is on the nose
-        if fly_dist < FLY_CROSS_EYE_DISTANCE:
-            # 0 at the edge, 1 when fly is right between the eyes
-            target_cross = 1.0 - (fly_dist / FLY_CROSS_EYE_DISTANCE)
-            # Boost to full cross-eye when fly is landed on the nose (very close)
-            if self._fly_state == FlyState.LANDING and fly_dist < 8:
+        if fly_dist < self._fly_cross_eye_distance:
+            target_cross = 1.0 - (fly_dist / self._fly_cross_eye_distance)
+            if self._fly_state == FlyState.LANDING and fly_dist < 8 * (
+                self._eye_w / EYE_WIDTH
+            ):
                 target_cross = 1.0
             self._cross_eye_amount += (target_cross - self._cross_eye_amount) * 0.25
         else:
@@ -498,35 +517,31 @@ class EyesPlugin(ClockPlugin):
     def _draw_fly(self, draw: ImageDraw.ImageDraw) -> None:
         """Draw the fly/mosquito at its current position."""
         if self._fly_state == FlyState.LANDING:
-            # Draw fly at rest (wings folded)
             fx = int(self._fly_x)
             fy = int(self._fly_y)
-            # Body
             draw.ellipse(
                 [fx - 1, fy - 1, fx + 1, fy + 1],
                 fill=self._fly_color,
             )
-            # Folded wings (small lines)
             draw.line([(fx - 1, fy - 1), (fx - 2, fy - 2)], fill=self._fly_wing_color)
             draw.line([(fx + 1, fy - 1), (fx + 2, fy - 2)], fill=self._fly_wing_color)
         else:
-            # Draw fly in flight with animated wings
             fx = int(self._fly_x)
             fy = int(self._fly_y)
 
-            # Body (small dot)
+            # Body (scaled)
             draw.point((fx, fy), fill=self._fly_color)
-            if FLY_SIZE > 2:
+            if self._fly_size > 2:
                 draw.point((fx + 1, fy), fill=self._fly_color)
+            if self._fly_size > 3:
+                draw.point((fx, fy + 1), fill=self._fly_color)
 
-            # Animated wings - flap up/down
+            # Animated wings
             wing_up = self._fly_wing_frame < 2
             if wing_up:
-                # Wings up
                 draw.point((fx - 1, fy - 1), fill=self._fly_wing_color)
                 draw.point((fx + 1, fy - 1), fill=self._fly_wing_color)
             else:
-                # Wings down/out
                 draw.point((fx - 1, fy), fill=self._fly_wing_color)
                 draw.point((fx + 1, fy), fill=self._fly_wing_color)
 
@@ -541,8 +556,8 @@ class EyesPlugin(ClockPlugin):
         is_left: bool,
     ) -> None:
         """Draw a single eye with the current animation state."""
-        eye_w = EYE_WIDTH
-        eye_h = int(EYE_HEIGHT * self._eye_height_mult)
+        eye_w = self._eye_w
+        eye_h = int(self._eye_h * self._eye_height_mult)
 
         # Apply annoyed squint on top of expression
         if self._eye_squish > 0:
@@ -577,7 +592,7 @@ class EyesPlugin(ClockPlugin):
         bottom = center_y + visible_height // 2
 
         # Draw eye (filled rounded rectangle)
-        radius = min(EYE_BORDER_RADIUS, visible_height // 2)
+        radius = min(self._eye_border_radius, visible_height // 2)
         draw.rounded_rectangle(
             [left, top, right, bottom],
             radius=radius,
@@ -595,15 +610,15 @@ class EyesPlugin(ClockPlugin):
             )
 
         # Pupil size varies with expression
-        pupil_r = PUPIL_RADIUS
+        pupil_r = self._pupil_radius
         if self._expression == Expression.SURPRISED:
-            pupil_r = PUPIL_RADIUS - 1  # Smaller pupil = startled
+            pupil_r = max(1, self._pupil_radius - 1)
         elif self._expression == Expression.SLEEPY:
-            pupil_r = PUPIL_RADIUS + 1  # Larger pupil = relaxed
+            pupil_r = self._pupil_radius + 1
 
         # Draw pupil
-        pupil_x = center_x + int(px_offset * PUPIL_MAX_OFFSET_X)
-        pupil_y = center_y + int(pupil_offset_y * PUPIL_MAX_OFFSET_Y)
+        pupil_x = center_x + int(px_offset * self._pupil_max_offset_x)
+        pupil_y = center_y + int(pupil_offset_y * self._pupil_max_offset_y)
 
         # Clamp pupil within eye bounds
         pupil_x = max(left + pupil_r + 2, min(right - pupil_r - 2, pupil_x))
@@ -627,37 +642,36 @@ class EyesPlugin(ClockPlugin):
             fill=(255, 255, 255),
         )
 
-        # Expression-specific decorations
+        # Expression-specific decorations (scaled offsets)
+        brow_offset = max(2, int(4 * self._eye_h / EYE_HEIGHT))
         if self._expression == Expression.FOCUSED:
-            # Intense focused eyebrows - both angled sharply down toward center
             if is_left:
                 draw.line(
-                    [(left - 1, top - 4), (right + 1, top - 1)],
+                    [(left - 1, top - brow_offset), (right + 1, top - 1)],
                     fill=self._outline_color,
                     width=2,
                 )
             else:
                 draw.line(
-                    [(left - 1, top - 1), (right + 1, top - 4)],
+                    [(left - 1, top - 1), (right + 1, top - brow_offset)],
                     fill=self._outline_color,
                     width=2,
                 )
         elif self._expression == Expression.ANNOYED or self._eye_squish > 0.15:
-            # Angry eyebrows
+            brow_near = max(1, brow_offset // 2)
             if is_left:
                 draw.line(
-                    [(left, top - 2), (right, top - 3)],
+                    [(left, top - brow_near), (right, top - brow_offset)],
                     fill=self._outline_color,
                     width=1,
                 )
             else:
                 draw.line(
-                    [(left, top - 3), (right, top - 2)],
+                    [(left, top - brow_offset), (right, top - brow_near)],
                     fill=self._outline_color,
                     width=1,
                 )
         elif self._expression == Expression.HAPPY:
-            # Curved bottom = smile shape
             draw.arc(
                 [left + 3, bottom - 4, right - 3, bottom + 3],
                 start=0,
@@ -665,7 +679,6 @@ class EyesPlugin(ClockPlugin):
                 fill=self._outline_color,
             )
         elif self._expression == Expression.SURPRISED:
-            # Raised eyebrows (arched lines above eyes)
             draw.arc(
                 [left + 2, top - 5, right - 2, top + 2],
                 start=180,
@@ -678,13 +691,13 @@ class EyesPlugin(ClockPlugin):
         frame = Image.new("RGB", (width, height), (0, 0, 0))
         draw = ImageDraw.Draw(frame)
 
-        # Calculate eye positions
-        eyes_y_offset = -4 if self._show_time else 0
+        # Calculate eye positions using scaled geometry
+        eyes_y_offset = -int(4 * self._eye_h / EYE_HEIGHT) if self._show_time else 0
         center_y = height // 2 + eyes_y_offset
 
-        total_eye_width = EYE_WIDTH * 2 + EYE_SPACING
-        left_eye_x = (width - total_eye_width) // 2 + EYE_WIDTH // 2
-        right_eye_x = left_eye_x + EYE_WIDTH + EYE_SPACING
+        total_eye_width = self._eye_w * 2 + self._eye_spacing
+        left_eye_x = (width - total_eye_width) // 2 + self._eye_w // 2
+        right_eye_x = left_eye_x + self._eye_w + self._eye_spacing
 
         # Store eye centers for gaze calculation
         self._left_eye_cx = left_eye_x
@@ -781,8 +794,35 @@ class EyesPlugin(ClockPlugin):
 
         if self._frames_rendered == 0:
             logger.info("[eyes] Start rendering")
+
+        # Adapt geometry to display size on first frame or size change
+        if width != self._width or height != self._height:
             self._width = width
             self._height = height
+            sx = width / 128
+            sy = height / 32
+            s = min(sx, sy)  # Uniform scale for eye geometry
+
+            # Scale eye geometry
+            self._eye_w = int(EYE_WIDTH * s)
+            self._eye_h = int(EYE_HEIGHT * s)
+            self._eye_spacing = int(EYE_SPACING * s)
+            self._eye_border_radius = int(EYE_BORDER_RADIUS * s)
+            self._pupil_radius = max(2, int(PUPIL_RADIUS * s))
+            self._pupil_max_offset_x = int(PUPIL_MAX_OFFSET_X * s)
+            self._pupil_max_offset_y = int(PUPIL_MAX_OFFSET_Y * s)
+
+            # Scale fly geometry
+            self._fly_size = max(2, int(FLY_SIZE * s))
+            self._fly_buzz_amplitude = FLY_BUZZ_AMPLITUDE * s
+            self._fly_close_distance = FLY_CLOSE_DISTANCE * s
+            self._fly_cross_eye_distance = FLY_CROSS_EYE_DISTANCE * s
+            self._fly_speed_min = FLY_SPEED_MIN * s
+            self._fly_speed_max = FLY_SPEED_MAX * s
+
+            # Re-initialize fly position within new bounds
+            self._fly_x = random.uniform(5 * sx, width - 5 * sx)
+            self._fly_y = random.uniform(2 * sy, height - 3 * sy)
 
         # Update animation state
         self._update_animation()

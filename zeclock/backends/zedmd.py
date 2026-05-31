@@ -174,6 +174,21 @@ class ZeDMDBackend(DMDBackend):
         lib.ZeDMD_GetWidth.restype = ctypes.c_uint16
         lib.ZeDMD_GetWidth.argtypes = [ctypes.c_void_p]
 
+        lib.ZeDMD_GetHeight.restype = ctypes.c_uint16
+        lib.ZeDMD_GetHeight.argtypes = [ctypes.c_void_p]
+
+        lib.ZeDMD_GetPanelWidth.restype = ctypes.c_uint16
+        lib.ZeDMD_GetPanelWidth.argtypes = [ctypes.c_void_p]
+
+        lib.ZeDMD_GetPanelHeight.restype = ctypes.c_uint16
+        lib.ZeDMD_GetPanelHeight.argtypes = [ctypes.c_void_p]
+
+        lib.ZeDMD_EnableUpscaling.restype = None
+        lib.ZeDMD_EnableUpscaling.argtypes = [ctypes.c_void_p]
+
+        lib.ZeDMD_DisableUpscaling.restype = None
+        lib.ZeDMD_DisableUpscaling.argtypes = [ctypes.c_void_p]
+
         lib.ZeDMD_SetLogCallback.restype = None
         lib.ZeDMD_SetLogCallback.argtypes = [
             ctypes.c_void_p,
@@ -257,6 +272,21 @@ class ZeDMDBackend(DMDBackend):
         """Whether the backend is currently connected to a display."""
         return self._connected
 
+    @property
+    def width(self) -> int:
+        """Display width in pixels (may be updated after connect via auto-detection)."""
+        return self._width
+
+    @property
+    def height(self) -> int:
+        """Display height in pixels (may be updated after connect via auto-detection)."""
+        return self._height
+
+    @property
+    def is_hd(self) -> bool:
+        """Whether the connected display is HD (256x64) resolution."""
+        return self._width >= 256 and self._height >= 64
+
     def connect(self) -> bool:
         """Establish connection to the ZeDMD display.
 
@@ -293,15 +323,32 @@ class ZeDMDBackend(DMDBackend):
             self._log_callback_ref = None
             return False
 
-        # Configure display
+        # Auto-detect display resolution from hardware panel dimensions
+        panel_width = self._lib.ZeDMD_GetPanelWidth(self._instance)
+        panel_height = self._lib.ZeDMD_GetPanelHeight(self._instance)
+        if panel_width > 0 and panel_height > 0:
+            if panel_width != self._width or panel_height != self._height:
+                logger.info(
+                    "ZeDMD panel is %dx%d (configured: %dx%d) — adapting to panel resolution",
+                    panel_width,
+                    panel_height,
+                    self._width,
+                    self._height,
+                )
+                self._width = panel_width
+                self._height = panel_height
+
+        # Configure display frame size and enable upscaling (libzedmd handles
+        # centering/scaling if frame size differs from panel size)
         self._lib.ZeDMD_SetFrameSize(self._instance, self._width, self._height)
+        self._lib.ZeDMD_EnableUpscaling(self._instance)
         self._lib.ZeDMD_SetBrightness(self._instance, self._brightness)
         self._connected = True
         self._consecutive_failures = 0
         self._reconnect_delay = RECONNECT_DELAY_INITIAL
         self._last_health_check = time.monotonic()
         self._reset_error_count()
-        logger.info("ZeDMD connected successfully")
+        logger.info("ZeDMD connected successfully (%dx%d)", self._width, self._height)
         return True
 
     def _check_health(self) -> bool:
@@ -449,6 +496,10 @@ class ZeDMDBackend(DMDBackend):
         # Colorize grayscale if needed
         if image.mode != "RGB":
             image = colorize_grayscale(image, color)
+
+        # Resize frame if it doesn't match display resolution
+        if image.size != (self._width, self._height):
+            image = image.resize((self._width, self._height), Image.Resampling.NEAREST)
 
         # Send RGB888 directly
         try:

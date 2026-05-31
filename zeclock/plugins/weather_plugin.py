@@ -442,7 +442,7 @@ class WeatherPlugin(PagedPlugin):
         deg_x = x + num_width + 1
         deg_y = y  # Top-aligned small circle
 
-        # Draw 3x3 degree symbol (hollow square)
+        # Draw 3x3 degree symbol (hollow square) — fixed size, looks good at any scale
         pixels = num_frame.load()
         for dx, dy in [(0, 0), (1, 0), (2, 0), (0, 1), (2, 1), (0, 2), (1, 2), (2, 2)]:
             px, py = deg_x + dx, deg_y + dy
@@ -460,11 +460,7 @@ class WeatherPlugin(PagedPlugin):
     def _render_current_page(self, width: int, height: int) -> Image.Image:
         """Render page 0: Current conditions (Layout 1C - full info).
 
-        Layout:
-        - Icon left (vertically centered)
-        - Temperature + condition stacked right of icon
-        - City name below
-        - Wind/humidity info on far right
+        Layout scales proportionally for both SD (128x32) and HD (256x64).
 
         Args:
             width: Display width in pixels.
@@ -478,27 +474,35 @@ class WeatherPlugin(PagedPlugin):
         assert self._cache is not None
         cache = self._cache
 
+        # Scale factor relative to standard 128x32
+        sx = width / 128
+        sy = height / 32
+
         # Draw weather icon vertically centered left
-        icon_img = get_weather_icon_image(cache.current_condition_code)
-        frame.paste(icon_img, (2, 3))
+        is_hd = width >= 256 and height >= 64
+        icon_img = get_weather_icon_image(cache.current_condition_code, hd=is_hd)
+        frame.paste(icon_img, (int(2 * sx), int(3 * sy)))
+
+        # Text X offset after icon
+        text_x = int(22 * sx)
 
         # Temperature with degree symbol (MENU font)
         temp_frame = self._render_temp_with_degree(
-            cache.current_temp, x=22, y=0, color=(255, 128, 0)
+            cache.current_temp, x=text_x, y=0, color=(255, 128, 0)
         )
         frame = self._helpers.composite_frames(frame, temp_frame)
 
         # Condition description (SYSTEM font)
         desc = cache.current_description[:12].upper()
         desc_frame = self._helpers.render_text(
-            desc, x=22, y=13, color=(200, 200, 200), font_name="SYSTEM"
+            desc, x=text_x, y=int(13 * sy), color=(200, 200, 200), font_name="SYSTEM"
         )
         frame = self._helpers.composite_frames(frame, desc_frame)
 
         # City name bottom left (SYSTEM font)
         city = cache.city_name.upper()
         city_frame = self._helpers.render_text(
-            city, x=22, y=24, color=(128, 128, 255), font_name="SYSTEM"
+            city, x=text_x, y=int(24 * sy), color=(128, 128, 255), font_name="SYSTEM"
         )
         frame = self._helpers.composite_frames(frame, city_frame)
 
@@ -507,10 +511,7 @@ class WeatherPlugin(PagedPlugin):
     def _render_tomorrow_page(self, width: int, height: int) -> Image.Image:
         """Render page 1: Tomorrow (Layout 2C - two column).
 
-        Layout:
-        - "DEMAIN" label at top
-        - Left: icon + high/low temps
-        - Right: condition + wind (SYSTEM small)
+        Layout scales proportionally for both SD (128x32) and HD (256x64).
 
         Args:
             width: Display width in pixels.
@@ -524,36 +525,50 @@ class WeatherPlugin(PagedPlugin):
         assert self._cache is not None
         cache = self._cache
 
+        # Scale factor relative to standard 128x32
+        sx = width / 128
+        sy = height / 32
+
         # Draw "DEMAIN" / "TOMORROW" label at top (MENU font)
         labels = _LABELS.get(self._language, _LABELS["en"])
         label_frame = self._helpers.render_text(
-            labels["tomorrow"], x=2, y=0, color=(255, 200, 0), font_name="MENU"
+            labels["tomorrow"],
+            x=int(2 * sx),
+            y=0,
+            color=(255, 200, 0),
+            font_name="MENU",
         )
         frame = self._helpers.composite_frames(frame, label_frame)
 
         # Draw weather icon
-        icon_img = get_weather_icon_image(cache.tomorrow_condition_code)
-        frame.paste(icon_img, (2, 14))
+        is_hd = width >= 256 and height >= 64
+        icon_img = get_weather_icon_image(cache.tomorrow_condition_code, hd=is_hd)
+        frame.paste(icon_img, (int(2 * sx), int(14 * sy)))
+
+        text_x = int(21 * sx)
 
         # High temperature with degree (MENU font)
         high_frame = self._render_temp_with_degree(
-            cache.tomorrow_high, x=21, y=13, color=(255, 100, 50)
+            cache.tomorrow_high, x=text_x, y=int(13 * sy), color=(255, 100, 50)
         )
         frame = self._helpers.composite_frames(frame, high_frame)
 
         # Low temperature with degree (SYSTEM font)
         low_frame = self._render_temp_with_degree(
-            cache.tomorrow_low, x=21, y=25, color=(100, 150, 255), font_name="SYSTEM"
+            cache.tomorrow_low,
+            x=text_x,
+            y=int(25 * sy),
+            color=(100, 150, 255),
+            font_name="SYSTEM",
         )
         frame = self._helpers.composite_frames(frame, low_frame)
 
         # Right column: condition description (SYSTEM font, truncated to fit)
         desc = self._get_condition_description(cache.tomorrow_condition_code).upper()
-        # Position dynamically: right-align to leave 2px margin
         desc_width = self._helpers.get_text_width(desc, font_name="SYSTEM")
-        desc_x = max(60, width - desc_width - 2)
+        desc_x = max(int(60 * sx), width - desc_width - int(2 * sx))
         desc_frame = self._helpers.render_text(
-            desc, x=desc_x, y=14, color=(200, 200, 200), font_name="SYSTEM"
+            desc, x=desc_x, y=int(14 * sy), color=(200, 200, 200), font_name="SYSTEM"
         )
         frame = self._helpers.composite_frames(frame, desc_frame)
 
@@ -562,10 +577,10 @@ class WeatherPlugin(PagedPlugin):
     def _render_outlook_page(self, width: int, height: int) -> Image.Image:
         """Render page 2: 3-day outlook (Layout 3B + separators).
 
-        Layout:
+        Layout scales proportionally for SD and HD:
         - 3 columns with vertical separators
         - Day name (yellow, SYSTEM) on top
-        - Icon (16x16) in middle
+        - Icon (scaled) in middle
         - Temperature (SYSTEM) at bottom
 
         Args:
@@ -579,6 +594,10 @@ class WeatherPlugin(PagedPlugin):
         frame = self._helpers.create_frame()
         assert self._cache is not None
         cache = self._cache
+
+        # Scale factor
+        sx = width / 128
+        sy = height / 32
 
         # Calculate column positions for 3 days
         num_days = min(3, len(cache.forecast_days))
@@ -606,17 +625,21 @@ class WeatherPlugin(PagedPlugin):
             )
             frame = self._helpers.composite_frames(frame, name_frame)
 
-            # Icon in middle
-            icon_x = col_x + (col_width - 16) // 2
-            icon_data = get_weather_icon_image(day.condition_code)
-            frame.paste(icon_data, (icon_x, 8))
+            # Icon in middle (scaled for HD)
+            is_hd = width >= 256 and height >= 64
+            icon_data = get_weather_icon_image(day.condition_code, hd=is_hd)
+            icon_size = icon_data.size[0]  # Already correct size (16 or 32)
+            icon_x = col_x + (col_width - icon_size) // 2
+            icon_y = int(8 * sy)
+            frame.paste(icon_data, (icon_x, icon_y))
 
             # Temperature at bottom (SYSTEM font) with degree symbol
             high_str = self._format_temp(day.high)
             temp_width = self._helpers.get_text_width(high_str, font_name="SYSTEM")
             temp_x = col_x + (col_width - temp_width) // 2
+            temp_y = int(25 * sy)
             temp_frame = self._render_temp_with_degree(
-                day.high, x=temp_x, y=25, color=(255, 128, 0), font_name="SYSTEM"
+                day.high, x=temp_x, y=temp_y, color=(255, 128, 0), font_name="SYSTEM"
             )
             frame = self._helpers.composite_frames(frame, temp_frame)
 
@@ -633,12 +656,11 @@ class WeatherPlugin(PagedPlugin):
     def _render_7day_page(self, width: int, height: int) -> Image.Image:
         """Render page 3: 7-day overview (Layout D4).
 
-        Layout:
-        - 7 columns (18px each)
+        Layout scales proportionally:
+        - 7 columns
         - Single-letter day name (SYSTEM) at top
-        - 12x12 icon centered in middle
+        - Icon (scaled) centered in middle
         - Temperature (SYSTEM) at bottom
-        - Starts with today
 
         Args:
             width: Display width in pixels.
@@ -652,6 +674,9 @@ class WeatherPlugin(PagedPlugin):
         assert self._cache is not None
         cache = self._cache
 
+        sx = width / 128
+        sy = height / 32
+
         num_days = min(7, len(cache.forecast_days))
         if num_days == 0:
             return frame
@@ -660,10 +685,11 @@ class WeatherPlugin(PagedPlugin):
         day_letters = _DAY_LETTERS.get(self._language, _DAY_LETTERS["en"])
         today = datetime.now()
 
+        icon_size = int(12 * min(sx, sy))
+        is_hd = width >= 256 and height >= 64
+
         for i in range(num_days):
             day = cache.forecast_days[i]
-            # Start from today (index 0 in forecast_days is tomorrow,
-            # but we want today as first column)
             future_day = today + timedelta(days=i)
             day_letter = day_letters[future_day.weekday()]
 
@@ -677,18 +703,20 @@ class WeatherPlugin(PagedPlugin):
             )
             frame = self._helpers.composite_frames(frame, letter_frame)
 
-            # 12x12 icon centered
-            icon = get_weather_icon_image(day.condition_code)
-            icon_small = icon.resize((12, 12), Image.Resampling.LANCZOS)
-            ix = col_x + (col_width - 12) // 2
-            frame.paste(icon_small, (ix, 9))
+            # Icon centered (HD-native when available)
+            icon = get_weather_icon_image(day.condition_code, hd=is_hd)
+            icon_small = icon.resize((icon_size, icon_size), Image.Resampling.LANCZOS)
+            ix = col_x + (col_width - icon_size) // 2
+            iy = int(9 * sy)
+            frame.paste(icon_small, (ix, iy))
 
             # Temperature at bottom (SYSTEM font)
             temp_str = str(round(day.high))
             tw = self._helpers.get_text_width(temp_str, font_name="SYSTEM")
             tx = col_x + (col_width - tw) // 2
+            ty = int(23 * sy)
             temp_frame = self._helpers.render_text(
-                temp_str, x=tx, y=23, color=(255, 128, 0), font_name="SYSTEM"
+                temp_str, x=tx, y=ty, color=(255, 128, 0), font_name="SYSTEM"
             )
             frame = self._helpers.composite_frames(frame, temp_frame)
 

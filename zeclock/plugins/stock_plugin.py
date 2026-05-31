@@ -428,10 +428,10 @@ class StockPlugin(PagedPlugin):
     def _render_page(self, page: int, width: int, height: int) -> Image.Image:
         """Render a page showing a single stock symbol.
 
-        Layout (full 32px height):
-        - Line 1 (y=0): Ticker symbol (MENU font, yellow)
-        - Line 2 (y=12): Price (MENU font, orange)
-        - Line 3 (y=25): Change + percent (SYSTEM font, green/red)
+        Layout scales proportionally for SD (128x32) and HD (256x64):
+        - Line 1 (y=0): Ticker (MENU, yellow, left) + Price (MENU, orange, right)
+        - Line 2 (y≈40%): Change + percent (SYSTEM font, green/red)
+        - Line 3 (y≈75%): Extended hours if available (SYSTEM font)
 
         Args:
             page: Page index.
@@ -452,6 +452,9 @@ class StockPlugin(PagedPlugin):
             return frame
 
         quote = self._cache.quotes[page]
+
+        # Scale factor
+        sy = height / 32
 
         # Determine change color
         if quote.change >= 0:
@@ -474,14 +477,11 @@ class StockPlugin(PagedPlugin):
         )
         frame = self._helpers.composite_frames(frame, price_frame)
 
-        # Lines 2 & 3: Render change and extended hours aligned on decimals
-        # Font is monospace, so align by character count
-
-        # Format line 2 parts
+        # Format change strings
         change_val_str = f"{sign}{abs(quote.change):.2f}"
         change_pct_str = f"{sign}{abs(quote.change_percent):.1f}%"
 
-        # Format line 3 parts (if extended hours)
+        # Format extended hours strings
         has_ext = quote.extended_price > 0
         if has_ext:
             ext_sign = "+" if quote.extended_change >= 0 else "-"
@@ -494,28 +494,26 @@ class StockPlugin(PagedPlugin):
             ext_pct_str = ""
             ext_color = (0, 0, 0)
 
-        # Pad value strings so decimal points align (right-pad shorter one)
+        # Align decimal points
         max_val_len = max(len(change_val_str), len(ext_val_str) if has_ext else 0)
         change_val_padded = change_val_str.rjust(max_val_len)
-
-        # Pad percent strings so decimal points align
         max_pct_len = max(len(change_pct_str), len(ext_pct_str) if has_ext else 0)
         change_pct_padded = change_pct_str.rjust(max_pct_len)
 
-        # Compose full line 2
+        # Line 2: change (scaled y position)
         line2 = f"{change_val_padded} {change_pct_padded}"
         change_frame = self._helpers.render_text_right_aligned(
-            line2, y=16, color=change_color, font_name="SYSTEM"
+            line2, y=int(16 * sy), color=change_color, font_name="SYSTEM"
         )
         frame = self._helpers.composite_frames(frame, change_frame)
 
-        # Render line 3 if extended hours
+        # Line 3: extended hours (scaled y position)
         if has_ext:
             ext_val_padded = ext_val_str.rjust(max_val_len)
             ext_pct_padded = ext_pct_str.rjust(max_pct_len)
             line3 = f"{ext_val_padded} {ext_pct_padded}"
             ext_frame = self._helpers.render_text_right_aligned(
-                line3, y=24, color=ext_color, font_name="SYSTEM"
+                line3, y=int(24 * sy), color=ext_color, font_name="SYSTEM"
             )
             frame = self._helpers.composite_frames(frame, ext_frame)
 
@@ -549,12 +547,9 @@ class StockPlugin(PagedPlugin):
     ) -> Image.Image:
         """Render an intraday price graph for a stock symbol.
 
-        Layout (128x32):
-        - Top line (y=0): Ticker + price (SYSTEM font, compact)
-        - Graph area (y=9 to y=31): Sparkline of intraday prices
-
-        The graph is colored green if the stock is up, red if down.
-        A horizontal dashed line shows the previous close level.
+        Layout scales proportionally for SD and HD:
+        - Top line: Ticker + price (SYSTEM font)
+        - Graph area: Sparkline of intraday prices with previous close reference
 
         Args:
             symbol_index: Index into the quotes list.
@@ -575,13 +570,16 @@ class StockPlugin(PagedPlugin):
 
         quote = self._cache.quotes[symbol_index]
 
+        # Scale factor
+        sy = height / 32
+
         # Determine color based on change direction
         if quote.change >= 0:
             graph_color: Tuple[int, int, int] = (0, 255, 80)
         else:
             graph_color = (255, 50, 50)
 
-        # Top line: ticker + price (compact, using SYSTEM font)
+        # Top line: ticker + price (SYSTEM font)
         ticker = quote.symbol[:6]
         price_str = self._format_price(quote.price)
         header = f"{ticker} {price_str}"
@@ -590,79 +588,70 @@ class StockPlugin(PagedPlugin):
         )
         frame = self._helpers.composite_frames(frame, header_frame)
 
-        # Draw the graph
-        prices = quote.intraday_prices
-        if len(prices) < 2:
-            # Not enough data — show "NO DATA" message
-            no_data_frame = self._helpers.render_text(
-                "NO DATA", x=1, y=14, color=(128, 128, 128), font_name="SYSTEM"
-            )
-            frame = self._helpers.composite_frames(frame, no_data_frame)
-            return frame
-
-        # Graph area dimensions
-        graph_top = 9
+        # Graph area dimensions (scaled)
+        graph_top = int(9 * sy)
         graph_bottom = height - 1
         graph_height = graph_bottom - graph_top
         graph_width = width - 2  # 1px margin each side
         graph_x_offset = 1
 
-        # Scale X axis to full trading session.
-        # The graph width represents the full trading day (trading_minutes).
-        # Data points only fill the portion elapsed so far.
-        total_minutes = max(1, quote.trading_minutes)
-        elapsed_minutes = len(prices)  # 1 data point per minute
+        # Draw the graph
+        prices = quote.intraday_prices
+        if len(prices) < 2:
+            no_data_frame = self._helpers.render_text(
+                "NO DATA",
+                x=1,
+                y=int(14 * sy),
+                color=(128, 128, 128),
+                font_name="SYSTEM",
+            )
+            frame = self._helpers.composite_frames(frame, no_data_frame)
+            return frame
 
-        # How many pixels the data occupies (proportional to elapsed time)
+        # Scale X axis to full trading session
+        total_minutes = max(1, quote.trading_minutes)
+        elapsed_minutes = len(prices)
+
         if elapsed_minutes >= total_minutes:
-            # Market closed or full day of data — use full width
             data_pixels = graph_width
         else:
             data_pixels = max(1, int(graph_width * elapsed_minutes / total_minutes))
 
-        # Downsample prices to fit the data portion of the graph
         sampled = self._downsample_prices(prices, data_pixels)
 
-        # Calculate Y range (include previous close so baseline is always visible)
+        # Calculate Y range
         prev_close = quote.price - quote.change
         min_price = min(min(sampled), prev_close)
         max_price = max(max(sampled), prev_close)
         price_range = max_price - min_price
-
         if price_range == 0:
-            # Flat line — draw in the middle
             price_range = 1.0
 
-        # Draw previous close reference line (dashed) across full width
+        # Draw previous close reference line (dashed)
         ref_y = graph_bottom - int(
             (prev_close - min_price) / price_range * graph_height
         )
         pixels = frame.load()
         assert pixels is not None
         for x in range(graph_x_offset, graph_x_offset + graph_width):
-            if x % 4 < 2:  # dashed pattern
+            if x % 4 < 2:
                 if 0 <= ref_y < height:
                     pixels[x, ref_y] = (80, 80, 80)
 
-        # Draw the sparkline (only up to data_pixels)
+        # Draw the sparkline
         pixels = frame.load()
         assert pixels is not None
 
         for i in range(len(sampled)):
-            # Map price to Y coordinate (inverted: high price = low Y)
             y = graph_bottom - int(
                 (sampled[i] - min_price) / price_range * graph_height
             )
             x = graph_x_offset + i
-
-            # Clamp to graph area
             y = max(graph_top, min(graph_bottom, y))
 
-            # Draw the point
             if 0 <= x < width and 0 <= y < height:
                 pixels[x, y] = graph_color
 
-            # Connect to previous point with vertical line if needed
             if i > 0:
                 prev_y = graph_bottom - int(
                     (sampled[i - 1] - min_price) / price_range * graph_height
@@ -670,11 +659,9 @@ class StockPlugin(PagedPlugin):
                 prev_y = max(graph_top, min(graph_bottom, prev_y))
                 prev_x = graph_x_offset + i - 1
 
-                # Draw vertical connection between prev and current
                 if abs(y - prev_y) > 1:
                     y_start = min(y, prev_y)
                     y_end = max(y, prev_y)
-                    # Use current x for the vertical fill
                     fill_x = x if x == prev_x + 1 else prev_x
                     for fy in range(y_start, y_end + 1):
                         if 0 <= fill_x < width and 0 <= fy < height:

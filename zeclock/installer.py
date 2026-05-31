@@ -595,19 +595,9 @@ def install_dotclk_files(source_dir: Path) -> None:
     RESOURCES_DIR.mkdir(parents=True, exist_ok=True)
     print_color(BLUE, f"📦 Installing resources to: {RESOURCES_DIR}")
 
-    # 1. Install fonts
-    fonts_src = source_dir / "Fonts"
-    fonts_dst = RESOURCES_DIR / "Fonts"
-    if fonts_src.exists():
-        if fonts_dst.exists():
-            shutil.rmtree(fonts_dst)
-        shutil.copytree(fonts_src, fonts_dst)
-        font_count = len(list(fonts_dst.glob("*.fnt")))
-        print_color(GREEN, f"   ✓ {font_count} bitmap fonts (.fnt) installed")
-    else:
-        print_color(YELLOW, "   ⚠️ Fonts directory missing from downloaded resources.")
+    # Fonts are bundled in the package (zeclock/resources/Fonts/) — no download needed.
 
-    # 2. Install animations
+    # Install animations
     scenes_src = source_dir / "Scenes"
     scenes_dst = RESOURCES_DIR / "animations"
     if scenes_src.exists():
@@ -671,14 +661,10 @@ def is_dmdserver_installed() -> bool:
 
 
 def are_resources_installed() -> bool:
-    """Checks if fonts and animations directories contain files"""
-    fonts_dir = RESOURCES_DIR / "Fonts"
+    """Checks if animations are installed (fonts are bundled in the package)."""
     animations_dir = RESOURCES_DIR / "animations"
-
-    has_fonts = fonts_dir.exists() and any(fonts_dir.glob("*.fnt"))
     has_animations = animations_dir.exists() and any(animations_dir.rglob("*.scn"))
-
-    return has_fonts and has_animations
+    return has_animations
 
 
 def check_and_install_resources(
@@ -704,7 +690,7 @@ def check_and_install_resources(
     if libzedmd_missing:
         print("  - The 'libzedmd' library is not installed.")
     if resources_missing:
-        print("  - The DotClk retro fonts and animations (2300+ files) are missing.")
+        print("  - The DotClk retro animations (2300+ .scn files) are missing.")
     print()
 
     if interactive:
