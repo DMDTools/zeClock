@@ -1,0 +1,343 @@
+/* zeClock Web UI - Dark theme optimized for quick operation */
+
+:root {
+    --bg: #1a1a2e;
+    --bg-card: #16213e;
+    --bg-input: #0f3460;
+    --text: #e0e0e0;
+    --text-muted: #888;
+    --accent: #ff8800;
+    --success: #00c853;
+    --warning: #ffd600;
+    --danger: #ff1744;
+    --secondary: #455a64;
+    --border: #2a3a5e;
+    --radius: 8px;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 1rem;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+header h1 {
+    font-size: 1.5rem;
+    color: var(--accent);
+}
+
+.status-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--danger);
+}
+
+.status-dot.connected {
+    background: var(--success);
+}
+
+/* Navigation tabs */
+nav {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 0.5rem;
+    overflow-x: auto;
+}
+
+.tab {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1rem;
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    border-radius: var(--radius) var(--radius) 0 0;
+    white-space: nowrap;
+}
+
+.tab:hover {
+    color: var(--text);
+    background: var(--bg-card);
+}
+
+.tab.active {
+    color: var(--accent);
+    border-bottom: 2px solid var(--accent);
+    margin-bottom: -2px;
+}
+
+/* Tab content */
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* Cards */
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.card h2 {
+    font-size: 1.1rem;
+    margin-bottom: 0.75rem;
+    color: var(--accent);
+}
+
+.card h3 {
+    font-size: 0.95rem;
+    margin: 1rem 0 0.5rem;
+    color: var(--text-muted);
+}
+
+/* Buttons */
+.btn {
+    border: none;
+    border-radius: var(--radius);
+    padding: 0.6rem 1.2rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+    color: white;
+}
+
+.btn:hover {
+    opacity: 0.85;
+}
+
+.btn:active {
+    transform: scale(0.96);
+}
+
+.btn-success { background: var(--success); }
+.btn-warning { background: var(--warning); color: #333; }
+.btn-danger { background: var(--danger); }
+.btn-secondary { background: var(--secondary); }
+.btn-accent { background: var(--accent); }
+
+.btn-large {
+    padding: 1rem 2rem;
+    font-size: 1.1rem;
+}
+
+.button-row {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+/* Plugins grid */
+.plugins-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 0.5rem;
+}
+
+.plugin-btn {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.75rem;
+    color: var(--text);
+    cursor: pointer;
+    text-align: center;
+    font-size: 0.85rem;
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.plugin-btn:hover {
+    border-color: var(--accent);
+    background: var(--bg-card);
+}
+
+.plugin-btn.active {
+    border-color: var(--success);
+    background: rgba(0, 200, 83, 0.1);
+}
+
+.plugin-btn .plugin-name {
+    font-weight: 600;
+    display: block;
+    margin-bottom: 0.25rem;
+}
+
+.plugin-btn .plugin-desc {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    display: block;
+}
+
+/* Timer display */
+.timer-card {
+    text-align: center;
+}
+
+.timer-display {
+    font-family: "SF Mono", "Fira Code", "Courier New", monospace;
+    font-size: 4rem;
+    font-weight: 700;
+    padding: 1.5rem;
+    border-radius: var(--radius);
+    margin-bottom: 0.5rem;
+    transition: color 0.3s;
+}
+
+.timer-display.idle { color: var(--accent); }
+.timer-display.green { color: var(--success); }
+.timer-display.yellow { color: var(--warning); }
+.timer-display.red { color: var(--danger); }
+
+.timer-state {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 1.5rem;
+}
+
+.timer-controls {
+    justify-content: center;
+    margin-bottom: 1.5rem;
+}
+
+.presets {
+    justify-content: center;
+}
+
+.custom-duration {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    justify-content: center;
+    margin-top: 0.5rem;
+}
+
+.custom-duration input {
+    width: 100px;
+}
+
+/* Message form */
+.message-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.duration-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.duration-row label {
+    white-space: nowrap;
+    font-size: 0.9rem;
+}
+
+.quick-messages {
+    flex-wrap: wrap;
+}
+
+/* Inputs */
+input[type="text"],
+input[type="number"] {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.6rem 0.75rem;
+    color: var(--text);
+    font-size: 0.95rem;
+    width: 100%;
+}
+
+input[type="number"] {
+    width: 80px;
+}
+
+input[type="range"] {
+    flex: 1;
+    accent-color: var(--accent);
+    height: 6px;
+}
+
+.brightness-control {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.brightness-control span {
+    font-weight: 600;
+    min-width: 2ch;
+    text-align: right;
+}
+
+input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+/* Status box */
+.status-box {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.75rem;
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 0.8rem;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.muted {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+    body {
+        padding: 0.5rem;
+    }
+
+    .timer-display {
+        font-size: 3rem;
+    }
+
+    .btn-large {
+        padding: 0.8rem 1.5rem;
+        font-size: 1rem;
+    }
+
+    .plugins-grid {
+        grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    }
+}

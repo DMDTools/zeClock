@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>zeClock Control</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>🕒 zeClock</h1>
+        <div id="connection-status" class="status-dot connected" title="Connected"></div>
+    </header>
+
+    <nav>
+        <button class="tab active" data-tab="dashboard">Dashboard</button>
+        <button class="tab" data-tab="speaker-timer">Speaker Timer</button>
+        <button class="tab" data-tab="message">Message</button>
+    </nav>
+
+    <main>
+        <!-- Dashboard Tab -->
+        <section id="tab-dashboard" class="tab-content active">
+            <div class="card">
+                <h2>Screen</h2>
+                <div class="button-row">
+                    <button class="btn btn-success" onclick="api('/api/screen/on', 'POST')">Screen ON</button>
+                    <button class="btn btn-danger" onclick="api('/api/screen/off', 'POST')">Screen OFF</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Brightness</h2>
+                <div class="brightness-control">
+                    <input type="range" id="brightness-slider" min="0" max="15" value="10" oninput="updateBrightnessLabel(this.value)">
+                    <span id="brightness-value">10</span>/15
+                </div>
+                <div class="button-row" style="margin-top: 0.75rem;">
+                    <button class="btn btn-accent" onclick="setBrightness()">Set</button>
+                    <button class="btn btn-secondary" onclick="setBrightnessAuto()">Auto</button>
+                </div>
+                <div id="brightness-mode" class="muted" style="margin-top: 0.5rem;">Mode: auto</div>
+            </div>
+
+            <div class="card">
+                <h2>Plugins</h2>
+                <div id="plugins-list" class="plugins-grid">
+                    <p class="muted">Loading...</p>
+                </div>
+                <div class="button-row" style="margin-top: 1rem;">
+                    <button class="btn btn-secondary" onclick="api('/api/plugin/resume', 'POST'); refreshPlugins();">Resume Rotation</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Status</h2>
+                <pre id="status-display" class="status-box">Loading...</pre>
+            </div>
+        </section>
+
+        <!-- Speaker Timer Tab -->
+        <section id="tab-speaker-timer" class="tab-content">
+            <div class="card timer-card">
+                <div id="timer-display" class="timer-display idle">00:00</div>
+                <div id="timer-state" class="timer-state">IDLE</div>
+
+                <div class="button-row timer-controls">
+                    <button class="btn btn-success btn-large" onclick="timerStart()">▶ Start</button>
+                    <button class="btn btn-warning btn-large" onclick="timerPause()">⏸ Pause</button>
+                    <button class="btn btn-danger btn-large" onclick="timerReset()">⏹ Reset</button>
+                </div>
+
+                <h3>Presets</h3>
+                <div id="timer-presets" class="button-row presets">
+                    <button class="btn btn-secondary" onclick="timerSet(300)">5 min</button>
+                    <button class="btn btn-secondary" onclick="timerSet(1200)">20 min</button>
+                    <button class="btn btn-secondary" onclick="timerSet(2700)">45 min</button>
+                </div>
+
+                <h3>Custom Duration</h3>
+                <div class="custom-duration">
+                    <input type="number" id="custom-minutes" min="1" max="480" value="20" placeholder="Minutes">
+                    <button class="btn btn-secondary" onclick="timerSetCustom()">Set</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Message to Speaker</h2>
+                <div class="message-form">
+                    <input type="text" id="speaker-message-text" placeholder="Message to speaker..." maxlength="64">
+                    <button class="btn btn-accent btn-large" onclick="sendSpeakerMessage()">Send</button>
+                </div>
+                <div class="button-row quick-messages" style="margin-top: 0.75rem;">
+                    <button class="btn btn-secondary" onclick="quickSpeakerMessage('Wrap up')">Wrap up</button>
+                    <button class="btn btn-secondary" onclick="quickSpeakerMessage('Speak louder')">Speak louder</button>
+                    <button class="btn btn-secondary" onclick="quickSpeakerMessage('Q&A 5 min')">Q&A 5 min</button>
+                    <button class="btn btn-secondary" onclick="quickSpeakerMessage('Thank you!')">Thank you!</button>
+                    <button class="btn btn-secondary" onclick="quickSpeakerMessage('Slow down')">Slow down</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Message Tab -->
+        <section id="tab-message" class="tab-content">
+            <div class="card">
+                <h2>Send Message to Display</h2>
+                <p class="muted">Display a message on the clock for a set duration. Useful for sending discreet messages to a speaker.</p>
+                <div class="message-form">
+                    <input type="text" id="message-text" placeholder="Your message..." maxlength="64">
+                    <div class="duration-row">
+                        <label for="message-duration">Duration (seconds):</label>
+                        <input type="number" id="message-duration" min="1" max="300" value="10">
+                    </div>
+                    <button class="btn btn-success btn-large" onclick="sendMessage()">Send Message</button>
+                </div>
+
+                <h3>Quick Messages</h3>
+                <div class="button-row quick-messages">
+                    <button class="btn btn-secondary" onclick="quickMessage('Wrap up')">Wrap up</button>
+                    <button class="btn btn-secondary" onclick="quickMessage('Speak louder')">Speak louder</button>
+                    <button class="btn btn-secondary" onclick="quickMessage('Q&A 5 min')">Q&A 5 min</button>
+                    <button class="btn btn-secondary" onclick="quickMessage('Thank you!')">Thank you!</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>

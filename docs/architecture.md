@@ -70,10 +70,11 @@ Protocol-agnostic remote control with MQTT and REST API interfaces running as co
 3. Forced plugin (stays on the specified plugin until cleared)
 4. Normal state machine (clock → plugin rotation)
 
-**Text overlay rendering** uses a three-tier font fallback:
-1. The current clock DotClk font (if it can render all characters in the text — typically digits and a few symbols only).
-2. The bundled SYSTEM bitmap font (`SYSTEM.fnt` / `SYSTEM_HD.fnt`) which covers full ASCII (a–z, A–Z, digits, punctuation). Loaded lazily and cached.
-3. PIL default bitmap font as a last resort (if SYSTEM font fails to load).
+**Text overlay rendering** uses a PIL TrueType font with auto-scaling:
+1. Loads `default.ttf` from the bundled fonts directory (sized proportionally to display height).
+2. Auto-shrinks the font size until the text fits within the display width (with 2px margin).
+3. Falls back to PIL's built-in default font if the TrueType font is unavailable.
+Text is rendered centered on screen using the clock color.
 
 ### 3. Backend Abstraction Layer (`backends/`)
 
@@ -165,6 +166,7 @@ Extensible plugin architecture that allows contributors to author display plugin
   - **PongPlugin** (`pong_plugin.py`): Animated Pong game with real scoring and human-like AI. Two paddles play with randomized imperfections (reaction delay, limited speed, prediction error). The ball speeds up after each rally. A game resets after one side reaches 5 points or the plugin duration expires. Features score flash animations, serve delay blinking, and renders scores using the MENU font.
   - **GifPlugin** (`gif_plugin.py`): Picks a random animated GIF from a configurable directory (`~/.zeclock/plugins/gif/` by default), extracts frames **progressively in a background thread** so `render_frame()` can start serving frames before all are ready — the clock keeps rendering during loading. Scales frames to fit the display dimensions using a two-path strategy (pixel-perfect GIFs whose dimensions are exact integer multiples of the display size use the configured upscale algorithm — `epx`, `hq2x`, or `nearest` — while GIFs requiring arbitrary rescaling use LANCZOS). Thread-safe access to the frame list is protected by a `threading.Lock`. Plays the animation once, then signals completion.
   - **WeatherPlugin** (`weather_plugin.py`): Fetches weather data from the Open-Meteo API and cycles through display pages (current conditions, tomorrow's forecast, 3-day outlook) with configurable page duration. Supports 15-minute caching, staleness indicators, and Celsius/Fahrenheit units.
+  - **SpeakerTimerPlugin** (`speaker_timer_plugin.py`): Conference countdown timer designed for stage visibility. Displays large countdown digits with automatic color transitions based on remaining time (green → yellow at 5 min → red at 1 min). Supports start/pause/reset via class-level methods called by the web API, configurable presets (Lightning 5 min, Short 20 min, Standard 45 min), and overtime counting (switches to count-up with negative display after reaching zero). Uses class-level state to persist across activations and never signals completion on its own — stays active until force-deactivated. Blinks the display when paused.
   - **StockPlugin** (`stock_plugin.py`): Fetches stock quotes from Yahoo Finance (no API key required) and displays current price, daily change, and change percentage for configured ticker symbols. Shows one symbol per page with configurable page duration. Detects market state (OPEN, PRE, POST, CLOSED) and displays extended hours price and variation when in pre/post market. Supports 10-minute caching with a staleness indicator.
 - **`PluginHelpers` (`helpers.py`)**: Shared rendering utilities injected into plugins at initialization. Provides:
   - `create_frame()`: Creates blank RGB PIL Images at the correct display dimensions.
@@ -196,7 +198,11 @@ Module providing external control of the running zeClock instance via network pr
   - Publishes state (active plugin, brightness, on/off status).
   - Subscribes to command topics (on/off, force plugin, display text).
   - Supports Home Assistant MQTT Discovery for automatic entity creation.
-- **`RestRemote` (`remote/rest_remote.py`)**: REST API (HTTP) for simple integrations and Recalbox Web Manager compatibility. Provides endpoints for the same command set as MQTT.
+- **`RestRemote` (`remote/rest_remote.py`)**: REST API (HTTP) for simple integrations, Recalbox Web Manager compatibility, and the built-in Web UI. Provides endpoints for the same command set as MQTT, plus a plugin listing endpoint and a dedicated Speaker Timer sub-API. Serves a static Web UI from `remote/web/` at `/ui/` (with root `/` redirecting to it).
+  - **Web UI**: Static HTML/JS/CSS served from `zeclock/remote/web/`. Provides a browser-based control panel for the clock (accessible at `http://<host>:<port>/`).
+  - **Plugin list endpoint** (`GET /api/plugins`): Returns all registered plugins with their state, frequency, source, active/forced status, and optional `web_controls` metadata.
+  - **Brightness sub-API** (`/api/brightness`): `GET` returns current brightness state (override value, SW dimming level, time-only mode, auto/manual mode). `POST` sets manual brightness (0–15). `POST /api/brightness/auto` resumes automatic brightness scheduling.
+  - **Speaker Timer sub-API** (`/api/speaker-timer/*`): Dedicated endpoints for controlling the SpeakerTimerPlugin remotely — status, start (also forces the plugin active), pause, reset (also resumes normal rotation), and set duration.
 
 ```mermaid
 graph LR
@@ -204,6 +210,7 @@ graph LR
         CH["CommandHandler"]
         MQTT["MqttRemote"]
         REST["RestRemote"]
+        WEBUI["Web UI (static)"]
     end
     
     MQTT -->|commands| CH
@@ -213,6 +220,8 @@ graph LR
     HA["Home Assistant"] <-->|MQTT Discovery| MQTT
     EXT["External Systems"] -->|HTTP| REST
     EXT2["Recalbox"] -->|HTTP| REST
+    BROWSER["Browser"] -->|HTTP| WEBUI
+    BROWSER -->|API calls| REST
 ```
 
 ### 9. Automatic Bootstrap: `Installer` (`installer.py`)

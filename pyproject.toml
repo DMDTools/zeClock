@@ -60,7 +60,7 @@ zeclock = "zeclock.clock:main"
 include = ["zeclock*"]
 
 [tool.setuptools.package-data]
-zeclock = ["resources/Fonts/*.fnt"]
+zeclock = ["resources/Fonts/*.fnt", "remote/web/*.html", "remote/web/*.css", "remote/web/*.js"]
 
 
 [tool.pytest.ini_options]

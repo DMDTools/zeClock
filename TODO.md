@@ -72,22 +72,21 @@ Timer for conferences and presentations, visible from the stage on the ZeDMD.
 
 **Essential features**
 
-- [ ] Large countdown display — big, readable digits from stage distance
-- [ ] Automatic color change based on configurable thresholds (green → yellow → red)
-- [ ] Configurable presets per session — pre-saved durations (5, 20, 45 min) quickly recalled
-- [ ] Countdown to zero then count-up — switches to red once time is exceeded
-- [ ] Remote control — start/pause/reset from phone, tablet, or laptop (Web UI)
-- [ ] Synchronized multi-screen display — one controller drives multiple ZeDMDs (stage, backstage, green room)
-- [ ] Discreet messages to the speaker — short text sent to the speaker screen only ("Speak louder", "Wrap up", "Q&A 5 min")
-- [ ] Simple operator interface — large Start/Pause/Reset buttons, usable under pressure by volunteers
-- [ ] Visual signals only (colors, countdown), no distracting beeps or flashes
+- [x] Large countdown display — big, readable digits from stage distance
+- [x] Automatic color change based on configurable thresholds (green → yellow → red)
+- [x] Configurable presets per session — pre-saved durations (5, 20, 45 min) quickly recalled
+- [x] Countdown to zero then count-up — switches to red once time is exceeded
+- [x] Remote control — start/pause/reset from phone, tablet, or laptop (Web UI)
+- [x] Discreet messages to the speaker — short text sent to the speaker screen only ("Speak louder", "Wrap up", "Q&A 5 min")
+- [x] Simple operator interface — large Start/Pause/Reset buttons, usable under pressure by volunteers
+- [x] Visual signals only (colors, countdown), no distracting beeps or flashes
 
 **Nice-to-have**
 
-- [ ] Cross-platform web interface (control from any device)
+- [x] Cross-platform web interface (control from any device)
 - [ ] Configurable layouts: time only, time + session name, time + next session
 - [ ] Program profiles (keynote, panel, lightning talk) with pre-configured timers
-- [ ] Robust offline mode (no WiFi dependency for the local timer)
+- [x] Robust offline mode (no WiFi dependency for the local timer)
 - [ ] Integration with production systems (cues, slides)
 
 ---
@@ -131,6 +130,7 @@ Timer for conferences and presentations, visible from the stage on the ZeDMD.
   - zeClock publishes: state, active plugin, brightness...
   - zeClock subscribes: commands (on/off, force plugin, display text...)
 - [x] REST API (HTTP) as a complement for simple integrations and Recalbox (Web Manager)
+- [x] Web UI for controlling all clock capabilities (plugins, screen, messages, speaker timer)
 - [ ] OSC (optional, for live/show integrations)
 - [x] Home Assistant integration via MQTT Discovery (auto-created entities)
 - [ ] Recalbox bridge: small script that translates Recalbox events ↔ MQTT

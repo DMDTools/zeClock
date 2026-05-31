@@ -167,6 +167,9 @@ class ZeDMDBackend(DMDBackend):
         lib.ZeDMD_DisableUpscaling.restype = None
         lib.ZeDMD_DisableUpscaling.argtypes = [ctypes.c_void_p]
 
+        lib.ZeDMD_ClearScreen.restype = None
+        lib.ZeDMD_ClearScreen.argtypes = [ctypes.c_void_p]
+
         lib.ZeDMD_SetLogCallback.restype = None
         lib.ZeDMD_SetLogCallback.argtypes = [
             ctypes.c_void_p,
@@ -381,6 +384,15 @@ class ZeDMDBackend(DMDBackend):
         self._log_callback_ref = None
 
     def disconnect(self) -> None:
-        """Close the connection to the ZeDMD display."""
+        """Close the connection to the ZeDMD display.
+
+        Calls ClearScreen before closing so the display goes dark
+        instead of showing the ZeDMD idle animation.
+        """
+        if self._connected and self._instance:
+            try:
+                self._lib.ZeDMD_ClearScreen(self._instance)
+            except (OSError, ctypes.ArgumentError):
+                pass  # Best effort
         self._connected = False
         self._close_instance()
