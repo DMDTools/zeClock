@@ -592,6 +592,10 @@ class TestPinballPluginCleanup:
                 ):
                     await plugin.initialize(config)
 
+        # Wait for background pre-computation to finish
+        if plugin._precompute_thread:
+            plugin._precompute_thread.join(timeout=5.0)
+
         assert len(plugin._frames) > 0
 
         await plugin.cleanup()
