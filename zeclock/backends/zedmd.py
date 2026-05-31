@@ -194,40 +194,47 @@ class ZeDMDBackend(DMDBackend):
 
         On stream error: immediately set the error flag so send_frame
         stops sending. All other log messages are forwarded to Python logging.
+
+        Note: This runs on a C thread — logging may fail if colorama's
+        StreamWrapper is active. All operations are wrapped in try/except.
         """
-        # Decode message
-        msg: Optional[str] = None
         try:
-            formatted = self._lib.ZeDMD_FormatLogMessage(fmt, args, user_data)
-            if formatted:
-                msg = formatted.decode("utf-8", errors="replace")
-        except Exception:
-            pass
-        if not msg and fmt:
+            # Decode message
+            msg: Optional[str] = None
             try:
-                msg = fmt.decode("utf-8", errors="replace")
+                formatted = self._lib.ZeDMD_FormatLogMessage(fmt, args, user_data)
+                if formatted:
+                    msg = formatted.decode("utf-8", errors="replace")
             except Exception:
+                pass
+            if not msg and fmt:
+                try:
+                    msg = fmt.decode("utf-8", errors="replace")
+                except Exception:
+                    return
+            if not msg:
                 return
-        if not msg:
-            return
 
-        # Check for stream errors — immediately flag disconnect
-        stream_error_patterns = (
-            "StreamBytes failed",
-            "libserialport error",
-            "TCP stream error",
-            "UDP stream error",
-        )
-        if any(pattern in msg for pattern in stream_error_patterns):
-            with self._error_lock:
-                self._stream_error_flag = True
-            # Only log the first error, not the flood
-            if not self._error_logged:
-                logger.warning("🔧 libzedmd: %s", msg)
-            return
+            # Check for stream errors — immediately flag disconnect
+            stream_error_patterns = (
+                "StreamBytes failed",
+                "libserialport error",
+                "TCP stream error",
+                "UDP stream error",
+            )
+            if any(pattern in msg for pattern in stream_error_patterns):
+                with self._error_lock:
+                    self._stream_error_flag = True
+                # Only log the first error, not the flood
+                if not self._error_logged:
+                    logger.warning("🔧 libzedmd: %s", msg)
+                return
 
-        # Non-error messages
-        logger.debug("🔧 libzedmd: %s", msg)
+            # Non-error messages
+            logger.debug("🔧 libzedmd: %s", msg)
+        except Exception:
+            # Swallow all exceptions — this runs on a C thread and must not crash
+            pass
 
     @property
     def connected(self) -> bool:
