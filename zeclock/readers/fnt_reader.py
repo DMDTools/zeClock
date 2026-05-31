@@ -3,9 +3,11 @@ Bitmap font loader (.fnt)
 Format: Version + FontNameLen + FontName + CntFontInfo + FontCharInfo[] + bitmap data
 """
 
+from PIL import Image
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from PIL import Image
+
+from ..overlay import upscale_2x, _upscale_mask_nx
 import struct
 
 # Pre-computed 4-bit nibble to 8-bit grayscale lookup for fonts
@@ -150,8 +152,75 @@ class BitmapFont:
             self.char_info[" "] = self.char_info[":"].copy()
             self.glyphs[" "] = Image.new("L", self.glyphs[":"].size, 0)
 
-    def render_text(self, text: str, width: int = 128, height: int = 32) -> Image.Image:
-        """Renders text with this font (optimized)"""
+    def render_text(
+        self, text: str, width: int = 128, height: int = 32, upscale_mode: str = "epx"
+    ) -> Image.Image:
+        """Renders text with this font (optimized).
+
+        When the target dimensions are larger than the font's native scale
+        (e.g., 256x64 HD vs 128x32 SD), the text is rendered at native
+        resolution first, then upscaled to preserve the pixel-art aesthetic.
+
+        HD fonts (name ending with _HD) are already at 2x resolution and
+        render directly at the target size without upscaling.
+
+        Args:
+            text: The text to render.
+            width: Target frame width in pixels.
+            height: Target frame height in pixels.
+            upscale_mode: "epx" (default) or "nearest". Only used when
+                upscaling is needed (HD display with SD font).
+                - "epx": EPX/Scale2x algorithm — smooths diagonals and corners.
+                  See https://en.wikipedia.org/wiki/Pixel-art_scaling_algorithms
+                - "nearest": Simple pixel doubling, fastest.
+        """
+        # HD fonts render directly — they're already at the right scale
+        is_hd_font = self.name.endswith("_HD") if self.name else False
+        if is_hd_font:
+            return self._render_text_native(text, width, height)
+
+        # Determine if we need to upscale for HD displays
+        # Native target for DotClk fonts is 128x32
+        scale = min(width // 128, height // 32) if width > 128 or height > 32 else 1
+        if scale < 1:
+            scale = 1
+
+        if scale > 1:
+            # Render at native resolution, then upscale
+            native_w = width // scale
+            native_h = height // scale
+            native_img = self._render_text_native(text, native_w, native_h)
+
+            # Upscale using the shared overlay function
+            if scale == 2 and upscale_mode in ("epx", "hq2x"):
+                img = upscale_2x(native_img, mode=upscale_mode)
+            else:
+                img = upscale_2x(native_img, mode="nearest")
+
+            # Upscale mask data if present (handled by upscale_2x for EPX,
+            # but we need to re-attach it for nearest since PIL resize drops attrs)
+            native_any: Any = native_img
+            if hasattr(native_img, "mask_data") and native_any.mask_data:
+                img_any: Any = img
+                if not hasattr(img, "mask_data"):
+                    # nearest_upscale_2x already handles this, but double-check
+                    img_any.mask_data = _upscale_mask_nx(
+                        native_any.mask_data,
+                        native_any.mask_width_bytes,
+                        native_w,
+                        native_h,
+                        scale,
+                        width,
+                        height,
+                    )
+                    img_any.mask_width_bytes = (width // 8) + (1 if width % 8 else 0)
+
+            return img
+        else:
+            return self._render_text_native(text, width, height)
+
+    def _render_text_native(self, text: str, width: int, height: int) -> Image.Image:
+        """Renders text at the font's native pixel size."""
         img = Image.new("L", (width, height))  # Grayscale for 4-bit support
 
         # Create mask for the rendered text

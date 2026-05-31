@@ -39,6 +39,8 @@ class PluginManager:
         height: int,
         config_path: Optional[Path] = None,
         resources_path: Optional[Path] = None,
+        upscale_mode: str = "epx",
+        font: str = "STANDARD",
     ):
         """Initialize the PluginManager.
 
@@ -47,9 +49,13 @@ class PluginManager:
             height: Display height in pixels (e.g. 32 or 64).
             config_path: Optional path to plugins.yaml config file.
             resources_path: Optional path to resources directory (for PluginHelpers).
+            upscale_mode: Upscaling algorithm for HD mode ("nearest", "epx", or "hq2x").
+            font: Global font name (without .fnt extension, e.g. "STANDARD").
         """
         self.width = width
         self.height = height
+        self.upscale_mode = upscale_mode
+        self.font_name = font
         self.registry = PluginRegistry()
         self.config = PluginConfig(config_path)
         self.active_plugin: Optional[ClockPlugin] = None
@@ -64,7 +70,13 @@ class PluginManager:
         self._resources_path = resources_path
 
         # Create the PluginHelpers instance to inject into plugins
-        self._helpers = PluginHelpers(width, height, resources_path)
+        # Use bundled fonts directory for font loading
+        from .resources.paths import get_fonts_dir
+
+        fonts_parent = get_fonts_dir().parent
+        self._helpers = PluginHelpers(
+            width, height, fonts_parent, upscale_mode=upscale_mode, default_font=font
+        )
 
         # Track last selected plugin to avoid consecutive repeats
         self._last_selected_plugin: Optional[ClockPlugin] = None
@@ -282,10 +294,12 @@ class PluginManager:
             plugin_name: The plugin name to get config for.
 
         Returns:
-            Config dict with "_helpers" key containing the PluginHelpers instance.
+            Config dict with "_helpers" and "_upscale_mode" keys.
         """
         config = self.config.get_plugin_config(plugin_name)
         config["_helpers"] = self._helpers
+        config["_upscale_mode"] = self.upscale_mode
+        config["_font"] = self.font_name
         return config
 
     def select_next_plugin(self) -> Optional[ClockPlugin]:

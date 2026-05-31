@@ -6,8 +6,10 @@ storyboard metadata (frame_delay_ms, first_frame_delay, last_frame_delay,
 clock_style, custom_x, custom_y, frame_layer).
 """
 
+import asyncio
 import logging
 import random
+import threading
 import time
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
@@ -16,7 +18,7 @@ from PIL import Image
 
 from .base import ClockPlugin
 from ..colors import COLOR_MAP
-from ..overlay import overlay_or_rgb
+from ..overlay import overlay_or_rgb, upscale_2x
 from ..readers import BitmapFont, Scene, load_font, load_scene
 
 logger = logging.getLogger(__name__)
@@ -56,6 +58,11 @@ class PinballPlugin(ClockPlugin):
             Path.home() / ".zeclock" / "resources" / "animations"
         )
         self._font: Optional[BitmapFont] = None
+        self._upscale_mode: str = "epx"
+        # Background pre-computation state
+        self._precompute_thread: Optional[threading.Thread] = None
+        self._frames_lock = threading.Lock()
+        self._precompute_done = False
 
     async def initialize(self, config: dict) -> None:
         """Initialize the plugin: select a scene and pre-compute frames.
@@ -85,9 +92,20 @@ class PinballPlugin(ClockPlugin):
         # Get display dimensions
         width = config.get("width", 128)
         height = config.get("height", 32)
+        self._upscale_mode = config.get("_upscale_mode", "epx")
 
-        # Load font
-        font_path = Path.home() / ".zeclock" / "resources" / "Fonts" / "STANDARD.fnt"
+        # Load font — prefer HD variant for HD displays (same as main clock)
+        from ..resources.paths import get_fonts_dir
+
+        fonts_dir = get_fonts_dir()
+        font_name = config.get("_font", "STANDARD")
+        is_hd = width >= 256 and height >= 64
+        if is_hd:
+            font_path = fonts_dir / f"{font_name}_HD.fnt"
+            if not font_path.exists():
+                font_path = fonts_dir / f"{font_name}.fnt"
+        else:
+            font_path = fonts_dir / f"{font_name}.fnt"
         font_path_override = config.get("font_path")
         if font_path_override:
             font_path = Path(font_path_override)
@@ -112,8 +130,11 @@ class PinballPlugin(ClockPlugin):
         scene_path = random.choice(scene_files)
         logger.info("[pinball] Loading scene: %s", scene_path.name)
 
+        # Load scene at its native resolution (128x32 for DotClk .scn files)
+        # We pass 128x32 so scene.width/height reflect the .scn native size,
+        # then upscale frames to the display resolution in _precompute_frames.
         try:
-            scene = load_scene(scene_path, width, height)
+            scene = load_scene(scene_path, 128, 32)
         except Exception as e:
             logger.warning("[pinball] Failed to load scene %s: %s", scene_path.name, e)
             self._frames = []
@@ -124,19 +145,30 @@ class PinballPlugin(ClockPlugin):
             scene.frame_delay_ms if scene.frame_delay_ms > 0 else DEFAULT_FRAME_DELAY_MS
         )
 
-        # Pre-compute frames
-        self._frames = self._precompute_frames(scene, width, height)
+        # Pre-compute frames in background thread so the clock keeps rendering
+        self._precompute_done = False
         self._frame_index = 0
+        self._precompute_thread = threading.Thread(
+            target=self._precompute_in_background,
+            args=(scene, width, height),
+            daemon=True,
+        )
+        self._precompute_thread.start()
 
         logger.info(
-            "[pinball] Animation ready: %s (%d frames, %.1f FPS)",
+            "[pinball] Loading scene: %s (pre-computing in background, %dx%d, upscale=%s)",
             scene_path.name,
-            len(self._frames),
-            1000.0 / self._frame_delay_ms,
+            width,
+            height,
+            self._upscale_mode if (width != 128 or height != 32) else "none",
         )
 
     async def render_frame(self, width: int, height: int) -> Optional[Image.Image]:
         """Return the next pre-computed frame, or None when done.
+
+        Frames are served progressively as they become available from the
+        background pre-computation thread. The clock keeps rendering while
+        frames are being computed.
 
         Args:
             width: Display width in pixels.
@@ -145,20 +177,86 @@ class PinballPlugin(ClockPlugin):
         Returns:
             PIL Image in RGB mode, or None to signal completion.
         """
-        if self._frame_index >= len(self._frames):
-            return None
+        with self._frames_lock:
+            available = len(self._frames)
+
+        if self._frame_index >= available:
+            if self._precompute_done:
+                # All frames consumed and computation is done
+                return None
+            else:
+                # Still computing — wait briefly for next frame
+                await asyncio.sleep(0.01)
+                with self._frames_lock:
+                    available = len(self._frames)
+                if self._frame_index >= available:
+                    return None  # Still not ready — yield to clock
 
         if self._frame_index == 0:
             logger.info("[pinball] Start rendering")
 
-        frame = self._frames[self._frame_index]
+        with self._frames_lock:
+            frame = self._frames[self._frame_index]
         self._frame_index += 1
         return frame
 
     async def cleanup(self) -> None:
         """Release resources."""
+        # Wait for background thread to finish if still running
+        if self._precompute_thread and self._precompute_thread.is_alive():
+            self._precompute_thread.join(timeout=1.0)
         self._frames = []
         self._frame_index = 0
+        self._precompute_done = False
+
+    def _precompute_in_background(self, scene: Scene, width: int, height: int) -> None:
+        """Run frame pre-computation in a background thread.
+
+        Appends frames to self._frames progressively so render_frame()
+        can start serving them before all frames are ready.
+        """
+        display_time = time.strftime("%H:%M")
+        frame_delay = (
+            scene.frame_delay_ms if scene.frame_delay_ms > 0 else DEFAULT_FRAME_DELAY_MS
+        )
+
+        needs_upscale = scene.width != width or scene.height != height
+        computed_frames: List[Image.Image] = []
+
+        for animation_frame in scene.frames:
+            if needs_upscale:
+                animation_frame = upscale_2x(animation_frame, mode=self._upscale_mode)
+
+            merged = self._create_merged_frame(
+                animation_frame, display_time, scene, width, height
+            )
+            computed_frames.append(merged)
+
+            # Make frame available immediately
+            with self._frames_lock:
+                self._frames.append(merged)
+
+        # Add first frame delay (repeat first frame)
+        if scene.first_frame_delay > 0 and computed_frames:
+            first_frame_count = int(scene.first_frame_delay / frame_delay)
+            padding = [computed_frames[0]] * first_frame_count
+            with self._frames_lock:
+                self._frames = padding + self._frames
+
+        # Add last frame delay (repeat last frame)
+        if scene.last_frame_delay > 0 and computed_frames:
+            last_frame_count = int(scene.last_frame_delay / frame_delay)
+            with self._frames_lock:
+                self._frames.extend([computed_frames[-1]] * last_frame_count)
+
+        self._precompute_done = True
+        with self._frames_lock:
+            total = len(self._frames)
+        logger.info(
+            "[pinball] Pre-computation done (%d frames, %.1f FPS)",
+            total,
+            1000.0 / self._frame_delay_ms,
+        )
 
     def _find_scene_files(self) -> List[Path]:
         """Find all .scn files in the animations directory.
@@ -169,46 +267,6 @@ class PinballPlugin(ClockPlugin):
         if not self._animations_dir.exists():
             return []
         return list(self._animations_dir.glob("**/*.scn"))
-
-    def _precompute_frames(
-        self, scene: Scene, width: int, height: int
-    ) -> List[Image.Image]:
-        """Pre-compute all animation frames with clock overlay.
-
-        Applies DotBlt overlay composition respecting the scene's storyboard
-        metadata (clock_style, custom_x, custom_y, frame_layer).
-
-        Args:
-            scene: The loaded Scene object.
-            width: Display width in pixels.
-            height: Display height in pixels.
-
-        Returns:
-            List of pre-computed RGB PIL Images.
-        """
-        frames: List[Image.Image] = []
-        display_time = time.strftime("%H:%M")
-        frame_delay = (
-            scene.frame_delay_ms if scene.frame_delay_ms > 0 else DEFAULT_FRAME_DELAY_MS
-        )
-
-        for animation_frame in scene.frames:
-            merged = self._create_merged_frame(
-                animation_frame, display_time, scene, width, height
-            )
-            frames.append(merged)
-
-        # Add first frame delay (repeat first frame)
-        if scene.first_frame_delay > 0 and frames:
-            first_frame_count = int(scene.first_frame_delay / frame_delay)
-            frames = [frames[0]] * first_frame_count + frames
-
-        # Add last frame delay (repeat last frame)
-        if scene.last_frame_delay > 0 and frames:
-            last_frame_count = int(scene.last_frame_delay / frame_delay)
-            frames = frames + [frames[-1]] * last_frame_count
-
-        return frames
 
     def _create_merged_frame(
         self,
@@ -245,7 +303,9 @@ class PinballPlugin(ClockPlugin):
             clock_frame = self._render_custom_clock(display_time, scene, width, height)
         else:
             # Standard centered clock
-            clock_frame = self._font.render_text(display_time, width, height)
+            clock_frame = self._font.render_text(
+                display_time, width, height, upscale_mode=self._upscale_mode
+            )
 
         # Apply DotBlt overlay with dual colors based on frame_layer
         if scene.frame_layer == 1:
@@ -270,6 +330,10 @@ class PinballPlugin(ClockPlugin):
     ) -> Image.Image:
         """Render clock text at custom position specified by scene storyboard.
 
+        Scales custom_x/custom_y proportionally when the display resolution
+        differs from the scene's native resolution (e.g., HD 256x64 with
+        a 128x32 .scn file).
+
         Args:
             display_time: The time string to render.
             scene: The Scene with custom_x, custom_y coordinates.
@@ -283,13 +347,21 @@ class PinballPlugin(ClockPlugin):
         text_width = self._font.get_text_width(display_time)
         text_height = self._font.char_height
 
+        # Scale custom position from scene's native resolution (128x32) to display
+        scale_x = width / max(1, scene.width)
+        scale_y = height / max(1, scene.height)
+        custom_x = int(scene.custom_x * scale_x)
+        custom_y = int(scene.custom_y * scale_y)
+
         # Calculate position (custom_x/y are center points)
-        x_pos = max(0, min(scene.custom_x - (text_width // 2), width - text_width))
-        y_pos = max(0, min(scene.custom_y - (text_height // 2), height - text_height))
+        x_pos = max(0, min(custom_x - (text_width // 2), width - text_width))
+        y_pos = max(0, min(custom_y - (text_height // 2), height - text_height))
 
         # Create clock frame at custom position
         clock_frame = Image.new("L", (width, height), 0)
-        text_img = self._font.render_text(display_time, text_width, text_height)
+        text_img = self._font.render_text(
+            display_time, text_width, text_height, upscale_mode=self._upscale_mode
+        )
         clock_frame.paste(text_img, (x_pos, y_pos))
 
         # Reposition mask to full canvas

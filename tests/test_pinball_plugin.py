@@ -56,6 +56,8 @@ def create_mock_scene(
         frames.append(frame)
 
     scene.frames = frames
+    scene.width = width
+    scene.height = height
     return scene
 
 
@@ -589,6 +591,10 @@ class TestPinballPluginCleanup:
                     return_value=None,
                 ):
                     await plugin.initialize(config)
+
+        # Wait for background pre-computation to finish
+        if plugin._precompute_thread:
+            plugin._precompute_thread.join(timeout=5.0)
 
         assert len(plugin._frames) > 0
 

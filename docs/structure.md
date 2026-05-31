@@ -26,6 +26,17 @@ zeClock/
 │   │   ├── __init__.py         # Exports load_font, load_scene, BitmapFont, Scene
 │   │   ├── fnt_reader.py       # Bitmap font .fnt loader (4-bit per pixel)
 │   │   └── scn_reader.py       # Animation .scn loader (storyboard + dotmaps)
+│   ├── resources/              # Bundled package resources (distributed with the wheel)
+│   │   ├── __init__.py         # Resource package marker
+│   │   └── fonts/              # Bitmap fonts shipped inside the package
+│   │       ├── __init__.py     # Font resource marker
+│   │       ├── STANDARD.fnt    # Default clock font (+ _HD variant)
+│   │       ├── ALTERN8.fnt     # Alternate font (+ _HD variant)
+│   │       ├── FISHY.fnt       # Fishy font (+ _HD variant)
+│   │       ├── MENU.fnt        # Menu font (+ _HD variant)
+│   │       ├── SYSTEM.fnt      # System font (+ _HD variant)
+│   │       ├── TREK.fnt        # Trek font (+ _HD variant)
+│   │       └── TWILIGHT.fnt    # Twilight font (+ _HD variant)
 │   ├── plugin_registry.py      # Plugin registry: stores plugins with state, frequency, override logic
 │   ├── plugin_config.py        # Plugin YAML configuration loader and validator
 │   ├── plugin_manager.py       # Plugin manager: discovery, loading, scheduling, lifecycle orchestration
@@ -87,7 +98,7 @@ This is the application core. It contains all the Python logic for reading resou
 | `backend_config.py` | `BackendConfig` dataclass and config file parsing (`~/.zeclock/config/zeclock.ini`); merges CLI args over config values |
 | `dmdserver_client.py` | Backward-compatible alias: imports `DMDServerBackend` as `DMDServerClient` for external code compatibility |
 | `overlay.py` | Image merging via DotBlt algorithm: `overlay_or` (monochrome) and `overlay_or_rgb` (dual color) |
-| `installer.py` | Runtime bootstrap: detects platform, downloads libzedmd from GitHub (`PPUC/libzedmd`), installs DotClk resources |
+| `installer.py` | Runtime bootstrap: detects platform, downloads libzedmd from GitHub (`PPUC/libzedmd`), installs DotClk animations (fonts are bundled in the package) |
 | `backends/__init__.py` | Backend package: exports `DMDBackend` ABC and `create_backend()` factory function |
 | `backends/base.py` | `DMDBackend` abstract base class: defines `connect()`, `send_frame()`, `disconnect()`, `connected` property, and context manager protocol |
 | `backends/zedmd.py` | `ZeDMDBackend`: loads libzedmd via ctypes, sends frames as RGB888 directly (no pixel conversion), communicates directly with ZeDMD hardware (WiFi/USB) |
@@ -96,6 +107,9 @@ This is the application core. It contains all the Python logic for reading resou
 | `readers/__init__.py` | Exports `BitmapFont`, `load_font`, `Scene`, `load_scene` |
 | `readers/fnt_reader.py` | Parses bitmap `.fnt` fonts: headers, character info (width, kerning), 4-bit bitmap, masks |
 | `readers/scn_reader.py` | Parses `.scn` animations: storyboard (delays, blanks, clock_style, positions), 4-bit dotmap frames with masks |
+| `resources/__init__.py` | Package marker for bundled resources |
+| `resources/fonts/__init__.py` | Package marker for bundled font resources |
+| `resources/fonts/*.fnt` | Bitmap fonts (STANDARD, ALTERN8, FISHY, MENU, SYSTEM, TREK, TWILIGHT + HD variants) shipped inside the wheel via `package-data`. Available without runtime bootstrap. |
 | `plugin_registry.py` | `PluginRegistry`: stores loaded plugins with state, frequency, and error tracking; handles override logic and frequency normalization |
 | `plugin_config.py` | `PluginConfig`: loads and validates `plugins.yaml` configuration; provides defaults, frequency clamping, and plugin-specific settings |
 | `plugin_manager.py` | `PluginManager`: top-level orchestrator that discovers, loads, validates, schedules, and drives plugins through their lifecycle |
@@ -104,7 +118,7 @@ This is the application core. It contains all the Python logic for reading resou
 | `plugins/helpers.py` | `PluginHelpers` shared rendering utilities: frame creation, BitmapFont text rendering, pixel-art icon drawing, DotBlt-style compositing, font discovery and text measurement |
 | `plugins/pinball_plugin.py` | Built-in pinball animation plugin: wraps `.scn` playback with DotBlt clock overlay, supports dual color and scene storyboard metadata |
 | `plugins/pong_plugin.py` | Built-in Pong clock plugin: simulates a Pong game where the score always shows the current time (hours vs minutes) |
-| `plugins/gif_plugin.py` | Built-in GIF plugin: picks a random animated GIF from a configurable directory, plays it once respecting native frame delays, then signals completion |
+| `plugins/gif_plugin.py` | Built-in GIF plugin: picks a random animated GIF from a configurable directory, scales frames using the configured upscale algorithm for pixel-perfect integer multiples or LANCZOS for arbitrary sizes, plays it once respecting native frame delays, then signals completion |
 | `plugins/weather_plugin.py` | Built-in weather plugin: fetches data from Open-Meteo API, displays current conditions, tomorrow's forecast, and 3-day outlook |
 | `plugins/stock_plugin.py` | Built-in stock plugin: fetches quotes from Yahoo Finance, displays price, daily change, and extended hours data with market state detection |
 | `plugins/weather_icons.py` | WMO weather condition code to 16×16 pixel-art icon bitmap mapping |
@@ -129,7 +143,7 @@ Scripts for quickly testing the installation or understanding the API:
 
 | File | Role |
 |------|------|
-| `pyproject.toml` | Single packaging configuration (PEP 621). Defines metadata, dependencies (`pillow>=9.0`, `aiohttp>=3.8`, `pyyaml>=6.0`, `colorama>=0.4.6`), extras (`zedmd`, `dev`), and the CLI entry point `zeclock`. Backend: setuptools. |
+| `pyproject.toml` | Single packaging configuration (PEP 621). Defines metadata, dependencies (`pillow>=9.0`, `aiohttp>=3.8`, `pyyaml>=6.0`, `colorama>=0.4.6`), extras (`zedmd`, `dev`), package-data (bundled `.fnt` fonts), and the CLI entry point `zeclock`. Backend: setuptools. |
 | `Makefile` | Development workflow: `make test` (pytest+flake8+mypy+black), `make dev-start`/`dev-stop`, `make nas-deploy`/`nas-stop`, `make format` |
 | `mypy.ini` | mypy type checker configuration |
 | `.dockerignore` | Files excluded from Docker image builds |
@@ -154,15 +168,12 @@ During normal operation, the application expects the following directories in th
 ├── plugins/                     # User-installed plugins (override built-in by name)
 │   └── *.py                     # Custom ClockPlugin implementations
 └── resources/
-    ├── Fonts/
-    │   ├── STANDARD.fnt         # Main clock font
-    │   └── ...                  # Other .fnt fonts
     └── animations/
         └── <Themes>/           # Thematic folders (Pinball, Classic, Holiday...)
             └── *.scn           # Animation files (2300+)
 ```
 
-The bootstrap mechanism (`installer.py`) automatically manages the creation of this tree on first launch or via `zeclock --bootstrap`.
+Fonts are bundled inside the Python package (`zeclock/resources/fonts/`) and do not appear in this runtime tree. The bootstrap mechanism (`installer.py`) automatically manages the creation of this tree on first launch or via `zeclock --bootstrap`.
 
 ---
 

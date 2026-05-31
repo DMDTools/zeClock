@@ -26,6 +26,7 @@ This document details the technologies, libraries, protocols, and tools that mak
   - **RGB888 passthrough** (ZeDMDBackend): Raw PIL Image bytes sent directly to libzedmd — no Python-level pixel conversion needed.
   - **Mask processing**: Bit manipulation via Python `bytearray` and bitwise operators.
   - **Image compositing**: Byte-level iteration over `Image.tobytes()` data for DotBlt blending.
+  - **Pixel-art upscaling** (`overlay.py`): Public 2× upscaling API consolidated in the overlay module. `upscale_2x(img, mode)` is the single entry point; it dispatches to `epx_upscale_2x()` (EPX/Scale2x algorithm, default), `hq2x()` (High Quality 2× — smoother curves via interpolation, may introduce intermediate gray values, best for pre-computed content), or `nearest_upscale_2x()` (pixel doubling). Used by `BitmapFont.render_text()` when rendering SD fonts on HD displays (256×64). EPX smooths diagonal edges and corners without introducing new colors or blurring, preserving pixel-art style. A hole-prevention rule ensures filled pixels are never replaced by empty ones (avoids gaps at inner corners). All upscalers also upscale any attached `mask_data` bitfield via `_upscale_mask_2x()` so DotBlt compositing remains correct after scaling.
   - **Performance**: At 128×32 (4096 pixels), pure Python loops are fast enough for 25 FPS rendering.
 
 ### 4. Concurrency & Asynchronous Programming
@@ -40,11 +41,13 @@ This document details the technologies, libraries, protocols, and tools that mak
 
 - **Direct Hardware (libzedmd via ctypes)**: Default communication path using the `ZeDMDBackend`.
   - Loads `libzedmd.so` / `.dylib` / `.dll` from `~/.zeclock/lib/` via `ctypes.CDLL`.
-  - C API calls: `ZeDMD_GetInstance`, `ZeDMD_OpenWiFi` / `ZeDMD_Open`, `ZeDMD_SetFrameSize`, `ZeDMD_SetBrightness`, `ZeDMD_RenderRgb888`, `ZeDMD_Close`, `ZeDMD_SetLogCallback`, `ZeDMD_FormatLogMessage`, `ZeDMD_GetWidth`.
+  - C API calls: `ZeDMD_GetInstance`, `ZeDMD_OpenWiFi` / `ZeDMD_Open`, `ZeDMD_SetFrameSize`, `ZeDMD_EnableUpscaling`, `ZeDMD_SetBrightness`, `ZeDMD_RenderRgb888`, `ZeDMD_Close`, `ZeDMD_SetLogCallback`, `ZeDMD_FormatLogMessage`, `ZeDMD_GetPanelWidth`, `ZeDMD_GetPanelHeight`.
   - **Log callback**: A ctypes `CFUNCTYPE` callback is registered via `ZeDMD_SetLogCallback` to intercept libzedmd internal log messages. `ZeDMD_FormatLogMessage` resolves `va_list` arguments into readable strings. Error patterns (e.g., "StreamBytes failed", "libserialport error", "TCP stream error", "UDP stream error") are counted to detect connection loss.
   - **RGB888 passthrough**: Raw RGB bytes from PIL Image are sent directly to libzedmd without any Python-level pixel conversion (3 bytes per pixel: Red, Green, Blue).
   - **Connection modes**: WiFi (IP address) or USB serial (device path or auto-detection).
-  - **Connection health monitoring**: Two-pronged detection — log-based error counting (threshold of 3 consecutive failures) and periodic `ZeDMD_GetWidth` probe (returns 0 when internal connection pointer is null). Automatic reconnection with exponential backoff (initial 2s, max 30s, ×1.5 multiplier).
+  - **Panel resolution detection**: On connect, queries `ZeDMD_GetPanelWidth` / `ZeDMD_GetPanelHeight` to auto-detect the physical panel dimensions and adapts the frame size accordingly.
+  - **Upscaling**: Calls `ZeDMD_EnableUpscaling` so libzedmd handles centering/scaling when the configured frame size differs from the physical panel size.
+  - **Connection health monitoring**: Two-pronged detection — log-based error counting (threshold of 3 consecutive failures) and periodic `ZeDMD_GetPanelWidth` probe (returns 0 when internal connection pointer is null). Automatic reconnection with exponential backoff (initial 2s, max 30s, ×1.5 multiplier).
 
 - **TCP Sockets (standard `socket` module)**: Alternative communication via `DMDServerBackend` for development.
   - **DMDStream network header** (big-endian):
@@ -66,8 +69,26 @@ This document details the technologies, libraries, protocols, and tools that mak
   - `--wifi-addr`: ZeDMD WiFi IP address (overrides config file).
   - `--device`: ZeDMD USB serial device path (overrides config file).
   - `--brightness`: Display brightness 0-15 (overrides config file).
+  - `--hd`: Use ZeDMD HD resolution (256×64) instead of standard (128×32).
+  - `--width` / `--height`: Override display dimensions in pixels.
+  - `--upscale`: Upscaling algorithm for HD mode (`epx`, `hq2x`, or `nearest`). `epx` (default) uses EPX/Scale2x for smooth pixel-art scaling without new colors; `hq2x` uses High Quality 2× for smoother curves via interpolation (may introduce intermediate values, best for pre-computed content); `nearest` does fast pixel doubling.
   - `--bootstrap`: Non-interactive automatic resource installation.
   - `--no-prompt`: Disables interactive prompts.
+
+### 8. Configuration File (`~/.zeclock/config/zeclock.ini`)
+
+INI-format config file parsed by `backend_config.py`. CLI arguments always take precedence over file values.
+
+| Section | Key | Values | Default | Description |
+|---------|-----|--------|---------|-------------|
+| `[zedmd]` | `wifi_addr` | IP address string | — | ZeDMD WiFi address |
+| `[zedmd]` | `device` | device path string | — | ZeDMD USB serial device |
+| `[zedmd]` | `brightness` | 0–15 | 10 | Display brightness |
+| `[dmdserver]` | `host` | hostname/IP | `localhost` | dmdserver host |
+| `[dmdserver]` | `port` | integer | 6789 | dmdserver TCP port |
+| `[display]` | `width` | integer | 128 | Frame width in pixels |
+| `[display]` | `height` | integer | 32 | Frame height in pixels |
+| `[display]` | `upscale` | `epx` \| `nearest` | `epx` | Upscale algorithm used by libzedmd when the frame size differs from the physical panel size |
 
 ### 7. DMD Hardware Layer
 
@@ -112,7 +133,12 @@ build-backend = "setuptools.build_meta"
 
 [project.scripts]
 zeclock = "zeclock.clock:main"
+
+[tool.setuptools.package-data]
+zeclock = ["resources/fonts/*.fnt"]
 ```
+
+The `package-data` directive ensures bitmap font files (`.fnt`) in `zeclock/resources/fonts/` are included in built wheels and sdists. This allows plugins and the rendering engine to locate fonts via `importlib.resources` or `__file__`-relative paths without relying solely on the runtime bootstrap to `~/.zeclock/resources/`.
 
 ### Compatibility with Modern Package Managers
 
@@ -126,9 +152,10 @@ zeclock = "zeclock.clock:main"
 
 Rather than post-install hooks (incompatible with Wheels and sandboxed environments), zeClock uses a **first-launch bootstrap**:
 
-1. On startup, `installer.py` checks for `~/.zeclock/lib/libzedmd.so` and `~/.zeclock/resources/`.
-2. If elements are missing, an interactive wizard offers automatic download.
-3. Non-interactive alternative: `zeclock --bootstrap`.
+1. On startup, `installer.py` checks for `~/.zeclock/lib/libzedmd.so` and `~/.zeclock/resources/animations/`.
+2. Fonts are bundled in the package (`zeclock/resources/fonts/`) — no download needed.
+3. If animations or libzedmd are missing, an interactive wizard offers automatic download.
+4. Non-interactive alternative: `zeclock --bootstrap`.
 
 ---
 

@@ -22,6 +22,9 @@ dev-start: ## Start zeclock locally with auto backend (libzedmd → real ZeDMD)
 dev-start-virtual: ## Start zeclock in virtual mode (--backend dmdserver, DMD in browser)
 	@scripts/dev-start.sh $(COLOR) virtual
 
+dev-start-virtual-hd: ## Start zeclock in virtual HD mode (256x64, DMD in browser)
+	@scripts/dev-start.sh $(COLOR) virtual-hd
+
 dev-stop: ## Stop local zeclock + virtual-dmd
 	@scripts/dev-stop.sh
 

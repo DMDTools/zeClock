@@ -44,11 +44,15 @@ class ZeClock:
         animation_color: Optional[str] = None,
         plugin_config_path: Optional[Path] = None,
         plugins_override: Optional[str] = None,
+        upscale_mode: str = "epx",
+        font: str = "STANDARD",
     ):
         self.width = width
         self.height = height
         self.fps = fps
         self.running = True
+        self.upscale_mode = upscale_mode
+        self.font_name = font
 
         # Color configuration
         self.color_mode = color
@@ -91,13 +95,26 @@ class ZeClock:
         # Reconnection state
         self._reconnect_logged = False
 
-        # Load font
+        # Load font — prefer HD variant for HD displays
         self.dotclk_font = None
-        font_path = Path.home() / ".zeclock" / "resources" / "Fonts" / "STANDARD.fnt"
+        from .resources.paths import get_fonts_dir
+
+        fonts_dir = get_fonts_dir()
+        hd_font_path = fonts_dir / f"{self.font_name}_HD.fnt"
+        sd_font_path = fonts_dir / f"{self.font_name}.fnt"
+
+        # Use HD font if display is HD and the font file exists
+        if self.width >= 256 and self.height >= 64 and hd_font_path.exists():
+            font_path = hd_font_path
+        else:
+            font_path = sd_font_path
+
         if font_path.exists():
             try:
                 self.dotclk_font = load_font(font_path)
-                print(f"✅ Loaded font: {self.dotclk_font.name}")
+                print(
+                    f"✅ Loaded font: {self.dotclk_font.name} (upscale={self.upscale_mode})"
+                )
             except Exception as e:
                 print(f"⚠️ Failed to load font: {e}")
         else:
@@ -121,6 +138,24 @@ class ZeClock:
                 logger.info("DMD still unavailable — next retry in %.0fs", delay)
             if not self.running:
                 return
+
+        # After connection, adapt to detected display resolution (ZeDMD HD auto-detect)
+        if hasattr(self.dmd_client, "width") and hasattr(self.dmd_client, "height"):
+            detected_w = self.dmd_client.width
+            detected_h = self.dmd_client.height
+            if detected_w > 0 and detected_h > 0:
+                if detected_w != self.width or detected_h != self.height:
+                    logger.info(
+                        "Adapting clock to detected display resolution: %dx%d",
+                        detected_w,
+                        detected_h,
+                    )
+                    self.width = detected_w
+                    self.height = detected_h
+                    # Invalidate cached frames
+                    self.cached_clock_frame = None
+                    self.cached_clock_rgb = None
+                    self.last_clock_time = ""
 
         # Initialize plugin system
         await self._init_plugin_system()
@@ -228,6 +263,8 @@ class ZeClock:
             width=self.width,
             height=self.height,
             config_path=self._plugin_config_path,
+            upscale_mode=self.upscale_mode,
+            font=self.font_name,
         )
 
         try:
@@ -364,7 +401,7 @@ class ZeClock:
             # Standard centered positioning
             assert self.dotclk_font is not None
             self.cached_clock_frame = self.dotclk_font.render_text(
-                display_time, self.width, self.height
+                display_time, self.width, self.height, upscale_mode=self.upscale_mode
             )
             self.last_clock_time = cache_key
             needs_colorize = True
@@ -459,6 +496,35 @@ def main() -> None:
         default=None,
         help="Display brightness (0-15, default: 10)",
     )
+    parser.add_argument(
+        "--hd",
+        action="store_true",
+        help="Use ZeDMD HD resolution (256x64) instead of standard (128x32)",
+    )
+    parser.add_argument(
+        "--width",
+        type=int,
+        default=None,
+        help="Display width in pixels (default: 128, or 256 with --hd)",
+    )
+    parser.add_argument(
+        "--height",
+        type=int,
+        default=None,
+        help="Display height in pixels (default: 32, or 64 with --hd)",
+    )
+    parser.add_argument(
+        "--upscale",
+        choices=["nearest", "epx", "hq2x"],
+        default=None,
+        help=(
+            "Upscaling algorithm for HD mode (default: epx). "
+            "'nearest' = fast pixel doubling; "
+            "'epx' = EPX/Scale2x, smooths diagonals, no new colors; "
+            "'hq2x' = High Quality 2x, smoother curves via interpolation (best quality). "
+            "See https://en.wikipedia.org/wiki/Pixel-art_scaling_algorithms"
+        ),
+    )
 
     # Plugin management arguments
     parser.add_argument(
@@ -522,11 +588,23 @@ def main() -> None:
         sys.exit(1)
 
     # Load backend configuration (config file + CLI args merged)
+    # Handle --hd flag: sets width=256, height=64 unless explicitly overridden
+    cli_width = args.width
+    cli_height = args.height
+    if args.hd:
+        if cli_width is None:
+            cli_width = 256
+        if cli_height is None:
+            cli_height = 64
+
     backend_config = load_config(
         backend=args.backend,
         wifi_addr=args.wifi_addr,
         device=args.device,
         brightness=args.brightness,
+        width=cli_width,
+        height=cli_height,
+        upscale_mode=args.upscale,
     )
 
     # Create the backend via factory
@@ -537,14 +615,29 @@ def main() -> None:
         brightness=backend_config.brightness,
         dmdserver_host=backend_config.dmdserver_host,
         dmdserver_port=backend_config.dmdserver_port,
+        width=backend_config.width,
+        height=backend_config.height,
     )
 
+    # After backend creation, check if the backend detected a different resolution
+    # (ZeDMDBackend auto-detects hardware resolution on connect)
+    display_width = backend_config.width
+    display_height = backend_config.height
+    if hasattr(backend, "width") and hasattr(backend, "height"):
+        # Will be updated after connect() — for now use configured values
+        display_width = backend_config.width
+        display_height = backend_config.height
+
     clock = ZeClock(
+        width=display_width,
+        height=display_height,
         backend=backend,
         color=args.color,
         animation_color=args.animation_color,
         plugin_config_path=Path(args.plugin_config) if args.plugin_config else None,
         plugins_override=args.plugins,
+        upscale_mode=backend_config.upscale_mode,
+        font=backend_config.font,
     )
     asyncio.run(clock.run())
 

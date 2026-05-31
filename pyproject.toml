@@ -55,6 +55,9 @@ zeclock = "zeclock.clock:main"
 [tool.setuptools.packages.find]
 include = ["zeclock*"]
 
+[tool.setuptools.package-data]
+zeclock = ["resources/Fonts/*.fnt"]
+
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

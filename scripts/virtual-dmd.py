@@ -76,24 +76,31 @@ HTML_PAGE = """<!DOCTYPE html>
     box-shadow: 0 0 30px rgba(0,0,0,0.9), inset 0 0 15px rgba(0,0,0,0.6);
   }
   canvas { display: block; border-radius: 4px; }
-  h1 { color: #f80; font-family: monospace; font-size: 14px; margin-bottom: 10px;
-       text-shadow: 0 0 8px rgba(255,136,0,0.4); }
-  #fps { color: #444; font-family: monospace; font-size: 11px; margin-top: 8px; }
-  #rec-btn { margin-top: 10px; padding: 6px 16px; font-family: monospace; font-size: 12px;
+  h1 { color: #f80; font-family: monospace; font-size: 32px; margin-bottom: 18px;
+       text-shadow: 0 0 12px rgba(255,136,0,0.5); }
+  #fps { color: #aaa; font-family: monospace; font-size: 20px; margin-top: 12px; }
+  #rec-btn { margin-top: 14px; padding: 10px 24px; font-family: monospace; font-size: 18px;
     background: #222; color: #ccc; border: 1px solid #444; border-radius: 4px; cursor: pointer; }
   #rec-btn:hover { background: #333; }
   #rec-btn.recording { background: #600; color: #f66; border-color: #f44; }
+  #resolution { color: #aaa; font-family: monospace; font-size: 18px; margin-top: 8px; }
+  #resolution .mode { color: #f80; font-weight: bold; }
+  #hint { color: #666; font-family: monospace; font-size: 15px; margin-top: 16px; max-width: 700px; text-align: center; }
 </style>
 </head>
 <body>
 <h1>&#x1f4a1; zeClock Virtual DMD</h1>
 <div id="dmd-container">
-  <canvas id="dmd" width="768" height="192"></canvas>
+  <canvas id="dmd" width="1536" height="384"></canvas>
 </div>
 <div id="fps">Connecting...</div>
+<div id="resolution">Resolution: <span class="mode">128x32 (SD)</span></div>
 <button id="rec-btn" onclick="toggleRecord()">&#x1F534; Record</button>
+<div id="hint">Resolution auto-adapts to zeClock. Use <code>zeclock --hd</code> or <code>make dev-start-virtual-hd</code> for 256x64.</div>
 <script>
-const DMD_W = 128, DMD_H = 32;
+// DMD dimensions — updated dynamically from first frame
+let DMD_W = 128, DMD_H = 32;
+let needsReinit = false;
 const canvas = document.getElementById("dmd");
 const gl = canvas.getContext("webgl2");
 if (!gl) { alert("WebGL2 required"); }
@@ -135,7 +142,7 @@ in vec2 v_uv;
 uniform sampler2D u_dmd;      // base DMD texture
 uniform sampler2D u_dotGlow;  // small blur
 uniform sampler2D u_backGlow; // large blur
-uniform vec2 u_dmdSize;       // 128, 32
+uniform vec2 u_dmdSize;       // 128, 32 or 256, 64
 out vec4 fragColor;
 
 // SDF rounded box (from iq)
@@ -227,7 +234,7 @@ gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
 
 // DMD source texture (NEAREST sampling)
-const dmdTex = gl.createTexture();
+let dmdTex = gl.createTexture();
 gl.bindTexture(gl.TEXTURE_2D, dmdTex);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
@@ -236,10 +243,38 @@ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, DMD_W, DMD_H, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(DMD_W*DMD_H*4));
 
 // FBOs for blur passes (at DMD resolution for efficiency)
-const fboBlurH = createFBO(DMD_W, DMD_H);  // horizontal blur
-const fboDotGlow = createFBO(DMD_W, DMD_H); // dot glow (small blur result)
-const fboBlurH2 = createFBO(DMD_W, DMD_H); // second blur H
-const fboBackGlow = createFBO(DMD_W, DMD_H); // back glow (large blur result)
+let fboBlurH = createFBO(DMD_W, DMD_H);
+let fboDotGlow = createFBO(DMD_W, DMD_H);
+let fboBlurH2 = createFBO(DMD_W, DMD_H);
+let fboBackGlow = createFBO(DMD_W, DMD_H);
+
+// Reinitialize WebGL resources when resolution changes
+// Canvas always stays at fixed physical size (same as HD: 1536x384).
+// In SD mode, dots are simply larger (12px per dot vs 6px per dot in HD).
+const CANVAS_W = 1536;
+const CANVAS_H = 384;
+function reinitForSize(w, h) {
+  DMD_W = w; DMD_H = h;
+  // Canvas stays fixed size — dots scale automatically via the shader
+  canvas.width = CANVAS_W;
+  canvas.height = CANVAS_H;
+  // Update resolution indicator
+  const dotsPerPx = (CANVAS_W / w).toFixed(0);
+  const mode = (w >= 256 && h >= 64) ? "HD" : "SD";
+  document.getElementById("resolution").innerHTML =
+    'Resolution: <span class="mode">' + w + 'x' + h + ' (' + mode + ', ' + dotsPerPx + 'px/dot)</span>';
+  // Recreate DMD texture
+  gl.bindTexture(gl.TEXTURE_2D, dmdTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, DMD_W, DMD_H, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(DMD_W*DMD_H*4));
+  // Recreate FBOs at new resolution
+  fboBlurH = createFBO(DMD_W, DMD_H);
+  fboDotGlow = createFBO(DMD_W, DMD_H);
+  fboBlurH2 = createFBO(DMD_W, DMD_H);
+  fboBackGlow = createFBO(DMD_W, DMD_H);
+  // Update offscreen canvas
+  offscreen.width = DMD_W; offscreen.height = DMD_H;
+  needsReinit = false;
+}
 
 function drawQuad(prog) {
   const loc = gl.getAttribLocation(prog, "a_pos");
@@ -319,6 +354,12 @@ function connect() {
   const ws = new WebSocket("ws://localhost:WS_PORT/");
   ws.onmessage = (e) => {
     frameImg.onload = () => {
+      // Detect resolution change from incoming frame
+      if (frameImg.naturalWidth !== DMD_W || frameImg.naturalHeight !== DMD_H) {
+        if (frameImg.naturalWidth > 0 && frameImg.naturalHeight > 0) {
+          reinitForSize(frameImg.naturalWidth, frameImg.naturalHeight);
+        }
+      }
       offCtx.drawImage(frameImg, 0, 0, DMD_W, DMD_H);
       const imgData = offCtx.getImageData(0, 0, DMD_W, DMD_H);
       gl.activeTexture(gl.TEXTURE0);
@@ -328,7 +369,7 @@ function connect() {
       fc++;
       const now = Date.now();
       if (now - lastT >= 1000) {
-        document.getElementById("fps").textContent = fc + " FPS";
+        document.getElementById("fps").textContent = fc + " FPS (" + DMD_W + "x" + DMD_H + ")";
         fc = 0; lastT = now;
       }
     };

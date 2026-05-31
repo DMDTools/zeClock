@@ -28,6 +28,10 @@ class BackendConfig:
     brightness: int = 10
     dmdserver_host: str = "localhost"
     dmdserver_port: int = 6789
+    width: int = 128
+    height: int = 32
+    upscale_mode: str = "epx"  # nearest | epx | hq2x
+    font: str = "STANDARD"  # Global font name (without .fnt extension)
 
 
 def _validate_brightness(value: str) -> int:
@@ -108,6 +112,36 @@ def _parse_config_file(config_path: Path) -> dict:
                         f"Invalid dmdserver port '{val}', using default 6789"
                     )
 
+    # Read [display] section
+    if parser.has_section("display"):
+        if parser.has_option("display", "width"):
+            val = parser.get("display", "width").strip()
+            if val:
+                try:
+                    result["width"] = int(val)
+                except ValueError:
+                    logger.warning(f"Invalid display width '{val}', using default 128")
+
+        if parser.has_option("display", "height"):
+            val = parser.get("display", "height").strip()
+            if val:
+                try:
+                    result["height"] = int(val)
+                except ValueError:
+                    logger.warning(f"Invalid display height '{val}', using default 32")
+
+        if parser.has_option("display", "upscale"):
+            val = parser.get("display", "upscale").strip().lower()
+            if val in ("nearest", "epx", "hq2x"):
+                result["upscale_mode"] = val
+            elif val:
+                logger.warning(f"Invalid upscale mode '{val}', using default 'epx'")
+
+        if parser.has_option("display", "font"):
+            val = parser.get("display", "font").strip()
+            if val:
+                result["font"] = val
+
     return result
 
 
@@ -119,6 +153,9 @@ def load_config(
     brightness: Optional[int] = None,
     dmdserver_host: Optional[str] = None,
     dmdserver_port: Optional[int] = None,
+    width: Optional[int] = None,
+    height: Optional[int] = None,
+    upscale_mode: Optional[str] = None,
 ) -> BackendConfig:
     """Load backend configuration with CLI arguments taking precedence.
 
@@ -135,6 +172,8 @@ def load_config(
         brightness: CLI --brightness value.
         dmdserver_host: CLI --dmdserver-host value.
         dmdserver_port: CLI --dmdserver-port value.
+        width: CLI --width value or HD preset width.
+        height: CLI --height value or HD preset height.
 
     Returns:
         A fully resolved BackendConfig instance.
@@ -156,6 +195,14 @@ def load_config(
         config.dmdserver_host = file_values["dmdserver_host"]
     if "dmdserver_port" in file_values:
         config.dmdserver_port = file_values["dmdserver_port"]
+    if "upscale_mode" in file_values:
+        config.upscale_mode = file_values["upscale_mode"]
+    if "font" in file_values:
+        config.font = file_values["font"]
+    if "width" in file_values:
+        config.width = file_values["width"]
+    if "height" in file_values:
+        config.height = file_values["height"]
 
     # Layer 1: CLI arguments (highest precedence)
     if backend is not None:
@@ -170,6 +217,12 @@ def load_config(
         config.dmdserver_host = dmdserver_host
     if dmdserver_port is not None:
         config.dmdserver_port = dmdserver_port
+    if width is not None:
+        config.width = width
+    if height is not None:
+        config.height = height
+    if upscale_mode is not None:
+        config.upscale_mode = upscale_mode
 
     # Req 4.4: If both wifi_addr and device are configured, use WiFi and ignore device
     if config.wifi_addr and config.device:

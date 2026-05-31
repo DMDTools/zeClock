@@ -22,6 +22,12 @@ def mock_lib():
     lib.ZeDMD_SetBrightness.return_value = None
     lib.ZeDMD_SetDevice.return_value = None
     lib.ZeDMD_RenderRgb565.return_value = None
+    lib.ZeDMD_GetWidth.return_value = 128
+    lib.ZeDMD_GetHeight.return_value = 32
+    lib.ZeDMD_GetPanelWidth.return_value = 128
+    lib.ZeDMD_GetPanelHeight.return_value = 32
+    lib.ZeDMD_EnableUpscaling.return_value = None
+    lib.ZeDMD_DisableUpscaling.return_value = None
     return lib
 
 

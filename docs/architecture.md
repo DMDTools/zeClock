@@ -47,7 +47,7 @@ Manages global state and the time-based execution loop.
 
 - **Render Loop (Tick Event)**: Runs as an async background task. Precisely calculates the remaining delay before the next frame to call `asyncio.sleep` and stabilize the framerate (25 FPS by default, or per-scene timing).
 - **Animation State Machine**: Coordinates transitions between "Clock Only" mode and "Attract Mode" (retro pinball animations). After 5 seconds of inactivity, a new animation is randomly selected.
-- **Async Pre-computer (`_precompute_animation`)**: To avoid any slowdown during real-time rendering, an async task loads a randomly chosen `.scn` animation, merges each frame with the current time (in two versions: with and without the colon `:` for blinking) and stores everything in RAM.
+- **Async Pre-computer (`_precompute_animation`)**: To avoid any slowdown during real-time rendering, an async task loads a randomly chosen `.scn` animation, merges each frame with the current time (in two versions: with and without the colon `:` for blinking) and stores everything in RAM. The PinballPlugin and GifPlugin further optimize this by running pre-computation in a **background thread**, appending frames progressively so rendering can start before all frames are ready.
 - **Dual Color**: Supports independent colors for the clock and animations, with an `auto` mode that rotates colors every 60 seconds.
 - **CLI Entry Point**: The `main()` function exposes `--color`, `--animation-color`, and `--bootstrap` arguments.
 
@@ -61,7 +61,7 @@ Pluggable backend system for DMD communication. All backends implement the `DMDB
   - `disconnect() -> None`: Close the connection.
   - `connected` property: Whether the backend is currently connected.
   - Context manager protocol (`__enter__` / `__exit__`): Calls `connect()` / `disconnect()` automatically.
-- **`ZeDMDBackend` (`backends/zedmd.py`)**: Direct hardware communication via `libzedmd` (C shared library loaded through ctypes). Sends frames as RGB888 directly via `ZeDMD_RenderRgb888`, avoiding any Python-level pixel conversion. Supports WiFi and USB connections. Includes connection health monitoring via a log callback registered with libzedmd (`ZeDMD_SetLogCallback`) that detects transport errors (StreamBytes failures, serial/TCP/UDP errors) in real-time, combined with a periodic `ZeDMD_GetWidth` probe. Automatic reconnection uses exponential backoff and works for both USB and WiFi transports. Thread-safe error counting (via `threading.Lock`) protects shared state between the libzedmd internal thread and the Python asyncio thread.
+- **`ZeDMDBackend` (`backends/zedmd.py`)**: Direct hardware communication via `libzedmd` (C shared library loaded through ctypes). Sends frames as RGB888 directly via `ZeDMD_RenderRgb888`, avoiding any Python-level pixel conversion. Supports WiFi and USB connections. On connect, auto-detects the physical panel dimensions via `ZeDMD_GetPanelWidth`/`ZeDMD_GetPanelHeight` and enables upscaling (`ZeDMD_EnableUpscaling`) so libzedmd handles centering/scaling when the frame size differs from the panel size. The upscale algorithm is controlled by `BackendConfig.upscale_mode` (`epx` by default, `hq2x`, or `nearest`). Includes connection health monitoring via a log callback registered with libzedmd (`ZeDMD_SetLogCallback`) that detects transport errors (StreamBytes failures, serial/TCP/UDP errors) in real-time, combined with a periodic `ZeDMD_GetPanelWidth` probe. Automatic reconnection uses exponential backoff and works for both USB and WiFi transports. Thread-safe error counting (via `threading.Lock`) protects shared state between the libzedmd internal thread and the Python asyncio thread.
 - **`DMDServerBackend` (`backends/dmdserver.py`)**: TCP client using the DMDStream protocol (refactored from `dmdserver_client.py`). Used for development with `virtual-dmd.py`.
 - **`BackendFactory` (`backends/factory.py`)**: Instantiates the correct backend based on `--backend` CLI argument (`auto`, `zedmd`, `dmdserver`). In `auto` mode, tries ZeDMD first, falls back to dmdserver.
 
@@ -81,7 +81,7 @@ Pluggable backend system for DMD communication. All backends implement the `DMDB
 
 Optimized parsers for decoding native DotClk hardware formats:
 
-- **`BitmapFont` (`fnt_reader.py`)**: Decodes the binary `.fnt` format. Reads font headers (version, name, character count), maps ASCII characters with their advance width and kerning info, decompresses the global bitmap encoded at 4 bits per pixel (2 pixels per byte, dotmap format with header), and extracts individual grayscale glyphs.
+- **`BitmapFont` (`fnt_reader.py`)**: Decodes the binary `.fnt` format. Reads font headers (version, name, character count), maps ASCII characters with their advance width and kerning info, decompresses the global bitmap encoded at 4 bits per pixel (2 pixels per byte, dotmap format with header), and extracts individual grayscale glyphs. When rendering on HD displays (256×64) with SD fonts, `render_text()` renders at native resolution then delegates 2× upscaling to `overlay.upscale_2x()` (EPX, hq2x, or nearest-neighbor), controlled by the `upscale_mode` parameter. HD fonts (name ending with `_HD`) render directly at target size without upscaling.
 - **`Scene` (`scn_reader.py`)**: Decodes the binary `.scn` animation format. Extracts the storyboard containing display metadata:
   - `first_frame_delay` / `last_frame_delay`: Hold delays on first/last frame (ms).
   - `first_blank` / `last_blank`: Whether display should be blank during those delays.
@@ -92,7 +92,7 @@ Optimized parsers for decoding native DotClk hardware formats:
 
 ### 4. Composition Engine: `Overlay` (`overlay.py`)
 
-This module handles image merging (clock on one side, animation on the other). It faithfully implements the original DotClk hardware **`DotBlt`** algorithm.
+This module handles image merging (clock on one side, animation on the other) and pixel-art upscaling. It faithfully implements the original DotClk hardware **`DotBlt`** algorithm and serves as the single entry point for all pixel-art upscaling in zeClock.
 
 Mask metadata (`mask_data`, `mask_width_bytes`) is attached dynamically to PIL Image objects by the binary readers and accessed via typed `Any` casts in the overlay compositor.
 
@@ -101,6 +101,15 @@ Mask metadata (`mask_data`, `mask_width_bytes`) is attached dynamically to PIL I
   - If the upper layer's mask bit is `0`, the upper image pixel is applied (overwriting the background).
   - If the mask bit is `1`, the background pixel is preserved.
 - **Dual Colorization** via `overlay_or_rgb`: Monochrome grayscale images are dynamically projected into RGB space. The clock receives the `color` (e.g., Orange) and the animation receives the `animation_color` (e.g., Blue), ensuring perfect readability of clock digits over retro pinball animations.
+- **Pixel-art upscaling** — public API used by `BitmapFont.render_text()` and any other caller that needs to scale SD content to HD displays:
+  - `upscale_nx(img, scale, mode)`: General dispatcher for arbitrary integer scale factors. Routes to the best algorithm for the given scale: `upscale_2x` for scale=2, `scale3x` for scale=3 with `mode="epx"`, and nearest-neighbor for all other scales. This is the preferred entry point when the scale factor is not known at compile time.
+  - `upscale_2x(img, mode)`: Dispatcher for 2× upscaling. `mode="epx"` (default), `mode="hq2x"`, or `mode="nearest"`.
+  - `epx_upscale_2x(img)`: EPX/Scale2x algorithm. Smooths diagonal edges and corners without introducing new colors or blurring. A hole-prevention rule ensures filled pixels are never replaced by empty ones (avoids gaps at inner corners of shapes such as "E"). Works on mode `L` (grayscale) images.
+  - `hq2x(img)`: hq2x (High Quality 2×) algorithm by Maxim Stepin. Produces smoother curves and anti-aliased diagonals via neighbor interpolation. May introduce intermediate gray values. Best for pre-computed content (fonts, animations) where upscaling happens once at initialization. Works on mode `L` (grayscale) images.
+  - `nearest_upscale_2x(img)`: Simple pixel doubling via `Image.Resampling.NEAREST`. Fastest method, works on any PIL image mode.
+  - `scale3x(img)`: Scale3x/AdvMAME3x algorithm. Generalizes EPX to the 3× case — each source pixel expands to a 3×3 output block using neighbor comparisons on the full 3×3 neighborhood. Never introduces new colors; preserves pixel-art style. Useful for 3× scale factors (e.g., 128×32 → 384×96). Works on mode `L` (grayscale) images.
+  - `_upscale_mask_2x(...)`: Internal helper that expands a DotBlt bit-mask 2× (each set bit → 2×2 block) so DotBlt compositing remains correct after scaling. Called automatically by both 2× upscalers when `mask_data` is present on the source image.
+  - `_upscale_mask_nx(...)`: Internal helper that expands a DotBlt bit-mask by an arbitrary integer scale factor N (each set bit → N×N block). Used by `scale3x` and the nearest-neighbor fallback in `upscale_nx` to keep DotBlt compositing correct at any scale.
 
 ### 5. Plugin System (`plugins/`, `plugin_manager.py`, `plugin_registry.py`, `plugin_config.py`)
 
@@ -128,9 +137,9 @@ Extensible plugin architecture that allows contributors to author display plugin
 - **`PagedPlugin` (`base.py`)**: Abstract subclass of `ClockPlugin` for plugins that cycle through multiple display pages. Handles frame counting, page advancement, and automatic completion signaling. Subclasses implement `render_page(page, width, height)` instead of `render_frame()`. Accepts `page_duration_seconds` (2–30s, default 4) and manages internal paging state via `_init_paging()`.
 - **Validation Utilities**: `validate_plugin_name()` and `validate_plugin_description()` enforce naming and description constraints at registration time.
 - **Built-in Plugins**:
-  - **PinballPlugin** (`pinball_plugin.py`): Wraps the existing `.scn` animation playback logic with DotBlt clock overlay composition. Randomly selects a scene file, pre-computes frames respecting storyboard metadata (clock_style, custom_x, custom_y, frame_layer), and supports independent clock/animation colors.
-  - **PongPlugin** (`pong_plugin.py`): Simulates a Pong game where the score always displays the current time (left paddle = hours, right paddle = minutes). Features AI-controlled paddles, ball physics with spin and speed-up, and renders using the MENU font for the score display.
-  - **GifPlugin** (`gif_plugin.py`): Picks a random animated GIF from a configurable directory (`~/.zeclock/plugins/gif/` by default), extracts all frames with their native delays, resizes/crops to fit the display dimensions, plays the animation once, then signals completion.
+  - **PinballPlugin** (`pinball_plugin.py`): Wraps the existing `.scn` animation playback logic with DotBlt clock overlay composition. Randomly selects a scene file, pre-computes frames **progressively in a background thread** so `render_frame()` can start serving frames before all are ready — the clock keeps rendering while computation continues. Respects storyboard metadata (clock_style, custom_x, custom_y, frame_layer), and supports independent clock/animation colors. Thread-safe access to the frame list is protected by a `threading.Lock`.
+  - **PongPlugin** (`pong_plugin.py`): Animated Pong game with real scoring and human-like AI. Two paddles play with randomized imperfections (reaction delay, limited speed, prediction error). The ball speeds up after each rally. A game resets after one side reaches 5 points or the plugin duration expires. Features score flash animations, serve delay blinking, and renders scores using the MENU font.
+  - **GifPlugin** (`gif_plugin.py`): Picks a random animated GIF from a configurable directory (`~/.zeclock/plugins/gif/` by default), extracts frames **progressively in a background thread** so `render_frame()` can start serving frames before all are ready — the clock keeps rendering during loading. Scales frames to fit the display dimensions using a two-path strategy (pixel-perfect GIFs whose dimensions are exact integer multiples of the display size use the configured upscale algorithm — `epx`, `hq2x`, or `nearest` — while GIFs requiring arbitrary rescaling use LANCZOS). Thread-safe access to the frame list is protected by a `threading.Lock`. Plays the animation once, then signals completion.
   - **WeatherPlugin** (`weather_plugin.py`): Fetches weather data from the Open-Meteo API and cycles through display pages (current conditions, tomorrow's forecast, 3-day outlook) with configurable page duration. Supports 15-minute caching, staleness indicators, and Celsius/Fahrenheit units.
   - **StockPlugin** (`stock_plugin.py`): Fetches stock quotes from Yahoo Finance (no API key required) and displays current price, daily change, and change percentage for configured ticker symbols. Shows one symbol per page with configurable page duration. Detects market state (OPEN, PRE, POST, CLOSED) and displays extended hours price and variation when in pre/post market. Supports 10-minute caching with a staleness indicator.
 - **`PluginHelpers` (`helpers.py`)**: Shared rendering utilities injected into plugins at initialization. Provides:
@@ -140,6 +149,7 @@ Extensible plugin architecture that allows contributors to author display plugin
   - `composite_frames()`: Merges foreground onto background using DotBlt-style OR blending (non-black pixels overwrite).
   - `get_font_names()` / `get_text_width()`: Font discovery and text measurement for layout calculations.
   - `draw_staleness_indicator()`: Draws a blinking red dot in the top-right corner when data is stale (used by WeatherPlugin and StockPlugin).
+  - `ConfettiAnimation`: Reusable particle animation class. Particles shoot upward from configurable cannon positions and fall with gravity. Supports three intensity levels (`small`/`medium`/`big`) and multiple color palettes (`CONFETTI_COLORS_PARTY`, `CONFETTI_COLORS_WARM`, `CONFETTI_COLORS_COOL`).
 
 ### 6. Automatic Bootstrap: `Installer` (`installer.py`)
 
@@ -147,7 +157,7 @@ Runtime initialization module that detects and automatically installs system dep
 
 - **Platform Detection**: Linux x64/aarch64, macOS arm64/x64, Windows x64.
 - **libzedmd Installation**: Downloads the latest release from `PPUC/libzedmd` on GitHub to `~/.zeclock/lib/`.
-- **DotClk Resources Installation**: Downloads fonts and 2300+ animations from `sigmafx/DotClk-Resources`.
+- **DotClk Animations Installation**: Downloads 2300+ animations from `sigmafx/DotClk-Resources`. Fonts are bundled in the package (`zeclock/resources/fonts/`) and do not require downloading.
 - **Interactive or Automatic Mode**: User prompt by default, or `--bootstrap` for silent installation.
 - **dmdserver Installation** (optional): Available via `--with-dmdserver` for development setups.
 

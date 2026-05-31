@@ -7,7 +7,9 @@ This guide walks you through creating custom plugins for zeClock. Plugins render
 - [Getting Started](#getting-started)
 - [Plugin Interface Reference](#plugin-interface-reference)
 - [Using PluginHelpers](#using-pluginhelpers)
+- [Using ConfettiAnimation](#using-confettianimation)
 - [Configuration](#configuration)
+  - [Using the Upscaling API](#using-the-upscaling-api)
 - [Lifecycle](#lifecycle)
 - [Signaling Completion](#signaling-completion)
 - [Using PagedPlugin](#using-pagedplugin)
@@ -47,6 +49,7 @@ class HelloWorldPlugin(ClockPlugin):
 
     async def initialize(self, config: dict) -> None:
         self._helpers = config["_helpers"]
+        self._upscale_mode = config.get("_upscale_mode", "epx")
         self._frames_rendered = 0
         self._max_frames = config.get("duration_seconds", 5)
 
@@ -185,6 +188,8 @@ On a 32px tall display, you can fit:
 - 4 lines of SYSTEM (7px each) — leaves 4px
 - Mix: 1 MENU line + 2 SYSTEM lines = 25px
 
+**HD font variants (automatic):** On ZeDMD HD displays (256×64), `PluginHelpers` automatically loads `_HD` font variants when available (e.g. `MENU_HD.fnt` instead of `MENU.fnt`). These provide pixel-perfect 2× glyphs without runtime upscaling. No code changes are needed in your plugin — just call `render_text()` with the standard font name and the HD variant is used transparently. If no `_HD` variant exists for a font, the standard version is used with runtime scaling as before.
+
 #### `draw_icon(frame, icon_data, x, y, size=(16, 16), color=(255, 255, 255)) -> Image.Image`
 
 Draws a pixel-art icon onto an existing frame. Icons are stored as raw bitmap bytes (1 bit per pixel, row-major, MSB first).
@@ -277,6 +282,97 @@ if self._is_cache_stale():
 
 ---
 
+## Using ConfettiAnimation
+
+The `ConfettiAnimation` class in `zeclock.plugins.helpers` provides a ready-made particle effect for celebrations, scoring events, or any visual flourish. Particles shoot upward from the bottom (like confetti cannons) and fall back down with gravity.
+
+### Quick Start
+
+```python
+from zeclock.plugins.helpers import ConfettiAnimation
+
+class MyGamePlugin(ClockPlugin):
+    async def initialize(self, config: dict) -> None:
+        self._helpers = config["_helpers"]
+        self._confetti = ConfettiAnimation(width=128, height=32)
+
+    async def render_frame(self, width: int, height: int) -> Optional[Image.Image]:
+        frame = self._helpers.create_frame()
+
+        # Trigger confetti on a score event
+        if self._just_scored:
+            self._confetti.start(intensity="medium")
+            self._just_scored = False
+
+        # Update and draw each frame
+        if self._confetti.is_active:
+            self._confetti.update()
+            self._confetti.draw(frame)
+
+        return frame
+```
+
+### Intensities
+
+| Intensity | Particles | Duration | Use Case |
+|-----------|-----------|----------|----------|
+| `"small"` | 8 | 1 second | Minor event (point scored) |
+| `"medium"` | 20 | 2 seconds | Moderate celebration |
+| `"big"` | 40 | 3.5 seconds | Major event (match won) |
+
+### API
+
+#### `ConfettiAnimation(width=128, height=32)`
+
+Create an animation instance sized to your display.
+
+#### `start(intensity="big", colors=None, origin_x=None)`
+
+Launch the confetti. Parameters:
+- `intensity`: `"small"`, `"medium"`, or `"big"`.
+- `colors`: Custom color palette as a list of RGB tuples. Defaults to `CONFETTI_COLORS_PARTY`.
+- `origin_x`: X position for a single cannon. `None` fires from both left and right sides.
+
+#### `update()`
+
+Advance particle physics by one frame. Call once per render loop iteration.
+
+#### `draw(frame)`
+
+Draw particles onto a PIL Image (modified in place).
+
+#### `stop()`
+
+Stop the animation immediately and clear all particles.
+
+#### `is_active` (property)
+
+`True` while the animation is playing.
+
+#### `is_finished` (property)
+
+`True` when the animation duration has elapsed.
+
+### Color Palettes
+
+Three built-in palettes are available as module-level constants:
+
+| Constant | Colors |
+|----------|--------|
+| `CONFETTI_COLORS_PARTY` | Yellow, orange, green, blue, pink, white (default) |
+| `CONFETTI_COLORS_WARM` | Yellow, gold, orange, red-orange, white |
+| `CONFETTI_COLORS_COOL` | Cyan, blue, green, purple, white |
+
+```python
+from zeclock.plugins.helpers import ConfettiAnimation, CONFETTI_COLORS_COOL
+
+self._confetti.start(intensity="big", colors=CONFETTI_COLORS_COOL)
+```
+
+You can also pass any custom list of `(R, G, B)` tuples.
+
+---
+
 ## Configuration
 
 Plugins receive their configuration through the `config` dict passed to `initialize()`. Plugin-specific settings are defined in `~/.zeclock/config/plugins.yaml`.
@@ -307,16 +403,61 @@ plugins:
 
 ### Accessing Configuration in Your Plugin
 
-The `config` dict passed to `initialize()` contains everything from the `settings` map in the YAML, plus the special `_helpers` key:
+The `config` dict passed to `initialize()` contains everything from the `settings` map in the YAML, plus two special injected keys:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `_helpers` | `PluginHelpers` | Rendering utilities (text, icons, frames) |
+| `_upscale_mode` | `str` | Upscaling algorithm in use: `"epx"`, `"hq2x"`, or `"nearest"` |
 
 ```python
 async def initialize(self, config: dict) -> None:
     self._helpers = config["_helpers"]
+    self._upscale_mode = config.get("_upscale_mode", "epx")  # "epx", "hq2x", or "nearest"
 
     # Read your plugin-specific settings
     self._message = config.get("message", "Hello!")
     self._duration = config.get("duration_seconds", 5)
 ```
+
+Use `_upscale_mode` if your plugin generates imagery that should adapt to the active scaling algorithm — for example, choosing between pixel-art-friendly EPX upscaling and simple nearest-neighbour scaling when compositing custom graphics.
+
+### Using the Upscaling API
+
+The pixel-art upscaling functions from `overlay.py` are re-exported from `zeclock.plugins`, so you can import them directly without reaching into internal modules:
+
+```python
+from zeclock.plugins import upscale_nx, upscale_2x, hq2x, scale3x, epx_upscale_2x, nearest_upscale_2x
+```
+
+| Function | Description |
+|---|---|
+| `upscale_nx(img, scale, mode="epx")` | **Preferred entry point** for arbitrary integer scale factors. Routes to the best algorithm: `upscale_2x` for scale=2, `scale3x` for scale=3 with `mode="epx"`, nearest-neighbor for all other scales. |
+| `upscale_2x(img, mode="epx")` | Dispatcher for 2× upscaling. `mode="epx"` (default), `mode="hq2x"`, or `mode="nearest"`. |
+| `hq2x(img)` | hq2x (High Quality 2×) algorithm. Smoother curves and anti-aliased diagonals via interpolation; may introduce intermediate gray values. Best for pre-computed content. Works on grayscale (`L` mode) images. |
+| `scale3x(img)` | Scale3x/AdvMAME3x algorithm. Extends EPX to 3× — each source pixel expands to a 3×3 block. Works on grayscale (`L` mode) images. Useful for e.g. 128×32 → 384×96. |
+| `epx_upscale_2x(img)` | EPX/Scale2x algorithm. Smooths diagonal edges without introducing new colors. Works on grayscale (`L` mode) images. |
+| `nearest_upscale_2x(img)` | Simple pixel doubling via `Image.Resampling.NEAREST`. Fastest, works on any PIL mode. |
+
+All functions preserve `mask_data` / `mask_width_bytes` attributes on the source image, so DotBlt compositing remains correct after scaling.
+
+**Typical use case** — scaling a custom SD graphic to fit an HD display at any scale factor:
+
+```python
+from PIL import Image
+from zeclock.plugins import upscale_nx
+
+
+async def render_frame(self, width: int, height: int) -> Optional[Image.Image]:
+    sd_frame = self._render_sd_content()  # returns a 128×32 'L' mode image
+    sd_w, sd_h = 128, 32
+    if width != sd_w:
+        scale = width // sd_w  # e.g. 2 for 256×64, 3 for 384×96
+        sd_frame = upscale_nx(sd_frame, scale, mode=self._upscale_mode)
+    # ... composite and return ...
+```
+
+Use `self._upscale_mode` (from `config.get("_upscale_mode", "epx")`) so your plugin respects the user's configured algorithm.
 
 ### Frequency
 
@@ -376,6 +517,71 @@ After returning `None`:
 - After `clock_display_seconds` elapses, another plugin is selected
 
 If you never return `None`, the 30-second maximum duration will stop your plugin automatically. This is not treated as an error.
+
+### Cooperative Yielding
+
+For plugins with ongoing activity (games, simulations), you can yield back to the clock at natural break points rather than at arbitrary frame counts. This ensures the clock never interrupts mid-action:
+
+```python
+async def render_frame(self, width: int, height: int) -> Optional[Image.Image]:
+    # Only yield during a natural pause (e.g., between rounds)
+    if self._point_scored and self._in_pause_state and self._frames_rendered > 20:
+        return None  # Clean break — clock takes over between points
+
+    # Max duration reached — but only yield if we're at a safe point
+    if self._frames_rendered >= self._max_frames and self._in_pause_state:
+        return None
+
+    # ... continue rendering ...
+    return frame
+```
+
+The plugin will be re-activated later and can resume from where it left off (see Persistent State below).
+
+---
+
+## Persistent State Across Activations
+
+By default, plugin state is reset in `cleanup()` between activations. However, some plugins (games, ongoing simulations) benefit from preserving state so they can resume where they left off.
+
+Use **class-level attributes** to persist state across activations:
+
+```python
+class MyGamePlugin(ClockPlugin):
+    """A game that persists across activations."""
+
+    # Class-level state — survives across activations
+    _score: int = 0
+    _level: int = 1
+    _game_initialized: bool = False
+
+    async def initialize(self, config: dict) -> None:
+        self._helpers = config["_helpers"]
+
+        # Only set up game state on first-ever activation
+        if not MyGamePlugin._game_initialized:
+            MyGamePlugin._score = 0
+            MyGamePlugin._level = 1
+            MyGamePlugin._game_initialized = True
+
+        # Per-activation state (instance-level, reset each time)
+        self._frames_rendered = 0
+
+    async def render_frame(self, width: int, height: int) -> Optional[Image.Image]:
+        # Read/write persistent state via the class
+        MyGamePlugin._score += 1
+        # ...
+
+    async def cleanup(self) -> None:
+        # Only reset per-activation state — persistent state stays on the class
+        self._frames_rendered = 0
+```
+
+**Key points:**
+- Class-level attributes persist for the lifetime of the process (until zeClock restarts)
+- Instance attributes (`self._foo`) are reset each activation via `cleanup()`
+- Initialize persistent state only once using a `_game_initialized` flag
+- Combine with cooperative yielding to create games that resume between clock displays
 
 ---
 
@@ -532,7 +738,7 @@ zeclock --list-plugins
 Output:
 ```
 pinball          Pinball animation display                active
-pong             Pong game where the score is the current time  active
+pong             Pong game with real scoring and human-like AI  active
 gif              Displays animated GIFs on the DMD       active
 weather          Current weather and forecast display     active
 stock            Stock prices and daily change display    active
@@ -568,6 +774,7 @@ async def test_plugin():
     plugin = MyPlugin()
     config = {
         "_helpers": helpers,
+        "_upscale_mode": "epx",
         # Add your plugin-specific settings here
         "my_setting": "value",
     }
@@ -625,6 +832,7 @@ def config(helpers):
     """Create a basic config dict."""
     return {
         "_helpers": helpers,
+        "_upscale_mode": "epx",
         "my_setting": "test_value",
     }
 
