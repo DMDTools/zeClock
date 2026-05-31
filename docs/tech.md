@@ -53,7 +53,11 @@ This document details the technologies, libraries, protocols, and tools that mak
 
 - **MQTT** (via `remote/mqtt_remote.py`): Primary remote control protocol. Bidirectional pub/sub communication for controlling the clock (on/off, force plugin, display text, brightness) and publishing state. Supports Home Assistant MQTT Discovery for automatic entity creation. Broker address configured in `zeclock.ini`.
 
-- **REST API** (via `remote/rest_remote.py`): HTTP-based remote control as a complement for simple integrations and Recalbox Web Manager. Provides the same command set as MQTT via HTTP endpoints.
+- **REST API** (via `remote/rest_remote.py`): HTTP-based remote control as a complement for simple integrations and Recalbox Web Manager. Provides the same command set as MQTT via HTTP endpoints, plus:
+  - **Web UI** served as static files from `zeclock/remote/web/` at `/ui/` (root `/` redirects to it). Provides a browser-based control panel.
+  - **Plugin list** (`GET /api/plugins`): Returns all registered plugins with state, frequency, source, active/forced status, and optional `web_controls` metadata exposed by plugins via `get_web_controls()`.
+  - **Brightness** (`/api/brightness`): `GET` returns current brightness state (override, SW dimming, time-only flag, auto/manual mode). `POST {"brightness": 0-15}` sets manual brightness override. `POST /api/brightness/auto` clears the override and resumes automatic scheduling.
+  - **Speaker Timer sub-API** (`/api/speaker-timer/`): Dedicated REST endpoints for the conference timer plugin — `GET status`, `POST start` (also forces the speaker-timer plugin active), `POST pause`, `POST reset` (also resumes normal plugin rotation), `POST set` (accepts `{"seconds": N}` or `{"minutes": N}`).
 
 - **TCP Sockets (standard `socket` module)**: Alternative communication via `DMDServerBackend` for development.
   - **DMDStream network header** (big-endian):

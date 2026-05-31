@@ -61,7 +61,18 @@ class DMDServerBackend(DMDBackend):
             return False
 
     def disconnect(self) -> None:
-        """Close the TCP connection."""
+        """Close the TCP connection.
+
+        Sends a non-buffered black frame before closing so that dmdserver
+        clears the display instead of keeping the last frame visible.
+        """
+        if self._sock and self._connected:
+            # Send a black frame with buffered=False so dmdserver clears the screen
+            try:
+                black = Image.new("RGB", (128, 32), (0, 0, 0))
+                self.send_frame(black, buffered=False)
+            except Exception:
+                pass  # Best effort
         if self._sock:
             try:
                 self._sock.close()

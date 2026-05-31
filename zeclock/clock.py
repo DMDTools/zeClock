@@ -339,8 +339,14 @@ class ZeClock:
 
                 elif self._state == ClockState.PLUGIN_ACTIVE:
                     # Check if plugin should be deactivated
+                    # Skip deactivation if plugin is forced by remote control
+                    forced = (
+                        self._command_handler
+                        and self._command_handler.forced_plugin is not None
+                    )
                     if (
-                        self._plugin_manager
+                        not forced
+                        and self._plugin_manager
                         and self._plugin_manager.should_deactivate()
                     ):
                         await self._plugin_manager.deactivate_plugin()
@@ -406,6 +412,8 @@ class ZeClock:
 
         except KeyboardInterrupt:
             print("\n🛑 Stopping zeClock...")
+        except asyncio.CancelledError:
+            print("\n🛑 Stopping zeClock...")
         finally:
             # Stop remote control services
             if self._mqtt_remote:
@@ -416,6 +424,7 @@ class ZeClock:
             if self._plugin_manager and self._plugin_manager.is_plugin_active():
                 await self._plugin_manager.deactivate_plugin()
             self.dmd_client.disconnect()
+            print("✅ ZeDMD disconnected")
 
     async def _init_plugin_system(self) -> None:
         """Initialize the PluginManager, discover and load plugins."""
@@ -528,9 +537,9 @@ class ZeClock:
     def _render_text_overlay(self) -> Image.Image:
         """Render a text overlay frame centered on screen.
 
-        Uses the current DotClk font if it can render all characters in the
-        text. Otherwise falls back to the SYSTEM font (full ASCII charset).
-        Accented characters are transliterated to their ASCII equivalent.
+        Uses the largest DotClk font that can render the text.
+        Priority: STANDARD (21px, digits only) > MENU (11px, uppercase) > SYSTEM (7px, full ASCII).
+        Falls back to PIL for characters not in any DotClk font.
         """
         text = self._command_handler.text_overlay if self._command_handler else ""
         if not text:
@@ -539,50 +548,72 @@ class ZeClock:
         # Transliterate accented/special characters to ASCII equivalents
         text = _transliterate(text)
 
-        # Check if the current clock font can render this text
-        use_clock_font = False
-        if self.dotclk_font and hasattr(self.dotclk_font, "char_info"):
-            use_clock_font = all(ch in self.dotclk_font.char_info for ch in text)
+        # Try MENU font first (11px, uppercase + digits — good balance of size and charset)
+        # Convert to uppercase since MENU only has uppercase
+        upper_text = text.upper()
 
-        if use_clock_font and self.dotclk_font:
-            gray_frame = self.dotclk_font.render_text(
-                text, self.width, self.height, upscale_mode=self.upscale_mode
-            )
-            return colorize_grayscale(gray_frame, self.color)
-
-        # Fall back to SYSTEM font (full ASCII: a-z, A-Z, digits, punctuation)
         if self._text_overlay_font is None:
             from .resources.paths import get_fonts_dir
 
             fonts_dir = get_fonts_dir()
-            # Use HD variant for HD displays
+            # Load MENU font for overlay text
             if self.width >= 256 and self.height >= 64:
-                system_path = fonts_dir / "SYSTEM_HD.fnt"
+                menu_path = fonts_dir / "MENU_HD.fnt"
             else:
-                system_path = fonts_dir / "SYSTEM.fnt"
-            if system_path.exists():
+                menu_path = fonts_dir / "MENU.fnt"
+            if menu_path.exists():
                 try:
-                    self._text_overlay_font = load_font(system_path)
+                    self._text_overlay_font = load_font(menu_path)
                 except Exception as e:
-                    logger.warning(f"Failed to load SYSTEM font: {e}")
+                    logger.warning(f"Failed to load MENU font: {e}")
 
-        if self._text_overlay_font:
-            gray_frame = self._text_overlay_font.render_text(
-                text, self.width, self.height, upscale_mode=self.upscale_mode
+        # Check if MENU font can render all characters
+        if self._text_overlay_font and hasattr(self._text_overlay_font, "char_info"):
+            can_render = all(
+                ch in self._text_overlay_font.char_info for ch in upper_text
             )
-            return colorize_grayscale(gray_frame, self.color)
+            if can_render:
+                gray_frame = self._text_overlay_font.render_text(
+                    upper_text,
+                    self.width,
+                    self.height,
+                    upscale_mode=self.upscale_mode,
+                )
+                return colorize_grayscale(gray_frame, self.color)
 
-        # Last resort: PIL default font
-        from PIL import ImageDraw
+        # Fall back to PIL for full Unicode support
+        from PIL import ImageDraw, ImageFont
 
         frame = Image.new("RGB", (self.width, self.height), (0, 0, 0))
         draw = ImageDraw.Draw(frame)
-        bbox = draw.textbbox((0, 0), text)
+
+        # Use PIL's default font scaled up via repeated rendering
+        # On a 32px display, target ~20px font height for readability
+        try:
+            font = ImageFont.load_default(size=self.height - 8)
+        except TypeError:
+            # Pillow < 10.1 doesn't support size parameter
+            font = ImageFont.load_default()
+
+        # Center the text
+        bbox = draw.textbbox((0, 0), text, font=font)
         text_w = bbox[2] - bbox[0]
         text_h = bbox[3] - bbox[1]
+
+        # If too wide, let PIL wrap or we truncate
+        if text_w > self.width - 4:
+            # Try smaller size
+            try:
+                font = ImageFont.load_default(size=max(10, self.height - 16))
+            except TypeError:
+                font = ImageFont.load_default()
+            bbox = draw.textbbox((0, 0), text, font=font)
+            text_w = bbox[2] - bbox[0]
+            text_h = bbox[3] - bbox[1]
+
         x = (self.width - text_w) // 2
         y = (self.height - text_h) // 2
-        draw.text((x, y), text, fill=self.color)
+        draw.text((x, y), text, fill=self.color, font=font)
         return frame
 
     def _apply_plugins_override(self, plugins_str: str) -> bool:
@@ -686,6 +717,13 @@ class ZeClock:
         software dimming level for frame processing.
         """
         if not self._brightness_scheduler:
+            return
+
+        # Skip scheduler if brightness is manually overridden via remote control
+        if (
+            self._command_handler
+            and self._command_handler.brightness_override is not None
+        ):
             return
 
         now_mono = time.monotonic()
@@ -1003,7 +1041,15 @@ def main() -> None:
             backend_config.rest_api if backend_config.rest_api.enabled else None
         ),
     )
-    asyncio.run(clock.run())
+    try:
+        asyncio.run(clock.run())
+    except KeyboardInterrupt:
+        # asyncio.run() may re-raise KeyboardInterrupt after task cancellation.
+        # The finally block inside clock.run() handles disconnect, but if it
+        # was skipped due to aggressive cancellation, disconnect here as a safety net.
+        if clock.dmd_client.connected:
+            clock.dmd_client.disconnect()
+            print("✅ ZeDMD disconnected")
 
 
 def _handle_list_plugins(args: Any) -> None:

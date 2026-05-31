@@ -38,11 +38,14 @@ zeClock/
 │   │       ├── SYSTEM.fnt      # System font (+ _HD variant)
 │   │       ├── TREK.fnt        # Trek font (+ _HD variant)
 │   │       └── TWILIGHT.fnt    # Twilight font (+ _HD variant)
-│   ├── remote/                  # Remote control module (MQTT + REST API)
+│   ├── remote/                  # Remote control module (MQTT + REST API + Web UI)
 │   │   ├── __init__.py         # Exports CommandHandler, RemoteCommand, MqttRemote, RestRemote
 │   │   ├── command_handler.py  # Shared command execution logic (on/off, force plugin, display text)
 │   │   ├── mqtt_remote.py      # MQTT remote control (pub/sub, Home Assistant Discovery)
-│   │   └── rest_remote.py      # REST API remote control (HTTP endpoints)
+│   │   ├── rest_remote.py      # REST API remote control (HTTP endpoints + Web UI serving)
+│   │   └── web/                # Web UI static files (served at /ui/)
+│   │       ├── index.html      # Web UI main page (browser-based control panel)
+│   │       └── style.css       # Web UI stylesheet
 │   ├── plugin_registry.py      # Plugin registry: stores plugins with state, frequency, override logic
 │   ├── plugin_config.py        # Plugin YAML configuration loader and validator
 │   ├── plugin_manager.py       # Plugin manager: discovery, loading, scheduling, lifecycle orchestration
@@ -53,6 +56,7 @@ zeClock/
 │       ├── pinball_plugin.py   # Built-in plugin: retro pinball .scn animation playback with DotBlt overlay
 │       ├── pong_plugin.py      # Built-in plugin: Pong game where the score displays the current time
 │       ├── gif_plugin.py       # Built-in plugin: plays random animated GIFs from a directory
+│       ├── speaker_timer_plugin.py # Built-in plugin: conference speaker countdown timer with color changes
 │       ├── stock_plugin.py     # Built-in plugin: stock prices, daily change, and extended hours data
 │       ├── weather_plugin.py   # Built-in plugin: weather conditions and forecast from Open-Meteo API
 │       └── weather_icons.py    # Weather condition code to pixel-art icon mapping
@@ -120,7 +124,9 @@ This is the application core. It contains all the Python logic for reading resou
 | `remote/__init__.py` | Remote control package: exports `CommandHandler`, `RemoteCommand`, `MqttRemote`, `RestRemote` |
 | `remote/command_handler.py` | `CommandHandler`: shared command execution logic for remote control (on/off, force plugin, display text, brightness) |
 | `remote/mqtt_remote.py` | `MqttRemote`: MQTT-based remote control with bidirectional pub/sub and Home Assistant MQTT Discovery |
-| `remote/rest_remote.py` | `RestRemote`: REST API remote control via HTTP endpoints for simple integrations |
+| `remote/rest_remote.py` | `RestRemote`: REST API remote control via HTTP endpoints, plugin list API, Speaker Timer sub-API, and Web UI static file serving |
+| `remote/web/index.html` | Web UI main page: browser-based control panel for the clock (served at `/ui/`) |
+| `remote/web/style.css` | Web UI stylesheet |
 | `plugin_registry.py` | `PluginRegistry`: stores loaded plugins with state, frequency, and error tracking; handles override logic and frequency normalization |
 | `plugin_config.py` | `PluginConfig`: loads and validates `plugins.yaml` configuration; provides defaults, frequency clamping, and plugin-specific settings |
 | `plugin_manager.py` | `PluginManager`: top-level orchestrator that discovers, loads, validates, schedules, and drives plugins through their lifecycle |
@@ -131,6 +137,7 @@ This is the application core. It contains all the Python logic for reading resou
 | `plugins/pong_plugin.py` | Built-in Pong clock plugin: simulates a Pong game where the score always shows the current time (hours vs minutes) |
 | `plugins/gif_plugin.py` | Built-in GIF plugin: picks a random animated GIF from a configurable directory, scales frames using the configured upscale algorithm for pixel-perfect integer multiples or LANCZOS for arbitrary sizes, plays it once respecting native frame delays, then signals completion |
 | `plugins/weather_plugin.py` | Built-in weather plugin: fetches data from Open-Meteo API, displays current conditions, tomorrow's forecast, and 3-day outlook |
+| `plugins/speaker_timer_plugin.py` | Built-in speaker timer plugin: conference countdown timer with automatic color changes (green → yellow → red), remote web API control, presets, and overtime counting |
 | `plugins/stock_plugin.py` | Built-in stock plugin: fetches quotes from Yahoo Finance, displays price, daily change, and extended hours data with market state detection |
 | `plugins/weather_icons.py` | WMO weather condition code to 16×16 pixel-art icon bitmap mapping |
 

@@ -24,6 +24,7 @@ class CommandType(Enum):
     FORCE_PLUGIN = "force_plugin"
     DISPLAY_TEXT = "display_text"
     GET_STATUS = "get_status"
+    SET_BRIGHTNESS = "set_brightness"
 
 
 @dataclass
@@ -59,6 +60,8 @@ class CommandHandler:
         self._text_overlay_expires: float = 0.0
         # Forced plugin name (None = normal rotation)
         self._forced_plugin: Optional[str] = None
+        # Brightness override (None = use scheduler, 0-15 = manual HW brightness)
+        self._brightness_override: Optional[int] = None
 
     @property
     def screen_is_off(self) -> bool:
@@ -86,6 +89,11 @@ class CommandHandler:
     def forced_plugin(self) -> Optional[str]:
         """Name of the forced plugin, or None for normal rotation."""
         return self._forced_plugin
+
+    @property
+    def brightness_override(self) -> Optional[int]:
+        """Manual brightness override (0-15), or None to use scheduler."""
+        return self._brightness_override
 
     def parse_command(self, payload: Dict[str, Any]) -> Optional[RemoteCommand]:
         """Parse a JSON command payload into a RemoteCommand.
@@ -136,6 +144,20 @@ class CommandHandler:
                 duration = 10
             params["duration"] = max(1, min(300, duration))
 
+        elif cmd_type == CommandType.SET_BRIGHTNESS:
+            brightness = payload.get("brightness")
+            if brightness is None:
+                # None means "resume automatic scheduling"
+                params["brightness"] = None
+            else:
+                try:
+                    params["brightness"] = max(0, min(15, int(brightness)))
+                except (ValueError, TypeError):
+                    logger.warning(
+                        "set_brightness command has invalid 'brightness' value"
+                    )
+                    return None
+
         return RemoteCommand(type=cmd_type, params=params)
 
     async def execute(self, command: RemoteCommand) -> CommandResult:
@@ -157,6 +179,8 @@ class CommandHandler:
             return self._handle_display_text(command.params)
         elif command.type == CommandType.GET_STATUS:
             return self._handle_get_status()
+        elif command.type == CommandType.SET_BRIGHTNESS:
+            return self._handle_set_brightness(command.params)
 
         return CommandResult(success=False, message=f"Unhandled command: {command.type}")  # type: ignore[unreachable]
 
@@ -234,14 +258,52 @@ class CommandHandler:
 
         self._text_overlay = text
         self._text_overlay_expires = time.time() + duration
-        # Clear forced plugin — text takes priority
-        self._forced_plugin = None
+        # Do NOT clear forced plugin — text is a temporary overlay,
+        # the forced plugin should resume after the text expires.
 
         logger.info(f"Remote: display text '{text}' for {duration}s")
         return CommandResult(
             success=True,
             message=f"Displaying text for {duration}s",
             data={"text": text, "duration": duration},
+        )
+
+    def _handle_set_brightness(self, params: Dict[str, Any]) -> CommandResult:
+        """Set brightness manually or resume automatic scheduling.
+
+        When brightness is set manually, the scheduler is bypassed until
+        the override is cleared (by setting brightness to null/auto).
+        """
+        brightness = params.get("brightness")
+
+        if brightness is None:
+            # Clear override — resume automatic scheduling
+            self._brightness_override = None
+            logger.info("Remote: brightness override cleared, resuming scheduler")
+            return CommandResult(
+                success=True,
+                message="Brightness control returned to scheduler",
+                data={"brightness": "auto"},
+            )
+
+        self._brightness_override = int(brightness)
+
+        # Apply HW brightness immediately if backend supports it
+        clock = self._clock
+        if hasattr(clock.dmd_client, "_lib") and hasattr(clock.dmd_client, "_instance"):
+            if clock.dmd_client._instance:
+                clock.dmd_client._lib.ZeDMD_SetBrightness(
+                    clock.dmd_client._instance, self._brightness_override
+                )
+
+        # Clear SW dimming — manual brightness means full display
+        clock._current_sw_dimming = 0
+
+        logger.info(f"Remote: brightness set to {self._brightness_override}/15")
+        return CommandResult(
+            success=True,
+            message=f"Brightness set to {self._brightness_override}/15",
+            data={"brightness": self._brightness_override},
         )
 
     def _handle_get_status(self) -> CommandResult:
@@ -273,6 +335,7 @@ class CommandHandler:
             "brightness": {
                 "sw_dimming": self._clock._current_sw_dimming,
                 "time_only": self._clock._current_is_time_only,
+                "override": self._brightness_override,
             },
             "resolution": {
                 "width": self._clock.width,
