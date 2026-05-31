@@ -23,6 +23,83 @@ from .readers import load_font
 
 logger = logging.getLogger(__name__)
 
+# Transliteration table: accented/special chars → ASCII equivalents
+_TRANSLITERATE_MAP = str.maketrans(
+    {
+        "à": "a",
+        "á": "a",
+        "â": "a",
+        "ã": "a",
+        "ä": "a",
+        "å": "a",
+        "ç": "c",
+        "è": "e",
+        "é": "e",
+        "ê": "e",
+        "ë": "e",
+        "ì": "i",
+        "í": "i",
+        "î": "i",
+        "ï": "i",
+        "ð": "d",
+        "ñ": "n",
+        "ò": "o",
+        "ó": "o",
+        "ô": "o",
+        "õ": "o",
+        "ö": "o",
+        "ù": "u",
+        "ú": "u",
+        "û": "u",
+        "ü": "u",
+        "ý": "y",
+        "ÿ": "y",
+        "ß": "ss",
+        "À": "A",
+        "Á": "A",
+        "Â": "A",
+        "Ã": "A",
+        "Ä": "A",
+        "Å": "A",
+        "Ç": "C",
+        "È": "E",
+        "É": "E",
+        "Ê": "E",
+        "Ë": "E",
+        "Ì": "I",
+        "Í": "I",
+        "Î": "I",
+        "Ï": "I",
+        "Ð": "D",
+        "Ñ": "N",
+        "Ò": "O",
+        "Ó": "O",
+        "Ô": "O",
+        "Õ": "O",
+        "Ö": "O",
+        "Ù": "U",
+        "Ú": "U",
+        "Û": "U",
+        "Ü": "U",
+        "Ý": "Y",
+        "æ": "ae",
+        "Æ": "AE",
+        "œ": "oe",
+        "Œ": "OE",
+    }
+)
+
+
+def _transliterate(text: str) -> str:
+    """Replace accented and special characters with ASCII equivalents.
+
+    Characters not in the translation table and not printable ASCII
+    are stripped.
+    """
+    result = text.translate(_TRANSLITERATE_MAP)
+    # Strip any remaining non-ASCII characters
+    return "".join(ch for ch in result if 32 <= ord(ch) <= 126)
+
 
 class ClockState(enum.Enum):
     """State machine states for the clock display."""
@@ -51,6 +128,8 @@ class ZeClock:
         upscale_mode: str = "epx",
         font: str = "STANDARD",
         brightness_scheduler: Optional[BrightnessScheduler] = None,
+        mqtt_config: Optional[Any] = None,
+        rest_config: Optional[Any] = None,
     ):
         self.width = width
         self.height = height
@@ -99,6 +178,7 @@ class ZeClock:
 
         # Reconnection state
         self._reconnect_logged = False
+        self._reconnect_delay = 2.0
 
         # Brightness scheduler
         self._brightness_scheduler = brightness_scheduler
@@ -130,6 +210,14 @@ class ZeClock:
                 print(f"⚠️ Failed to load font: {e}")
         else:
             print("❌ No font found")
+
+        # Remote control
+        self._mqtt_config = mqtt_config
+        self._rest_config = rest_config
+        self._command_handler: Optional[Any] = None
+        self._mqtt_remote: Optional[Any] = None
+        self._rest_remote: Optional[Any] = None
+        self._text_overlay_font: Optional[Any] = None
 
     async def run(self) -> None:
         """Main asynchronous loop with plugin-driven state machine."""
@@ -171,6 +259,9 @@ class ZeClock:
         # Initialize plugin system
         await self._init_plugin_system()
 
+        # Initialize remote control
+        await self._init_remote_control()
+
         # Initialize brightness scheduler (fetch sunrise/sunset if configured)
         if self._brightness_scheduler and self._brightness_scheduler._has_sun_config:
             await self._brightness_scheduler.update_sun_data()
@@ -189,8 +280,18 @@ class ZeClock:
                     self.last_color_change = now
                     self.last_clock_time = ""  # Force refresh
 
+                # Remote control: check for text overlay
+                if self._command_handler and self._command_handler.has_text_overlay:
+                    frame = self._render_text_overlay()
+                    frame_time = 0.5
+
+                # Remote control: check for screen off override
+                elif self._command_handler and self._command_handler.screen_is_off:
+                    frame = Image.new("RGB", (self.width, self.height), (0, 0, 0))
+                    frame_time = 1.0
+
                 # State machine transitions
-                if self._state == ClockState.CLOCK_ONLY:
+                elif self._state == ClockState.CLOCK_ONLY:
                     frame = self._render_clock_frame()
                     frame_time = 0.5  # Refresh every 500ms for colon blinking
 
@@ -205,14 +306,36 @@ class ZeClock:
                     frame = self._render_clock_frame()
                     frame_time = 0.5
 
-                    # Try to select and activate a plugin
-                    activated = await self._select_and_activate_plugin()
-                    if activated:
-                        self._state = ClockState.PLUGIN_ACTIVE
+                    # Check if a plugin is forced by remote control
+                    if self._command_handler and self._command_handler.forced_plugin:
+                        forced_name = self._command_handler.forced_plugin
+                        if (
+                            self._plugin_manager
+                            and self._plugin_manager.registry.has_plugin(forced_name)
+                        ):
+                            entry = self._plugin_manager.registry.get_plugin(
+                                forced_name
+                            )
+                            if entry:
+                                success = await self._plugin_manager.activate_plugin(
+                                    entry.plugin
+                                )
+                                if success:
+                                    self._state = ClockState.PLUGIN_ACTIVE
+                        else:
+                            # Invalid forced plugin, clear it
+                            self._command_handler._forced_plugin = None
+                            self._state = ClockState.CLOCK_ONLY
+                            self._clock_only_start = now
                     else:
-                        # No plugins available - stay in clock-only
-                        self._state = ClockState.CLOCK_ONLY
-                        self._clock_only_start = now
+                        # Try to select and activate a plugin
+                        activated = await self._select_and_activate_plugin()
+                        if activated:
+                            self._state = ClockState.PLUGIN_ACTIVE
+                        else:
+                            # No plugins available - stay in clock-only
+                            self._state = ClockState.CLOCK_ONLY
+                            self._clock_only_start = now
 
                 elif self._state == ClockState.PLUGIN_ACTIVE:
                     # Check if plugin should be deactivated
@@ -255,17 +378,25 @@ class ZeClock:
                 # Send to DMD
                 success = self.dmd_client.send_frame(frame)
 
-                # Handle connection loss — backend manages reconnection
+                # Handle connection loss — wait with backoff, then reconnect
                 if not success:
                     if not self._reconnect_logged:
-                        print("⚠️ ZeDMD disconnected — attempting reconnection...")
+                        print("⚠️ ZeDMD disconnected — waiting to reconnect...")
                         self._reconnect_logged = True
-                    # Slow down the loop while disconnected to avoid busy-waiting
-                    await asyncio.sleep(1.0)
+                    await asyncio.sleep(self._reconnect_delay)
+                    # Try to reconnect
+                    if self.dmd_client.connect():
+                        print("✅ ZeDMD reconnected — resuming display")
+                        self._reconnect_logged = False
+                        self._reconnect_delay = 2.0  # Reset backoff
+                    else:
+                        # Increase backoff
+                        self._reconnect_delay = min(self._reconnect_delay * 1.5, 30.0)
                     continue
                 elif self._reconnect_logged:
                     print("✅ ZeDMD reconnected — resuming display")
                     self._reconnect_logged = False
+                    self._reconnect_delay = 2.0
 
                 # Frame timing
                 elapsed = time.monotonic() - t0
@@ -276,6 +407,11 @@ class ZeClock:
         except KeyboardInterrupt:
             print("\n🛑 Stopping zeClock...")
         finally:
+            # Stop remote control services
+            if self._mqtt_remote:
+                self._mqtt_remote.stop()
+            if self._rest_remote:
+                self._rest_remote.stop()
             # Cleanup active plugin if any
             if self._plugin_manager and self._plugin_manager.is_plugin_active():
                 await self._plugin_manager.deactivate_plugin()
@@ -347,6 +483,107 @@ class ZeClock:
         active_plugins = self._plugin_manager.registry.get_active_plugins()
         if not active_plugins:
             logger.warning("No active plugins available, clock-only mode")
+
+    async def _init_remote_control(self) -> None:
+        """Initialize remote control services (MQTT and REST API).
+
+        Starts MQTT and REST as background asyncio tasks if configured.
+        Both share the same CommandHandler for consistent behavior.
+        """
+        from .remote.command_handler import CommandHandler
+
+        self._command_handler = CommandHandler(self)
+
+        # Start MQTT if configured
+        if self._mqtt_config and self._mqtt_config.enabled:
+            from .remote.mqtt_remote import MqttRemote, MqttConfig
+
+            mqtt_cfg = MqttConfig(
+                enabled=self._mqtt_config.enabled,
+                host=self._mqtt_config.host,
+                port=self._mqtt_config.port,
+                username=self._mqtt_config.username,
+                password=self._mqtt_config.password,
+                device_id=self._mqtt_config.device_id,
+                topic_prefix=self._mqtt_config.topic_prefix,
+                ha_discovery=self._mqtt_config.ha_discovery,
+                ha_discovery_prefix=self._mqtt_config.ha_discovery_prefix,
+                state_interval=self._mqtt_config.state_interval,
+            )
+            self._mqtt_remote = MqttRemote(mqtt_cfg, self._command_handler)
+            asyncio.create_task(self._mqtt_remote.run())
+
+        # Start REST API if configured
+        if self._rest_config and self._rest_config.enabled:
+            from .remote.rest_remote import RestRemote, RestConfig
+
+            rest_cfg = RestConfig(
+                enabled=self._rest_config.enabled,
+                host=self._rest_config.host,
+                port=self._rest_config.port,
+            )
+            self._rest_remote = RestRemote(rest_cfg, self._command_handler)
+            asyncio.create_task(self._rest_remote.run())
+
+    def _render_text_overlay(self) -> Image.Image:
+        """Render a text overlay frame centered on screen.
+
+        Uses the current DotClk font if it can render all characters in the
+        text. Otherwise falls back to the SYSTEM font (full ASCII charset).
+        Accented characters are transliterated to their ASCII equivalent.
+        """
+        text = self._command_handler.text_overlay if self._command_handler else ""
+        if not text:
+            return Image.new("RGB", (self.width, self.height), (0, 0, 0))
+
+        # Transliterate accented/special characters to ASCII equivalents
+        text = _transliterate(text)
+
+        # Check if the current clock font can render this text
+        use_clock_font = False
+        if self.dotclk_font and hasattr(self.dotclk_font, "char_info"):
+            use_clock_font = all(ch in self.dotclk_font.char_info for ch in text)
+
+        if use_clock_font and self.dotclk_font:
+            gray_frame = self.dotclk_font.render_text(
+                text, self.width, self.height, upscale_mode=self.upscale_mode
+            )
+            return colorize_grayscale(gray_frame, self.color)
+
+        # Fall back to SYSTEM font (full ASCII: a-z, A-Z, digits, punctuation)
+        if self._text_overlay_font is None:
+            from .resources.paths import get_fonts_dir
+
+            fonts_dir = get_fonts_dir()
+            # Use HD variant for HD displays
+            if self.width >= 256 and self.height >= 64:
+                system_path = fonts_dir / "SYSTEM_HD.fnt"
+            else:
+                system_path = fonts_dir / "SYSTEM.fnt"
+            if system_path.exists():
+                try:
+                    self._text_overlay_font = load_font(system_path)
+                except Exception as e:
+                    logger.warning(f"Failed to load SYSTEM font: {e}")
+
+        if self._text_overlay_font:
+            gray_frame = self._text_overlay_font.render_text(
+                text, self.width, self.height, upscale_mode=self.upscale_mode
+            )
+            return colorize_grayscale(gray_frame, self.color)
+
+        # Last resort: PIL default font
+        from PIL import ImageDraw
+
+        frame = Image.new("RGB", (self.width, self.height), (0, 0, 0))
+        draw = ImageDraw.Draw(frame)
+        bbox = draw.textbbox((0, 0), text)
+        text_w = bbox[2] - bbox[0]
+        text_h = bbox[3] - bbox[1]
+        x = (self.width - text_w) // 2
+        y = (self.height - text_h) // 2
+        draw.text((x, y), text, fill=self.color)
+        return frame
 
     def _apply_plugins_override(self, plugins_str: str) -> bool:
         """Apply --plugins CLI override to the plugin manager.
@@ -761,6 +998,10 @@ def main() -> None:
         upscale_mode=backend_config.upscale_mode,
         font=backend_config.font,
         brightness_scheduler=scheduler if scheduler.has_schedule else None,
+        mqtt_config=backend_config.mqtt if backend_config.mqtt.enabled else None,
+        rest_config=(
+            backend_config.rest_api if backend_config.rest_api.enabled else None
+        ),
     )
     asyncio.run(clock.run())
 

@@ -35,6 +35,9 @@ classifiers = [
 zedmd = [
     "pyserial",
 ]
+mqtt = [
+    "aiomqtt>=2.0",
+]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
@@ -43,6 +46,7 @@ dev = [
     "flake8>=4.0",
     "mypy>=0.950",
     "pyyaml>=6.0",
+    "aiomqtt>=2.0",
 ]
 
 [project.urls]

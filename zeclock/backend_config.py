@@ -50,6 +50,31 @@ class BrightnessScheduleConfig:
 
 
 @dataclass
+class MqttConfig:
+    """MQTT remote control configuration."""
+
+    enabled: bool = False
+    host: str = "localhost"
+    port: int = 1883
+    username: Optional[str] = None
+    password: Optional[str] = None
+    device_id: str = "zeclock"
+    topic_prefix: str = "zeclock"
+    ha_discovery: bool = True
+    ha_discovery_prefix: str = "homeassistant"
+    state_interval: float = 30.0
+
+
+@dataclass
+class RestApiConfig:
+    """REST API remote control configuration."""
+
+    enabled: bool = False
+    host: str = "0.0.0.0"
+    port: int = 8080
+
+
+@dataclass
 class BackendConfig:
     """Configuration for DMD backend selection and connection parameters."""
 
@@ -67,6 +92,8 @@ class BackendConfig:
     brightness_schedule: BrightnessScheduleConfig = field(
         default_factory=BrightnessScheduleConfig
     )
+    mqtt: MqttConfig = field(default_factory=MqttConfig)
+    rest_api: RestApiConfig = field(default_factory=RestApiConfig)
 
 
 def _validate_brightness(value: str) -> int:
@@ -198,6 +225,76 @@ def _parse_config_file(config_path: Path) -> dict:
             location.city_name = parser.get("location", "city_name").strip()
         result["location"] = location
 
+    # Read [mqtt] section
+    if parser.has_section("mqtt"):
+        mqtt = MqttConfig()
+        if parser.has_option("mqtt", "enabled"):
+            val = parser.get("mqtt", "enabled").strip().lower()
+            mqtt.enabled = val in ("true", "1", "yes")
+        if parser.has_option("mqtt", "host"):
+            val = parser.get("mqtt", "host").strip()
+            if val:
+                mqtt.host = val
+        if parser.has_option("mqtt", "port"):
+            val = parser.get("mqtt", "port").strip()
+            if val:
+                try:
+                    mqtt.port = int(val)
+                except ValueError:
+                    logger.warning(f"Invalid MQTT port '{val}', using default 1883")
+        if parser.has_option("mqtt", "username"):
+            val = parser.get("mqtt", "username").strip()
+            if val:
+                mqtt.username = val
+        if parser.has_option("mqtt", "password"):
+            val = parser.get("mqtt", "password").strip()
+            if val:
+                mqtt.password = val
+        if parser.has_option("mqtt", "device_id"):
+            val = parser.get("mqtt", "device_id").strip()
+            if val:
+                mqtt.device_id = val
+        if parser.has_option("mqtt", "topic_prefix"):
+            val = parser.get("mqtt", "topic_prefix").strip()
+            if val:
+                mqtt.topic_prefix = val
+        if parser.has_option("mqtt", "ha_discovery"):
+            val = parser.get("mqtt", "ha_discovery").strip().lower()
+            mqtt.ha_discovery = val in ("true", "1", "yes")
+        if parser.has_option("mqtt", "ha_discovery_prefix"):
+            val = parser.get("mqtt", "ha_discovery_prefix").strip()
+            if val:
+                mqtt.ha_discovery_prefix = val
+        if parser.has_option("mqtt", "state_interval"):
+            val = parser.get("mqtt", "state_interval").strip()
+            if val:
+                try:
+                    mqtt.state_interval = max(5.0, float(val))
+                except ValueError:
+                    logger.warning(
+                        f"Invalid MQTT state_interval '{val}', using default 30"
+                    )
+        result["mqtt"] = mqtt
+
+    # Read [rest_api] section
+    if parser.has_section("rest_api"):
+        rest = RestApiConfig()
+        if parser.has_option("rest_api", "enabled"):
+            val = parser.get("rest_api", "enabled").strip().lower()
+            rest.enabled = val in ("true", "1", "yes")
+        if parser.has_option("rest_api", "host"):
+            val = parser.get("rest_api", "host").strip()
+            if val:
+                rest.host = val
+        if parser.has_option("rest_api", "port"):
+            val = parser.get("rest_api", "port").strip()
+            if val:
+                try:
+                    rest.port = int(val)
+                except ValueError:
+                    logger.warning(f"Invalid REST API port '{val}', using default 8080")
+        result["rest_api"] = rest
+
     # Read [brightness_schedule] section
     if parser.has_section("brightness_schedule"):
         bs = BrightnessScheduleConfig()
@@ -310,6 +407,10 @@ def load_config(
         config.location = file_values["location"]
     if "brightness_schedule" in file_values:
         config.brightness_schedule = file_values["brightness_schedule"]
+    if "mqtt" in file_values:
+        config.mqtt = file_values["mqtt"]
+    if "rest_api" in file_values:
+        config.rest_api = file_values["rest_api"]
 
     # Layer 1: CLI arguments (highest precedence)
     if backend is not None:

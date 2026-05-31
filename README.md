@@ -17,6 +17,7 @@ Transform your desk into an arcade room with a DMD clock that displays time over
 - **Dual color schemes**: Different colors for clock and animations
 - **Attract mode**: Automatic activation after inactivity
 - **REST API**: Remote control (display changes, notifications)
+- **MQTT remote control**: Bidirectional pub/sub with Home Assistant MQTT Discovery
 - **Simple installation**: Single `--bootstrap` command installs everything
 
 ## Prerequisites
@@ -178,6 +179,20 @@ default = 22:00-08:00 10%
 # "Time only" mode: clock only, no plugins
 time_only = 22:00-08:00
 
+[mqtt]
+# MQTT remote control (requires: pip install zeclock[mqtt])
+# enabled = true
+# host = localhost
+# port = 1883
+# device_id = zeclock
+# ha_discovery = true
+
+[rest_api]
+# REST API remote control
+# enabled = true
+# host = 0.0.0.0
+# port = 8080
+
 [dmdserver]
 # Used when --backend dmdserver is specified
 host = localhost
@@ -235,6 +250,85 @@ time_only = 22:00-08:00
 ### Development Mode (Virtual DMD)
 
 For development without physical hardware, see [CONTRIBUTING.md](CONTRIBUTING.md#development-mode-virtual-dmd).
+
+### Remote Control (MQTT & REST API)
+
+zeClock can be controlled remotely via MQTT (primary) and/or a REST API. Both share the same command set and can run simultaneously.
+
+**Enable in `~/.zeclock/config/zeclock.ini`:**
+
+```ini
+[mqtt]
+enabled = true
+host = 192.168.1.100
+port = 1883
+# username = myuser
+# password = mypass
+device_id = zeclock
+# Home Assistant MQTT Discovery (auto-creates entities)
+ha_discovery = true
+
+[rest_api]
+enabled = true
+host = 0.0.0.0
+port = 8080
+```
+
+**Install MQTT support:**
+
+```bash
+pip install zeclock[mqtt]
+# or: pip install aiomqtt
+```
+
+**MQTT topics:**
+
+| Topic | Direction | Description |
+|-------|-----------|-------------|
+| `zeclock/<device_id>/command` | → zeClock | Send commands (JSON) |
+| `zeclock/<device_id>/state` | ← zeClock | Current state (JSON, retained) |
+| `zeclock/<device_id>/availability` | ← zeClock | `online` / `offline` (retained) |
+
+**Commands (MQTT JSON payload or REST body):**
+
+```jsonc
+// Turn screen off (all black)
+{"command": "screen_off"}
+
+// Turn screen back on
+{"command": "screen_on"}
+
+// Force a specific plugin
+{"command": "force_plugin", "plugin": "weather"}
+
+// Resume normal plugin rotation
+{"command": "force_plugin", "plugin": null}
+
+// Display text for N seconds
+{"command": "display_text", "text": "Hello!", "duration": 15}
+
+// Get current status
+{"command": "get_status"}
+```
+
+**REST API endpoints:**
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/status` | Current clock status |
+| `POST` | `/api/screen/on` | Turn screen on |
+| `POST` | `/api/screen/off` | Turn screen off |
+| `POST` | `/api/plugin/force` | Force plugin `{"plugin": "name"}` |
+| `POST` | `/api/plugin/resume` | Resume normal rotation |
+| `POST` | `/api/text` | Display text `{"text": "...", "duration": 10}` |
+
+**Home Assistant integration:**
+
+When `ha_discovery = true`, zeClock automatically registers itself in Home Assistant via MQTT Discovery. You get:
+- A **switch** to turn the screen on/off
+- **Sensors** for active plugin and display mode
+
+No manual HA configuration needed — just point both at the same MQTT broker.
 
 ### Docker Deployment
 

@@ -123,16 +123,16 @@ Timer for conferences and presentations, visible from the stage on the ZeDMD.
 
 ### 🎛️ Remote control
 
-- [ ] Turn the screen on / off (all black) remotely
-- [ ] Force display of a specific plugin
-- [ ] Display free text + emoji on demand
-- [ ] **Primary protocol: MQTT**
+- [x] Turn the screen on / off (all black) remotely
+- [x] Force display of a specific plugin
+- [x] Display free text + emoji on demand
+- [x] **Primary protocol: MQTT**
   - Bidirectional pub/sub, native Home Assistant (MQTT Discovery)
   - zeClock publishes: state, active plugin, brightness...
   - zeClock subscribes: commands (on/off, force plugin, display text...)
-- [ ] REST API (HTTP) as a complement for simple integrations and Recalbox (Web Manager)
+- [x] REST API (HTTP) as a complement for simple integrations and Recalbox (Web Manager)
 - [ ] OSC (optional, for live/show integrations)
-- [ ] Home Assistant integration via MQTT Discovery (auto-created entities)
+- [x] Home Assistant integration via MQTT Discovery (auto-created entities)
 - [ ] Recalbox bridge: small script that translates Recalbox events ↔ MQTT
 
 ---
