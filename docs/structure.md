@@ -38,6 +38,11 @@ zeClock/
 │   │       ├── SYSTEM.fnt      # System font (+ _HD variant)
 │   │       ├── TREK.fnt        # Trek font (+ _HD variant)
 │   │       └── TWILIGHT.fnt    # Twilight font (+ _HD variant)
+│   ├── remote/                  # Remote control module (MQTT + REST API)
+│   │   ├── __init__.py         # Exports CommandHandler, RemoteCommand, MqttRemote, RestRemote
+│   │   ├── command_handler.py  # Shared command execution logic (on/off, force plugin, display text)
+│   │   ├── mqtt_remote.py      # MQTT remote control (pub/sub, Home Assistant Discovery)
+│   │   └── rest_remote.py      # REST API remote control (HTTP endpoints)
 │   ├── plugin_registry.py      # Plugin registry: stores plugins with state, frequency, override logic
 │   ├── plugin_config.py        # Plugin YAML configuration loader and validator
 │   ├── plugin_manager.py       # Plugin manager: discovery, loading, scheduling, lifecycle orchestration
@@ -112,6 +117,10 @@ This is the application core. It contains all the Python logic for reading resou
 | `resources/__init__.py` | Package marker for bundled resources |
 | `resources/fonts/__init__.py` | Package marker for bundled font resources |
 | `resources/fonts/*.fnt` | Bitmap fonts (STANDARD, ALTERN8, FISHY, MENU, SYSTEM, TREK, TWILIGHT + HD variants) shipped inside the wheel via `package-data`. Available without runtime bootstrap. |
+| `remote/__init__.py` | Remote control package: exports `CommandHandler`, `RemoteCommand`, `MqttRemote`, `RestRemote` |
+| `remote/command_handler.py` | `CommandHandler`: shared command execution logic for remote control (on/off, force plugin, display text, brightness) |
+| `remote/mqtt_remote.py` | `MqttRemote`: MQTT-based remote control with bidirectional pub/sub and Home Assistant MQTT Discovery |
+| `remote/rest_remote.py` | `RestRemote`: REST API remote control via HTTP endpoints for simple integrations |
 | `plugin_registry.py` | `PluginRegistry`: stores loaded plugins with state, frequency, and error tracking; handles override logic and frequency normalization |
 | `plugin_config.py` | `PluginConfig`: loads and validates `plugins.yaml` configuration; provides defaults, frequency clamping, and plugin-specific settings |
 | `plugin_manager.py` | `PluginManager`: top-level orchestrator that discovers, loads, validates, schedules, and drives plugins through their lifecycle |

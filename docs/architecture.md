@@ -17,6 +17,14 @@ graph TD
         A -->|Sends frames via| E["DMDBackend (backends/)"]
         A -->|Auto bootstrap| F2["Installer (installer.py)"]
         A -->|Brightness control| BS["BrightnessScheduler (brightness_scheduler.py)"]
+        A -->|Remote control| RC["Remote Control (remote/)"]
+    end
+
+    subgraph "Remote Control Layer"
+        RC -->|MQTT pub/sub| MQTT["MqttRemote (aiomqtt)"]
+        RC -->|HTTP server| REST["RestRemote (aiohttp)"]
+        RC -->|Shared logic| CMD["CommandHandler"]
+        MQTT -->|HA Discovery| HA["Home Assistant"]
     end
 
     subgraph "Backend Layer"
@@ -52,7 +60,22 @@ Manages global state and the time-based execution loop.
 - **Dual Color**: Supports independent colors for the clock and animations, with an `auto` mode that rotates colors every 60 seconds.
 - **CLI Entry Point**: The `main()` function exposes `--color`, `--animation-color`, and `--bootstrap` arguments.
 
-### 2. Backend Abstraction Layer (`backends/`)
+### 2. Remote Control Layer (`remote/`)
+
+Protocol-agnostic remote control with MQTT and REST API interfaces running as concurrent asyncio tasks. See [Section 8](#8-remote-control-remote) for full details.
+
+**Command priority in the render loop:**
+1. Text overlay (highest — temporary, expires after configured duration)
+2. Screen off override (all-black frame)
+3. Forced plugin (stays on the specified plugin until cleared)
+4. Normal state machine (clock → plugin rotation)
+
+**Text overlay rendering** uses a three-tier font fallback:
+1. The current clock DotClk font (if it can render all characters in the text — typically digits and a few symbols only).
+2. The bundled SYSTEM bitmap font (`SYSTEM.fnt` / `SYSTEM_HD.fnt`) which covers full ASCII (a–z, A–Z, digits, punctuation). Loaded lazily and cached.
+3. PIL default bitmap font as a last resort (if SYSTEM font fails to load).
+
+### 3. Backend Abstraction Layer (`backends/`)
 
 Pluggable backend system for DMD communication. All backends implement the `DMDBackend` abstract base class, ensuring the clock and plugins remain backend-agnostic.
 
@@ -62,7 +85,7 @@ Pluggable backend system for DMD communication. All backends implement the `DMDB
   - `disconnect() -> None`: Close the connection.
   - `connected` property: Whether the backend is currently connected.
   - Context manager protocol (`__enter__` / `__exit__`): Calls `connect()` / `disconnect()` automatically.
-- **`ZeDMDBackend` (`backends/zedmd.py`)**: Direct hardware communication via `libzedmd` (C shared library loaded through ctypes). Sends frames as RGB888 directly via `ZeDMD_RenderRgb888`, avoiding any Python-level pixel conversion. Supports WiFi and USB connections. On connect, auto-detects the physical panel dimensions via `ZeDMD_GetPanelWidth`/`ZeDMD_GetPanelHeight` and enables upscaling (`ZeDMD_EnableUpscaling`) so libzedmd handles centering/scaling when the frame size differs from the panel size. The upscale algorithm is controlled by `BackendConfig.upscale_mode` (`epx` by default, `hq2x`, or `nearest`). Includes connection health monitoring via a log callback registered with libzedmd (`ZeDMD_SetLogCallback`) that detects transport errors (StreamBytes failures, serial/TCP/UDP errors) in real-time, combined with a periodic `ZeDMD_GetPanelWidth` probe. Automatic reconnection uses exponential backoff and works for both USB and WiFi transports. Thread-safe error counting (via `threading.Lock`) protects shared state between the libzedmd internal thread and the Python asyncio thread.
+- **`ZeDMDBackend` (`backends/zedmd.py`)**: Direct hardware communication via `libzedmd` (C shared library loaded through ctypes). Sends frames as RGB888 directly via `ZeDMD_RenderRgb888`, avoiding any Python-level pixel conversion. Supports WiFi and USB connections. On connect, auto-detects the physical panel dimensions via `ZeDMD_GetPanelWidth`/`ZeDMD_GetPanelHeight` and enables upscaling (`ZeDMD_EnableUpscaling`) so libzedmd handles centering/scaling when the frame size differs from the panel size. The upscale algorithm is controlled by `BackendConfig.upscale_mode` (`epx` by default, `hq2x`, or `nearest`). Uses a simple error detection strategy: a log callback registered with libzedmd (`ZeDMD_SetLogCallback`) sets a thread-safe error flag on stream errors (StreamBytes failures, serial/TCP/UDP errors). On the next `send_frame()` call, the flag is checked — if set, the instance is closed immediately and `False` is returned. The caller (main loop in `clock.py`) handles the wait and reconnection with exponential backoff (initial 2s, max 30s, ×1.5 multiplier). A `threading.Lock` protects the error flag between the libzedmd internal thread and the Python asyncio thread.
 - **`DMDServerBackend` (`backends/dmdserver.py`)**: TCP client using the DMDStream protocol (refactored from `dmdserver_client.py`). Used for development with `virtual-dmd.py`.
 - **`BackendFactory` (`backends/factory.py`)**: Instantiates the correct backend based on `--backend` CLI argument (`auto`, `zedmd`, `dmdserver`). In `auto` mode, tries ZeDMD first, falls back to dmdserver.
 
@@ -78,7 +101,7 @@ Pluggable backend system for DMD communication. All backends implement the `DMDB
 - **Payload**: RGB565 big-endian data (2 bytes per pixel).
 - **Persistent connection**: Socket stays open between frames for continuous streaming.
 
-### 3. Binary File Readers (`readers/`)
+### 4. Binary File Readers (`readers/`)
 
 Optimized parsers for decoding native DotClk hardware formats:
 
@@ -91,7 +114,7 @@ Optimized parsers for decoding native DotClk hardware formats:
   - `frame_layer`: Layer order (0 = Clock behind animation, 1 = Clock above).
   - `frame_delay_ms`: Delay between frames (default 40ms = 25 FPS).
 
-### 4. Composition Engine: `Overlay` (`overlay.py`)
+### 5. Composition Engine: `Overlay` (`overlay.py`)
 
 This module handles image merging (clock on one side, animation on the other) and pixel-art upscaling. It faithfully implements the original DotClk hardware **`DotBlt`** algorithm and serves as the single entry point for all pixel-art upscaling in zeClock.
 
@@ -112,7 +135,7 @@ Mask metadata (`mask_data`, `mask_width_bytes`) is attached dynamically to PIL I
   - `_upscale_mask_2x(...)`: Internal helper that expands a DotBlt bit-mask 2× (each set bit → 2×2 block) so DotBlt compositing remains correct after scaling. Called automatically by both 2× upscalers when `mask_data` is present on the source image.
   - `_upscale_mask_nx(...)`: Internal helper that expands a DotBlt bit-mask by an arbitrary integer scale factor N (each set bit → N×N block). Used by `scale3x` and the nearest-neighbor fallback in `upscale_nx` to keep DotBlt compositing correct at any scale.
 
-### 5. Plugin System (`plugins/`, `plugin_manager.py`, `plugin_registry.py`, `plugin_config.py`)
+### 6. Plugin System (`plugins/`, `plugin_manager.py`, `plugin_registry.py`, `plugin_config.py`)
 
 Extensible plugin architecture that allows contributors to author display plugins alternating with the default clock display during attract mode.
 
@@ -152,7 +175,7 @@ Extensible plugin architecture that allows contributors to author display plugin
   - `draw_staleness_indicator()`: Draws a blinking red dot in the top-right corner when data is stale (used by WeatherPlugin and StockPlugin).
   - `ConfettiAnimation`: Reusable particle animation class. Particles shoot upward from configurable cannon positions and fall with gravity. Supports three intensity levels (`small`/`medium`/`big`) and multiple color palettes (`CONFETTI_COLORS_PARTY`, `CONFETTI_COLORS_WARM`, `CONFETTI_COLORS_COOL`).
 
-### 6. Brightness Scheduler (`brightness_scheduler.py`)
+### 7. Brightness Scheduler (`brightness_scheduler.py`)
 
 Manages automatic brightness adjustment based on time-of-day schedules, day-of-week rules, and sunrise/sunset data.
 
@@ -164,7 +187,35 @@ Manages automatic brightness adjustment based on time-of-day schedules, day-of-w
 - **Efficient caching**: Checks once per minute and caches the result to avoid repeated computation.
 - **`apply_sw_dimming(image, dim_percent)`**: Fast software dimming using Pillow's `point()` with a pre-built LUT (C-native processing, no NumPy dependency).
 
-### 7. Automatic Bootstrap: `Installer` (`installer.py`)
+### 8. Remote Control (`remote/`)
+
+Module providing external control of the running zeClock instance via network protocols. Both MQTT and REST interfaces share a common `CommandHandler` that translates incoming commands into actions on the ZeClock instance.
+
+- **`CommandHandler` (`remote/command_handler.py`)**: Central command execution logic. Defines `RemoteCommand` data structures and dispatches commands (screen on/off, force plugin, display free text, adjust brightness) to the appropriate ZeClock methods.
+- **`MqttRemote` (`remote/mqtt_remote.py`)**: MQTT-based remote control. Primary protocol for bidirectional communication:
+  - Publishes state (active plugin, brightness, on/off status).
+  - Subscribes to command topics (on/off, force plugin, display text).
+  - Supports Home Assistant MQTT Discovery for automatic entity creation.
+- **`RestRemote` (`remote/rest_remote.py`)**: REST API (HTTP) for simple integrations and Recalbox Web Manager compatibility. Provides endpoints for the same command set as MQTT.
+
+```mermaid
+graph LR
+    subgraph "Remote Control Module"
+        CH["CommandHandler"]
+        MQTT["MqttRemote"]
+        REST["RestRemote"]
+    end
+    
+    MQTT -->|commands| CH
+    REST -->|commands| CH
+    CH -->|actions| ZC["ZeClock Instance"]
+    
+    HA["Home Assistant"] <-->|MQTT Discovery| MQTT
+    EXT["External Systems"] -->|HTTP| REST
+    EXT2["Recalbox"] -->|HTTP| REST
+```
+
+### 9. Automatic Bootstrap: `Installer` (`installer.py`)
 
 Runtime initialization module that detects and automatically installs system dependencies:
 

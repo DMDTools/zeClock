@@ -35,21 +35,25 @@ This document details the technologies, libraries, protocols, and tools that mak
   - **Stable display frequency**: The main loop dynamically calculates each frame's execution time to adapt `asyncio.sleep` and guarantee a regular framerate.
   - **Background pre-computation**: Loading and rendering `.scn` animations runs via `asyncio.create_task`. The main display loop stays smooth and responsive.
   - **Cooperative yielding**: `await asyncio.sleep(0)` in intensive loading loops to yield back to the event loop.
-- **threading** (standard module): Used in `ZeDMDBackend` for thread-safe access to connection health state. The libzedmd log callback executes on libzedmd's internal Run thread, so a `threading.Lock` protects the shared stream error counter accessed by both the callback thread and the Python asyncio thread.
+- **threading** (standard module): Used in `ZeDMDBackend` for thread-safe access to the stream error flag. The libzedmd log callback executes on libzedmd's internal Run thread, so a `threading.Lock` protects the shared error flag accessed by both the callback thread and the Python asyncio thread.
 
 ### 5. Network Protocol & Communication
 
 - **Direct Hardware (libzedmd via ctypes)**: Default communication path using the `ZeDMDBackend`.
   - Loads `libzedmd.so` / `.dylib` / `.dll` from `~/.zeclock/lib/` via `ctypes.CDLL`.
   - C API calls: `ZeDMD_GetInstance`, `ZeDMD_OpenWiFi` / `ZeDMD_Open`, `ZeDMD_SetFrameSize`, `ZeDMD_EnableUpscaling`, `ZeDMD_SetBrightness`, `ZeDMD_RenderRgb888`, `ZeDMD_Close`, `ZeDMD_SetLogCallback`, `ZeDMD_FormatLogMessage`, `ZeDMD_GetPanelWidth`, `ZeDMD_GetPanelHeight`.
-  - **Log callback**: A ctypes `CFUNCTYPE` callback is registered via `ZeDMD_SetLogCallback` to intercept libzedmd internal log messages. `ZeDMD_FormatLogMessage` resolves `va_list` arguments into readable strings. Error patterns (e.g., "StreamBytes failed", "libserialport error", "TCP stream error", "UDP stream error") are counted to detect connection loss.
+  - **Log callback**: A ctypes `CFUNCTYPE` callback is registered via `ZeDMD_SetLogCallback` to intercept libzedmd internal log messages. `ZeDMD_FormatLogMessage` resolves `va_list` arguments into readable strings. Stream error patterns (e.g., "StreamBytes failed", "libserialport error", "TCP stream error", "UDP stream error") immediately set a thread-safe error flag to signal connection loss.
   - **RGB888 passthrough**: Raw RGB bytes from PIL Image are sent directly to libzedmd without any Python-level pixel conversion (3 bytes per pixel: Red, Green, Blue).
   - **Connection modes**: WiFi (IP address) or USB serial (device path or auto-detection).
   - **Panel resolution detection**: On connect, queries `ZeDMD_GetPanelWidth` / `ZeDMD_GetPanelHeight` to auto-detect the physical panel dimensions and adapts the frame size accordingly.
   - **Upscaling**: Calls `ZeDMD_EnableUpscaling` so libzedmd handles centering/scaling when the configured frame size differs from the physical panel size.
-  - **Connection health monitoring**: Two-pronged detection — log-based error counting (threshold of 3 consecutive failures) and periodic `ZeDMD_GetPanelWidth` probe (returns 0 when internal connection pointer is null). Automatic reconnection with exponential backoff (initial 2s, max 30s, ×1.5 multiplier).
+  - **Connection error handling**: Simple strategy — on any stream error detected via the log callback, `send_frame()` immediately closes the instance and returns `False`. The caller (main loop) handles the wait and reconnection with exponential backoff (initial 2s, max 30s, ×1.5 multiplier). No periodic health checks or failure thresholds.
 
 - **Sunrise/Sunset API** (`api.sunrise-sunset.org`): Free REST API used by `BrightnessScheduler` to fetch daily sunrise/sunset times based on geographic coordinates. No API key required. Results are cached for 30 minutes. Used only when `[location]` is configured with latitude/longitude.
+
+- **MQTT** (via `remote/mqtt_remote.py`): Primary remote control protocol. Bidirectional pub/sub communication for controlling the clock (on/off, force plugin, display text, brightness) and publishing state. Supports Home Assistant MQTT Discovery for automatic entity creation. Broker address configured in `zeclock.ini`.
+
+- **REST API** (via `remote/rest_remote.py`): HTTP-based remote control as a complement for simple integrations and Recalbox Web Manager. Provides the same command set as MQTT via HTTP endpoints.
 
 - **TCP Sockets (standard `socket` module)**: Alternative communication via `DMDServerBackend` for development.
   - **DMDStream network header** (big-endian):
@@ -100,6 +104,19 @@ INI-format config file parsed by `backend_config.py`. CLI arguments always take 
 | `[location]` | `longitude` | float | — | Geographic longitude for sunrise/sunset |
 | `[location]` | `sunrise_brightness` | 0–100 | — | Brightness % during daytime |
 | `[location]` | `sunset_brightness` | 0–100 | — | Brightness % during nighttime |
+| `[mqtt]` | `enabled` | `true` \| `false` | `false` | Enable MQTT remote control |
+| `[mqtt]` | `host` | hostname/IP | `localhost` | MQTT broker address |
+| `[mqtt]` | `port` | integer | 1883 | MQTT broker port |
+| `[mqtt]` | `username` | string | — | MQTT authentication username |
+| `[mqtt]` | `password` | string | — | MQTT authentication password |
+| `[mqtt]` | `device_id` | string | `zeclock` | Unique device identifier (used in topics) |
+| `[mqtt]` | `topic_prefix` | string | `zeclock` | MQTT topic prefix (e.g. `zeclock/command/...`) |
+| `[mqtt]` | `ha_discovery` | `true` \| `false` | `true` | Enable Home Assistant MQTT Discovery |
+| `[mqtt]` | `ha_discovery_prefix` | string | `homeassistant` | HA Discovery topic prefix |
+| `[mqtt]` | `state_interval` | float (≥5) | 30.0 | Seconds between state publish messages |
+| `[rest_api]` | `enabled` | `true` \| `false` | `false` | Enable REST API remote control |
+| `[rest_api]` | `host` | hostname/IP | `0.0.0.0` | REST API listen address |
+| `[rest_api]` | `port` | integer | 8080 | REST API listen port |
 
 Schedule line format: `HH:MM-HH:MM brightness%, HH:MM-HH:MM brightness%, ...` (supports overnight ranges and multiple entries per day).
 
