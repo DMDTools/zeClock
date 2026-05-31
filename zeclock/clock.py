@@ -12,6 +12,10 @@ from typing import Any, Optional
 from PIL import Image
 
 from .backends import DMDBackend, create_backend
+from .brightness_scheduler import (
+    BrightnessScheduler,
+    apply_sw_dimming,
+)
 from .colors import COLOR_LIST, COLOR_MAP, COLOR_NAMES
 from .overlay import colorize_grayscale
 from .plugin_manager import PluginManager
@@ -46,6 +50,7 @@ class ZeClock:
         plugins_override: Optional[str] = None,
         upscale_mode: str = "epx",
         font: str = "STANDARD",
+        brightness_scheduler: Optional[BrightnessScheduler] = None,
     ):
         self.width = width
         self.height = height
@@ -94,6 +99,12 @@ class ZeClock:
 
         # Reconnection state
         self._reconnect_logged = False
+
+        # Brightness scheduler
+        self._brightness_scheduler = brightness_scheduler
+        self._last_brightness_check = 0.0
+        self._current_sw_dimming = 0
+        self._current_is_time_only = False
 
         # Load font — prefer HD variant for HD displays
         self.dotclk_font = None
@@ -160,6 +171,10 @@ class ZeClock:
         # Initialize plugin system
         await self._init_plugin_system()
 
+        # Initialize brightness scheduler (fetch sunrise/sunset if configured)
+        if self._brightness_scheduler and self._brightness_scheduler._has_sun_config:
+            await self._brightness_scheduler.update_sun_data()
+
         frame_time = 1 / self.fps
         print(f"🕒 Starting zeClock at {self.fps} FPS")
 
@@ -180,9 +195,11 @@ class ZeClock:
                     frame_time = 0.5  # Refresh every 500ms for colon blinking
 
                     # Check if clock-only duration has elapsed
-                    clock_display_seconds = self._get_clock_display_seconds()
-                    if now - self._clock_only_start >= clock_display_seconds:
-                        self._state = ClockState.PLUGIN_SELECT
+                    # In "time only" mode, never transition to plugins
+                    if not self._current_is_time_only:
+                        clock_display_seconds = self._get_clock_display_seconds()
+                        if now - self._clock_only_start >= clock_display_seconds:
+                            self._state = ClockState.PLUGIN_SELECT
 
                 elif self._state == ClockState.PLUGIN_SELECT:
                     frame = self._render_clock_frame()
@@ -227,6 +244,13 @@ class ZeClock:
                                 frame_time = active.frame_delay_ms / 1000.0
                             else:
                                 frame_time = 0.04  # 40ms default
+
+                # Brightness scheduling (checked once per minute)
+                await self._update_brightness()
+
+                # Apply software dimming if active
+                if self._current_sw_dimming > 0:
+                    frame = apply_sw_dimming(frame, self._current_sw_dimming)
 
                 # Send to DMD
                 success = self.dmd_client.send_frame(frame)
@@ -418,6 +442,84 @@ class ZeClock:
 
         return self.cached_clock_rgb
 
+    async def _update_brightness(self) -> None:
+        """Check and apply brightness schedule (once per minute).
+
+        Updates hardware brightness via the backend and stores the
+        software dimming level for frame processing.
+        """
+        if not self._brightness_scheduler:
+            return
+
+        now_mono = time.monotonic()
+        # Check once per minute (60 seconds)
+        if now_mono - self._last_brightness_check < 60.0:
+            return
+        self._last_brightness_check = now_mono
+
+        # Update sunrise/sunset data if configured
+        if self._brightness_scheduler._has_sun_config:
+            await self._brightness_scheduler.update_sun_data()
+            # Log sunrise/sunset times
+            sun = self._brightness_scheduler._sun_data
+            if sun:
+                logger.info(
+                    "☀️  Sunrise: %02d:%02d / Sunset: %02d:%02d",
+                    sun.sunrise_hour,
+                    sun.sunrise_minute,
+                    sun.sunset_hour,
+                    sun.sunset_minute,
+                )
+
+        # Get current brightness from scheduler
+        result = self._brightness_scheduler.get_brightness()
+
+        # Log brightness state
+        logger.info(
+            "💡 Brightness: HW=%d/15, SW dimming=%d%%, screen_off=%s, time_only=%s",
+            result.hw_brightness,
+            result.sw_dimming_percent,
+            result.is_screen_off,
+            result.is_time_only,
+        )
+
+        # Apply hardware brightness if backend supports it
+        if hasattr(self.dmd_client, "_lib") and hasattr(self.dmd_client, "_instance"):
+            if self.dmd_client._instance:
+                self.dmd_client._lib.ZeDMD_SetBrightness(
+                    self.dmd_client._instance, result.hw_brightness
+                )
+
+        # Store SW dimming for frame processing
+        self._current_sw_dimming = result.sw_dimming_percent
+
+        # Handle screen off (send black frame)
+        if result.is_screen_off:
+            self._current_sw_dimming = 100
+
+        # Update time-only mode flag
+        was_time_only = self._current_is_time_only
+        self._current_is_time_only = result.is_time_only
+
+        # If entering time-only mode while a plugin is active, deactivate it
+        if result.is_time_only and not was_time_only:
+            if self._plugin_manager and self._plugin_manager.is_plugin_active():
+                await self._plugin_manager.deactivate_plugin()
+                self._state = ClockState.CLOCK_ONLY
+                self._clock_only_start = time.time()
+            start = self._brightness_scheduler._time_only_start
+            end = self._brightness_scheduler._time_only_end
+            logger.info(
+                "Entering time-only mode (%02d:%02d → %02d:%02d)",
+                start[0] if start else 0,
+                start[1] if start else 0,
+                end[0] if end else 0,
+                end[1] if end else 0,
+            )
+
+        if not result.is_time_only and was_time_only:
+            logger.info("Exiting time-only mode")
+
     def stop(self) -> None:
         """Stop the clock"""
         self.running = False
@@ -430,6 +532,7 @@ def main() -> None:
     import sys
     from .backend_config import load_config
     from .installer import check_and_install_resources
+    from .brightness_scheduler import BrightnessScheduler, parse_schedule_config
 
     logging.basicConfig(
         level=logging.INFO,
@@ -628,6 +731,25 @@ def main() -> None:
         display_width = backend_config.width
         display_height = backend_config.height
 
+    # Create brightness scheduler from config
+    bs_config = backend_config.brightness_schedule
+    schedule = parse_schedule_config(bs_config.schedule_lines)
+
+    # Use location from [location] section for sunrise/sunset
+    loc = backend_config.location
+    scheduler = BrightnessScheduler(
+        max_brightness=bs_config.max_brightness,
+        schedule=schedule if schedule else None,
+        latitude=loc.latitude,
+        longitude=loc.longitude,
+        sunrise_brightness=bs_config.sunrise_brightness,
+        sunset_brightness=bs_config.sunset_brightness,
+        time_only=bs_config.time_only,
+    )
+
+    if scheduler.has_schedule:
+        print("💡 Brightness scheduling enabled")
+
     clock = ZeClock(
         width=display_width,
         height=display_height,
@@ -638,6 +760,7 @@ def main() -> None:
         plugins_override=args.plugins,
         upscale_mode=backend_config.upscale_mode,
         font=backend_config.font,
+        brightness_scheduler=scheduler if scheduler.has_schedule else None,
     )
     asyncio.run(clock.run())
 

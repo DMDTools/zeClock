@@ -49,6 +49,8 @@ This document details the technologies, libraries, protocols, and tools that mak
   - **Upscaling**: Calls `ZeDMD_EnableUpscaling` so libzedmd handles centering/scaling when the configured frame size differs from the physical panel size.
   - **Connection health monitoring**: Two-pronged detection — log-based error counting (threshold of 3 consecutive failures) and periodic `ZeDMD_GetPanelWidth` probe (returns 0 when internal connection pointer is null). Automatic reconnection with exponential backoff (initial 2s, max 30s, ×1.5 multiplier).
 
+- **Sunrise/Sunset API** (`api.sunrise-sunset.org`): Free REST API used by `BrightnessScheduler` to fetch daily sunrise/sunset times based on geographic coordinates. No API key required. Results are cached for 30 minutes. Used only when `[location]` is configured with latitude/longitude.
+
 - **TCP Sockets (standard `socket` module)**: Alternative communication via `DMDServerBackend` for development.
   - **DMDStream network header** (big-endian):
     - Magic word: `DMDStream\x00` (10 bytes)
@@ -89,6 +91,17 @@ INI-format config file parsed by `backend_config.py`. CLI arguments always take 
 | `[display]` | `width` | integer | 128 | Frame width in pixels |
 | `[display]` | `height` | integer | 32 | Frame height in pixels |
 | `[display]` | `upscale` | `epx` \| `nearest` | `epx` | Upscale algorithm used by libzedmd when the frame size differs from the physical panel size |
+| `[brightness_schedule]` | `default` | schedule line | — | Default brightness schedule (all days) |
+| `[brightness_schedule]` | `monday`..`sunday` | schedule line | — | Day-specific brightness schedule |
+| `[brightness_schedule]` | `max_brightness` | 1–15 | 7 | Maximum HW brightness for 100% |
+| `[brightness_schedule]` | `time_only` | `HH:MM-HH:MM` | — | Time-only mode range (no plugins) |
+
+| `[location]` | `latitude` | float | — | Geographic latitude for sunrise/sunset |
+| `[location]` | `longitude` | float | — | Geographic longitude for sunrise/sunset |
+| `[location]` | `sunrise_brightness` | 0–100 | — | Brightness % during daytime |
+| `[location]` | `sunset_brightness` | 0–100 | — | Brightness % during nighttime |
+
+Schedule line format: `HH:MM-HH:MM brightness%, HH:MM-HH:MM brightness%, ...` (supports overnight ranges and multiple entries per day).
 
 ### 7. DMD Hardware Layer
 

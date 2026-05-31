@@ -214,15 +214,30 @@ class ZeDMDBackend(DMDBackend):
         Formats the message using ZeDMD_FormatLogMessage and inspects it
         for error patterns indicating connection loss. This runs on the
         libzedmd Run thread, so access to shared state is protected by a lock.
+
+        Note: On Linux x86_64, va_list is a struct (not a pointer), so
+        ZeDMD_FormatLogMessage may fail to resolve format arguments.
+        In that case, the raw format string is logged at TRACE level only.
         """
+        msg: Optional[str] = None
         try:
             # Use the library's own formatter to resolve the va_list
             formatted = self._lib.ZeDMD_FormatLogMessage(fmt, args, user_data)
-            if not formatted:
-                return
-            msg = formatted.decode("utf-8", errors="replace")
+            if formatted:
+                msg = formatted.decode("utf-8", errors="replace")
         except Exception:
-            return
+            pass
+
+        if not msg:
+            # Formatting failed (va_list incompatibility on x86_64)
+            # Fall back to raw format string with unresolved placeholders
+            if fmt:
+                try:
+                    msg = fmt.decode("utf-8", errors="replace")
+                except Exception:
+                    return
+            else:
+                return
 
         # Forward to Python logging at appropriate level
         error_patterns = (
@@ -238,9 +253,11 @@ class ZeDMDBackend(DMDBackend):
         )
         is_error = any(pattern in msg for pattern in error_patterns)
         if is_error:
-            logger.warning("libzedmd: %s", msg)
+            # Suppress repeated warnings during reconnection
+            if not self._reconnecting:
+                logger.warning("🔧 libzedmd: %s", msg)
         else:
-            logger.debug("libzedmd: %s", msg)
+            logger.debug("🔧 libzedmd: %s", msg)
         self._last_lib_log = msg
 
         # Detect stream error patterns for reconnection logic
@@ -252,6 +269,9 @@ class ZeDMDBackend(DMDBackend):
             "Full frame forced, error",
         )
         if any(pattern in msg for pattern in stream_error_patterns):
+            # Ignore errors during reconnection — they come from the dying old instance
+            if self._reconnecting:
+                return
             with self._stream_error_lock:
                 self._stream_error_count += 1
                 count = self._stream_error_count
@@ -417,6 +437,10 @@ class ZeDMDBackend(DMDBackend):
 
         # Close the old instance cleanly
         self._close_instance()
+
+        # Reset error counter before reconnection attempt — old errors
+        # from the dead connection should not poison the new one
+        self._reset_error_count()
 
         # Try to reconnect
         success = self.connect()

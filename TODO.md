@@ -107,13 +107,17 @@ Timer for conferences and presentations, visible from the stage on the ZeDMD.
 
 ### 💡 Brightness and scheduling
 
-- [ ] Schedule by day of the week with time ranges and brightness percentage
+- [x] Schedule by day of the week with time ranges and brightness percentage
   - Example: Monday 8am–4pm → 50%, Saturday 8pm–10pm → 50%, rest → 0%
-- [ ] Allow brightness below 5 — very low brightness option (1 to 5)
-- [ ] Automatically turn off the screen at night via sunrise/sunset API (based on geographic location)
-- [ ] Automatically adjust brightness based on time of day / sunrise / sunset
-- [ ] "Time only" mode from a given hour: no date change, weather, or animation
-- [ ] Disable animations from a given hour (e.g. no animations from 10pm to 8am)
+  - Configured in `[brightness_schedule]` section of `zeclock.ini`
+- [x] Allow brightness below 5 — very low brightness option (1 to 5)
+  - Software dimming (pixel-level) combined with HW brightness 1 for ultra-low levels
+- [x] Automatically turn off the screen at night via sunrise/sunset API (based on geographic location)
+  - Uses sunrise-sunset.org API with `[location]` config (latitude/longitude)
+- [x] Automatically adjust brightness based on time of day / sunrise / sunset
+  - `sunrise_brightness` and `sunset_brightness` config options
+- [x] "Time only" mode from a given hour: no date change, weather, or animation - brightness set to minimum
+  - `time_only` in `[brightness_schedule]` (format: `22:00-08:00`)
 
 ---
 

@@ -160,6 +160,24 @@ brightness = 10
 # width = 256
 # height = 64
 
+[location]
+# Global location (used by weather plugin and sunrise/sunset brightness)
+latitude = 45.1885
+longitude = 5.7245
+city_name = Grenoble
+
+[brightness_schedule]
+# Maximum hardware brightness for 100% (0-15, default: 7)
+max_brightness = 7
+# Schedule: HH:MM-HH:MM brightness%, ... (overnight ranges supported)
+default = 22:00-08:00 10%
+# monday = 08:00-18:00 80%, 22:00-08:00 10%
+# Sunrise/sunset auto-brightness (requires [location])
+# sunrise_brightness = 100%
+# sunset_brightness = 10%
+# "Time only" mode: clock only, no plugins
+time_only = 22:00-08:00
+
 [dmdserver]
 # Used when --backend dmdserver is specified
 host = localhost
@@ -167,6 +185,52 @@ port = 6789
 ```
 
 CLI arguments take precedence over config file values.
+
+### Brightness Scheduling
+
+zeClock supports automatic brightness adjustment based on time of day, day of week, and sunrise/sunset.
+
+**How it works:**
+
+- Brightness is expressed as a percentage (0–100%)
+- 100% maps to the configured `max_brightness` (default: HW 7 out of 15)
+- Below ~7%, software dimming kicks in for ultra-low brightness (HW 1 + pixel dimming)
+- 0% turns the screen off completely (all black)
+
+**Schedule format** (in `[brightness_schedule]`):
+
+```ini
+# Per-day schedules (comma-separated time ranges)
+monday = 08:00-18:00 80%, 22:00-08:00 10%
+saturday = 20:00-23:00 50%, 23:00-08:00 5%
+
+# Default applies to all days without a specific schedule
+default = 22:00-08:00 10%
+```
+
+Overnight ranges (e.g., `22:00-08:00`) are supported. Unmatched times use 100%.
+
+**Sunrise/sunset mode** (requires `[location]`):
+
+```ini
+[location]
+latitude = 45.1885
+longitude = 5.7245
+
+[brightness_schedule]
+sunrise_brightness = 100%
+sunset_brightness = 10%
+```
+
+Uses the [sunrise-sunset.org](https://sunrise-sunset.org) API (no key required). Falls back to schedule rules if the API is unreachable.
+
+**"Time only" mode:**
+
+During configured hours, only the clock is displayed — no plugins, no animations:
+
+```ini
+time_only = 22:00-08:00
+```
 
 ### Development Mode (Virtual DMD)
 
@@ -269,7 +333,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full project structure and archit
 ~/.zeclock/
 ├── lib/                         # libzedmd native library
 ├── config/
-│   └── zeclock.ini              # User configuration
+│   ├── zeclock.ini              # User configuration (backend, display, brightness, location)
+│   └── plugins.yaml             # Plugin configuration (frequency, settings)
 └── resources/
     └── animations/              # 2300+ retro .scn animations
 ```
