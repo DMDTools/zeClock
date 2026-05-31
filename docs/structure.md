@@ -15,6 +15,7 @@ zeClock/
 │   ├── backend_config.py       # BackendConfig dataclass and config file parsing
 │   ├── dmdserver_client.py     # Backward-compatible alias (imports DMDServerBackend as DMDServerClient)
 │   ├── overlay.py              # Image composition via DotBlt masking
+│   ├── brightness_scheduler.py # Brightness scheduling (time/day rules, sunrise/sunset, SW dimming)
 │   ├── installer.py            # Automatic bootstrap (downloads libzedmd + resources)
 │   ├── backends/               # Pluggable DMD backend system
 │   │   ├── __init__.py         # Exports DMDBackend, create_backend
@@ -98,6 +99,7 @@ This is the application core. It contains all the Python logic for reading resou
 | `backend_config.py` | `BackendConfig` dataclass and config file parsing (`~/.zeclock/config/zeclock.ini`); merges CLI args over config values |
 | `dmdserver_client.py` | Backward-compatible alias: imports `DMDServerBackend` as `DMDServerClient` for external code compatibility |
 | `overlay.py` | Image merging via DotBlt algorithm: `overlay_or` (monochrome) and `overlay_or_rgb` (dual color) |
+| `brightness_scheduler.py` | Brightness scheduling engine: day-of-week time ranges, sunrise/sunset API integration, HW+SW dimming mapping, time-only mode, animation suppression |
 | `installer.py` | Runtime bootstrap: detects platform, downloads libzedmd from GitHub (`PPUC/libzedmd`), installs DotClk animations (fonts are bundled in the package) |
 | `backends/__init__.py` | Backend package: exports `DMDBackend` ABC and `create_backend()` factory function |
 | `backends/base.py` | `DMDBackend` abstract base class: defines `connect()`, `send_frame()`, `disconnect()`, `connected` property, and context manager protocol |

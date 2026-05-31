@@ -16,6 +16,7 @@ graph TD
         A -->|Pre-computes frames| D["Overlay (overlay.py)"]
         A -->|Sends frames via| E["DMDBackend (backends/)"]
         A -->|Auto bootstrap| F2["Installer (installer.py)"]
+        A -->|Brightness control| BS["BrightnessScheduler (brightness_scheduler.py)"]
     end
 
     subgraph "Backend Layer"
@@ -151,7 +152,19 @@ Extensible plugin architecture that allows contributors to author display plugin
   - `draw_staleness_indicator()`: Draws a blinking red dot in the top-right corner when data is stale (used by WeatherPlugin and StockPlugin).
   - `ConfettiAnimation`: Reusable particle animation class. Particles shoot upward from configurable cannon positions and fall with gravity. Supports three intensity levels (`small`/`medium`/`big`) and multiple color palettes (`CONFETTI_COLORS_PARTY`, `CONFETTI_COLORS_WARM`, `CONFETTI_COLORS_COOL`).
 
-### 6. Automatic Bootstrap: `Installer` (`installer.py`)
+### 6. Brightness Scheduler (`brightness_scheduler.py`)
+
+Manages automatic brightness adjustment based on time-of-day schedules, day-of-week rules, and sunrise/sunset data.
+
+- **Day-of-week scheduling**: Configurable time ranges with brightness percentages per day (e.g., Monday 08:00–16:00 → 50%). Falls back to a `default` schedule when no day-specific rule matches.
+- **Sunrise/sunset integration**: Fetches sun times from the sunrise-sunset.org API (no API key required), caches for 30 minutes, and applies day/night brightness levels automatically based on geographic location.
+- **Dual brightness control**: Maps user-facing 0–100% brightness to a combination of hardware brightness (0–15) and software dimming (0–100%). Ultra-low brightness (below HW minimum) is achieved via progressive SW dimming at HW level 1.
+- **"Time only" mode**: Disables plugins during configured hours (e.g., nighttime) — only the clock is displayed at minimum brightness.
+- **Animation suppression**: Optionally disables animations during configured hours (e.g., 22:00–08:00).
+- **Efficient caching**: Checks once per minute and caches the result to avoid repeated computation.
+- **`apply_sw_dimming(image, dim_percent)`**: Fast software dimming using Pillow's `point()` with a pre-built LUT (C-native processing, no NumPy dependency).
+
+### 7. Automatic Bootstrap: `Installer` (`installer.py`)
 
 Runtime initialization module that detects and automatically installs system dependencies:
 

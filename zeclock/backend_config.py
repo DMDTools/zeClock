@@ -7,15 +7,46 @@ with CLI arguments (CLI takes precedence over config file values).
 
 import configparser
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
 # Default config file location
 CONFIG_DIR = Path.home() / ".zeclock" / "config"
 CONFIG_FILE = CONFIG_DIR / "zeclock.ini"
+
+# Days of the week for schedule parsing
+DAYS_OF_WEEK = [
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+]
+
+
+@dataclass
+class LocationConfig:
+    """Global location configuration used by weather, sunrise/sunset, etc."""
+
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    city_name: str = ""
+
+
+@dataclass
+class BrightnessScheduleConfig:
+    """Configuration for brightness scheduling."""
+
+    max_brightness: int = 7  # HW brightness for 100% (0-15)
+    schedule_lines: Dict[str, str] = field(default_factory=dict)
+    sunrise_brightness: Optional[int] = None  # Brightness % during daytime
+    sunset_brightness: Optional[int] = None  # Brightness % during nighttime
+    time_only: Optional[str] = None  # "HH:MM-HH:MM" — time-only mode range
 
 
 @dataclass
@@ -32,6 +63,10 @@ class BackendConfig:
     height: int = 32
     upscale_mode: str = "epx"  # nearest | epx | hq2x
     font: str = "STANDARD"  # Global font name (without .fnt extension)
+    location: LocationConfig = field(default_factory=LocationConfig)
+    brightness_schedule: BrightnessScheduleConfig = field(
+        default_factory=BrightnessScheduleConfig
+    )
 
 
 def _validate_brightness(value: str) -> int:
@@ -75,7 +110,7 @@ def _parse_config_file(config_path: Path) -> dict:
         logger.debug(f"Config file not found: {config_path}")
         return result
 
-    parser = configparser.ConfigParser()
+    parser = configparser.RawConfigParser()
     parser.read(config_path)
 
     # Read [zedmd] section
@@ -142,6 +177,74 @@ def _parse_config_file(config_path: Path) -> dict:
             if val:
                 result["font"] = val
 
+    # Read [location] section (global location for weather, sunrise/sunset, etc.)
+    if parser.has_section("location"):
+        location = LocationConfig()
+        if parser.has_option("location", "latitude"):
+            val = parser.get("location", "latitude").strip()
+            if val:
+                try:
+                    location.latitude = float(val)
+                except ValueError:
+                    logger.warning(f"Invalid latitude '{val}'")
+        if parser.has_option("location", "longitude"):
+            val = parser.get("location", "longitude").strip()
+            if val:
+                try:
+                    location.longitude = float(val)
+                except ValueError:
+                    logger.warning(f"Invalid longitude '{val}'")
+        if parser.has_option("location", "city_name"):
+            location.city_name = parser.get("location", "city_name").strip()
+        result["location"] = location
+
+    # Read [brightness_schedule] section
+    if parser.has_section("brightness_schedule"):
+        bs = BrightnessScheduleConfig()
+        if parser.has_option("brightness_schedule", "max_brightness"):
+            val = parser.get("brightness_schedule", "max_brightness").strip()
+            if val:
+                try:
+                    bs.max_brightness = max(1, min(15, int(val)))
+                except ValueError:
+                    logger.warning(f"Invalid max_brightness '{val}', using default 7")
+
+        if parser.has_option("brightness_schedule", "sunrise_brightness"):
+            val = (
+                parser.get("brightness_schedule", "sunrise_brightness")
+                .strip()
+                .rstrip("%")
+            )
+            if val:
+                try:
+                    bs.sunrise_brightness = max(0, min(100, int(val)))
+                except ValueError:
+                    logger.warning(f"Invalid sunrise_brightness '{val}'")
+
+        if parser.has_option("brightness_schedule", "sunset_brightness"):
+            val = (
+                parser.get("brightness_schedule", "sunset_brightness")
+                .strip()
+                .rstrip("%")
+            )
+            if val:
+                try:
+                    bs.sunset_brightness = max(0, min(100, int(val)))
+                except ValueError:
+                    logger.warning(f"Invalid sunset_brightness '{val}'")
+
+        if parser.has_option("brightness_schedule", "time_only"):
+            bs.time_only = parser.get("brightness_schedule", "time_only").strip()
+
+        # Parse day-of-week schedule lines
+        schedule_lines = {}
+        for key in DAYS_OF_WEEK + ["default"]:
+            if parser.has_option("brightness_schedule", key):
+                schedule_lines[key] = parser.get("brightness_schedule", key).strip()
+        bs.schedule_lines = schedule_lines
+
+        result["brightness_schedule"] = bs
+
     return result
 
 
@@ -203,6 +306,10 @@ def load_config(
         config.width = file_values["width"]
     if "height" in file_values:
         config.height = file_values["height"]
+    if "location" in file_values:
+        config.location = file_values["location"]
+    if "brightness_schedule" in file_values:
+        config.brightness_schedule = file_values["brightness_schedule"]
 
     # Layer 1: CLI arguments (highest precedence)
     if backend is not None:
