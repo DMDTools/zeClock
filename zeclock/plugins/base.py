@@ -91,6 +91,16 @@ class ClockPlugin(ABC):
         """Desired delay between frames in milliseconds (20-5000)."""
         ...
 
+    @property
+    def rotatable(self) -> bool:
+        """Whether this plugin participates in automatic rotation.
+
+        Plugins that return False are only activated on demand (e.g. via
+        the web UI or force_plugin command) and never selected by the
+        scheduler. Default is True.
+        """
+        return True
+
     @abstractmethod
     async def initialize(self, config: dict) -> None:
         """Prepare the plugin for rendering.

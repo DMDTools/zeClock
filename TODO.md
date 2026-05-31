@@ -52,15 +52,27 @@
 
 #### 🔔 Push Notification Plugin
 
-- [ ] Receive and display a short text message from any system via webhook or MQTT
-- [ ] Configurable display duration before returning to normal rotation
-- [ ] Priority levels (normal, urgent — urgent interrupts current display immediately)
+- [X] Receive and display a short text message from any system via webhook or MQTT
+- [X] Configurable display duration before returning to normal rotation
+- [X] Priority levels (normal, urgent — urgent interrupts current display immediately)
 
 #### 📰 RSS / News Ticker Plugin
 
 - [ ] Fetch and scroll headlines from one or more RSS feeds
 - [ ] Configurable refresh interval and number of items to display
 - [ ] Filter by keyword
+
+#### 🪂 Paragliding Plugin (Paraglidable / Spotair)
+
+- [ ] Integration with [Paraglidable](https://paraglidable.com/) API (AI-based paragliding forecast)
+  - API endpoint: `https://api.paraglidable.com/?key=YOUR_KEY&format=json`
+  - Requires a free API key (email registration, limited to 10 spots per key)
+- [ ] Display **flyability percentage** for today (probability a flight will be reported)
+- [ ] Display **cross-country (XC) percentage** for today (probability of a 60+ point flight, PWC scoring)
+- [ ] Display forecast for tomorrow and the upcoming week (day-by-day)
+- [ ] Configurable spot(s) selection (latitude/longitude based)
+- [ ] Color-coded display (e.g. green = good flyability, yellow = marginal, red = no-go)
+- [ ] Optional: show wind and humidity safety indicators (API provides separate wind/humidity probabilities)
 
 #### 🕹️ Recalbox Plugin
 

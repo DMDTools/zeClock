@@ -85,6 +85,19 @@ All plugins must subclass `ClockPlugin` from `zeclock.plugins.base`. The abstrac
 | `name` | `str` | Unique plugin identifier | 1–64 chars, lowercase alphanumeric, hyphens, underscores. Pattern: `^[a-z0-9_-]{1,64}$` |
 | `description` | `str` | Human-readable description | 1–256 characters, non-empty |
 | `frame_delay_ms` | `int` | Delay between frames in milliseconds | Integer in range [20, 5000] |
+| `rotatable` | `bool` | Whether the plugin participates in automatic rotation | Default: `True`. Override to `False` for on-demand-only plugins |
+
+#### `rotatable` Property
+
+By default, all plugins participate in the scheduler's automatic rotation — they are randomly selected based on their configured `frequency`. Override `rotatable` to return `False` if your plugin should only be activated on demand (e.g. via the web UI `force_plugin` command or MQTT):
+
+```python
+@property
+def rotatable(self) -> bool:
+    return False  # Only activated via force_plugin / web UI
+```
+
+Non-rotatable plugins are still discovered, loaded, and listed by `--list-plugins`, but the scheduler never selects them automatically. Use this for plugins like a speaker timer or a manual notification display that only make sense when explicitly triggered.
 
 ### Methods
 

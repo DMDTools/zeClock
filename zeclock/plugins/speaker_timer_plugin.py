@@ -72,6 +72,10 @@ class SpeakerTimerPlugin(ClockPlugin):
     def frame_delay_ms(self) -> int:
         return 200  # 5 FPS — sufficient for a timer display
 
+    @property
+    def rotatable(self) -> bool:
+        return False
+
     async def initialize(self, config: dict) -> None:
         """Initialize the speaker timer plugin.
 

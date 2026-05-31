@@ -79,8 +79,12 @@ class PluginRegistry:
         return list(self._plugins.values())
 
     def get_active_plugins(self) -> List[PluginEntry]:
-        """Get plugins that are available for scheduling (not failed)."""
-        return [e for e in self._plugins.values() if e.state != "failed"]
+        """Get plugins that are available for scheduling (not failed, rotatable)."""
+        return [
+            e
+            for e in self._plugins.values()
+            if e.state != "failed" and e.plugin.rotatable
+        ]
 
     def mark_failed(self, name: str, error: str = "") -> None:
         """Mark a plugin as failed, excluding it from scheduling.
