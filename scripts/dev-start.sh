@@ -2,18 +2,23 @@
 # Start zeclock locally for development
 # Usage: dev-start.sh [COLOR] [MODE]
 #   MODE: "real" (default) — uses --backend auto (libzedmd direct)
-#         "virtual"        — starts virtual-dmd.py + uses --backend dmdserver
+#         "virtual"        — starts virtual-dmd.py + uses --backend dmdserver (128x32)
+#         "virtual-hd"    — starts virtual-dmd.py + uses --backend dmdserver (256x64 HD)
 set -e
 
 COLOR="${1:-auto}"
-MODE="${2:-real}"  # "real" or "virtual"
+MODE="${2:-real}"  # "real", "virtual", or "virtual-hd"
 PIDFILE="/tmp/zeclock-dmdserver.pid"
 
 # Kill any existing instances
 scripts/dev-stop.sh 2>/dev/null || true
 
-if [ "$MODE" = "virtual" ]; then
-    echo "▶️  Starting virtual mode (DMD in browser at http://localhost:8080)..."
+if [ "$MODE" = "virtual" ] || [ "$MODE" = "virtual-hd" ]; then
+    if [ "$MODE" = "virtual-hd" ]; then
+        echo "▶️  Starting virtual HD mode (256x64, DMD in browser at http://localhost:8080)..."
+    else
+        echo "▶️  Starting virtual mode (128x32, DMD in browser at http://localhost:8080)..."
+    fi
     uv run python scripts/virtual-dmd.py 6789 &
     echo $! > "$PIDFILE"
 
@@ -30,6 +35,9 @@ if [ "$MODE" = "virtual" ]; then
     done
 
     BACKEND_ARGS="--backend dmdserver"
+    if [ "$MODE" = "virtual-hd" ]; then
+        BACKEND_ARGS="$BACKEND_ARGS --hd"
+    fi
 else
     echo "▶️  Starting zeclock with direct ZeDMD (libzedmd)..."
     BACKEND_ARGS="--backend auto"

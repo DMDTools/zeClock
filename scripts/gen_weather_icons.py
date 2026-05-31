@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Generate weather_icons.py from Noto Color Emoji font.
 
-Renders weather emoji at 16x16 and embeds the pixel data as raw bytes.
+Renders weather emoji at 16x16 (SD) and 32x32 (HD) and embeds the pixel
+data as raw bytes. The HD versions are rendered natively at 32x32 from
+the emoji font (not upscaled from 16x16) for maximum quality.
+
 Requires: Noto Color Emoji font installed at /usr/share/fonts/truetype/noto/NotoColorEmoji.ttf
 
 Usage: python3 scripts/gen_weather_icons.py
 """
 
-import json
 import sys
 from pathlib import Path
 
@@ -28,9 +30,11 @@ EMOJIS = {
 }
 
 
-def render_emoji(font, emoji_char: str) -> Image.Image:
-    """Render an emoji character to a 16x16 RGB image, preserving aspect ratio."""
-    img = Image.new("RGBA", (150, 150), (0, 0, 0, 0))
+def render_emoji(font, emoji_char: str, size: int = 16) -> Image.Image:
+    """Render an emoji character to a size x size RGB image."""
+    # Render at high resolution then downscale for quality
+    render_size = 150
+    img = Image.new("RGBA", (render_size, render_size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     draw.text((5, 5), emoji_char, font=font, embedded_color=True)
     bbox = img.getbbox()
@@ -38,18 +42,18 @@ def render_emoji(font, emoji_char: str) -> Image.Image:
         raise ValueError(f"Emoji '{emoji_char}' did not render")
     cropped = img.crop(bbox)
 
-    # Resize preserving aspect ratio, fit within 16x16
+    # Resize preserving aspect ratio, fit within target size
     w, h = cropped.size
-    scale = min(16 / w, 16 / h)
+    scale = min(size / w, size / h)
     new_w = max(1, int(w * scale))
     new_h = max(1, int(h * scale))
     resized = cropped.resize((new_w, new_h), Image.LANCZOS)
 
-    # Center on 16x16 black canvas
-    rgb = Image.new("RGB", (16, 16), (0, 0, 0))
-    rgba_canvas = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
-    offset_x = (16 - new_w) // 2
-    offset_y = (16 - new_h) // 2
+    # Center on black canvas
+    rgb = Image.new("RGB", (size, size), (0, 0, 0))
+    rgba_canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    offset_x = (size - new_w) // 2
+    offset_y = (size - new_h) // 2
     rgba_canvas.paste(resized, (offset_x, offset_y))
     rgb.paste(rgba_canvas, mask=rgba_canvas.split()[3])
     return rgb
@@ -63,23 +67,29 @@ def main():
 
     font = ImageFont.truetype(FONT_PATH, 109)
 
-    # Render all icons
-    icon_data = {}
+    # Render all icons at both SD (16x16) and HD (32x32)
+    icon_data_sd = {}
+    icon_data_hd = {}
     for name, emoji in EMOJIS.items():
         try:
-            img = render_emoji(font, emoji)
-            icon_data[name] = img.tobytes()
-            print(f"  {name}: OK")
+            img_sd = render_emoji(font, emoji, size=16)
+            img_hd = render_emoji(font, emoji, size=32)
+            icon_data_sd[name] = img_sd.tobytes()
+            icon_data_hd[name] = img_hd.tobytes()
+            print(f"  {name}: OK (16x16 + 32x32)")
         except Exception as e:
             print(f"  {name}: FAILED ({e})")
             sys.exit(1)
 
     # Generate output file
     lines = []
-    lines.append('"""Color 16x16 weather icons rendered from Noto Color Emoji.')
+    lines.append('"""Color weather icons rendered from Noto Color Emoji (SD 16x16 + HD 32x32).')
     lines.append("")
     lines.append("Icons are pre-rendered from the Noto Color Emoji font (SIL OFL).")
     lines.append("https://fonts.google.com/noto/specimen/Noto+Color+Emoji")
+    lines.append("")
+    lines.append("SD icons (16x16) are used for 128x32 displays.")
+    lines.append("HD icons (32x32) are used for 256x64 displays.")
     lines.append('"""')
     lines.append("")
     lines.append("from typing import Dict")
@@ -87,23 +97,38 @@ def main():
     lines.append("from PIL import Image")
     lines.append("")
 
-    # Write each icon as raw bytes
-    for name, raw_bytes in icon_data.items():
-        # Encode as hex string for compact storage
+    # Write SD icons
+    lines.append("# === SD Icons (16x16) ===")
+    lines.append("")
+    for name, raw_bytes in icon_data_sd.items():
         hex_str = raw_bytes.hex()
         lines.append(f'_{name.upper()}_HEX = "{hex_str}"')
         lines.append("")
 
+    # Write HD icons
     lines.append("")
-    lines.append("def _hex_to_image(hex_data: str) -> Image.Image:")
-    lines.append('    """Convert hex-encoded RGB data to a 16x16 PIL Image."""')
-    lines.append('    return Image.frombytes("RGB", (16, 16), bytes.fromhex(hex_data))')
+    lines.append("# === HD Icons (32x32) ===")
+    lines.append("")
+    for name, raw_bytes in icon_data_hd.items():
+        hex_str = raw_bytes.hex()
+        lines.append(f'_{name.upper()}_HD_HEX = "{hex_str}"')
+        lines.append("")
+
+    lines.append("")
+    lines.append("def _hex_to_image(hex_data: str, size: int = 16) -> Image.Image:")
+    lines.append('    """Convert hex-encoded RGB data to a PIL Image."""')
+    lines.append('    return Image.frombytes("RGB", (size, size), bytes.fromhex(hex_data))')
     lines.append("")
     lines.append("")
     lines.append("# Build icon images from embedded data")
-    lines.append("_ICON_IMAGES: Dict[str, Image.Image] = {")
-    for name in icon_data:
-        lines.append(f'    "{name}": _hex_to_image(_{name.upper()}_HEX),')
+    lines.append("_ICON_IMAGES_SD: Dict[str, Image.Image] = {")
+    for name in icon_data_sd:
+        lines.append(f'    "{name}": _hex_to_image(_{name.upper()}_HEX, 16),')
+    lines.append("}")
+    lines.append("")
+    lines.append("_ICON_IMAGES_HD: Dict[str, Image.Image] = {")
+    for name in icon_data_hd:
+        lines.append(f'    "{name}": _hex_to_image(_{name.upper()}_HD_HEX, 32),')
     lines.append("}")
     lines.append("")
     lines.append("")
@@ -125,10 +150,19 @@ def main():
     lines.append("}")
     lines.append("")
     lines.append("")
-    lines.append("def get_weather_icon_image(code: int) -> Image.Image:")
-    lines.append('    """Get the 16x16 color RGB icon for a WMO weather code."""')
+    lines.append("def get_weather_icon_image(code: int, hd: bool = False) -> Image.Image:")
+    lines.append('    """Get the color RGB icon for a WMO weather code.')
+    lines.append("")
+    lines.append("    Args:")
+    lines.append("        code: WMO weather interpretation code.")
+    lines.append("        hd: If True, return 32x32 HD icon. Otherwise 16x16 SD.")
+    lines.append("")
+    lines.append("    Returns:")
+    lines.append("        PIL Image (16x16 or 32x32 RGB).")
+    lines.append('    """')
     lines.append('    icon_key = WMO_CODE_TO_ICON.get(code, "cloud")')
-    lines.append("    return _ICON_IMAGES[icon_key].copy()")
+    lines.append("    icons = _ICON_IMAGES_HD if hd else _ICON_IMAGES_SD")
+    lines.append("    return icons[icon_key].copy()")
     lines.append("")
 
     OUTPUT_PATH.write_text("\n".join(lines))

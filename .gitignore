@@ -33,7 +33,6 @@ Thumbs.db
 # Project specific
 .zeclock/
 *.scn
-*.fnt
 dmdserver
 libdmdutil*
 libzedmd*

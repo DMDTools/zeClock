@@ -22,7 +22,7 @@ Transform your desk into an arcade room with a DMD clock that displays time over
 ## Prerequisites
 
 - **Python 3.9+**
-- **ZeDMD** (128x32 or 256x64) connected via USB or WiFi
+- **ZeDMD** (128x32 standard or 256x64 HD) connected via USB or WiFi
 - **Linux** (Raspberry Pi, Ubuntu, WSL), **macOS**, or **Windows** (Git Bash/WSL)
 
 ## Installation
@@ -70,6 +70,26 @@ This process automatically installs the following in your `~/.zeclock/` director
 
 zeClock communicates directly with ZeDMD hardware via libzedmd — no separate dmdserver process is needed.
 
+### Try without hardware (Virtual DMD)
+
+Don't have a ZeDMD yet? You can try zeClock in your browser with the virtual DMD:
+
+```bash
+# Install and bootstrap
+pip install -e ".[dev]"
+zeclock --bootstrap
+
+# Start the virtual DMD (opens a browser preview at http://localhost:8080)
+make dev-start-virtual
+
+# Or in HD mode (256x64)
+make dev-start-virtual-hd
+```
+
+The virtual DMD renders the exact same output as a real ZeDMD, with a WebGL dot-matrix shader for authentic DMD look.
+
+### With ZeDMD hardware
+
 **Launch zeClock**
 
 ```bash
@@ -93,6 +113,9 @@ That's it! With the default `auto` backend, zeClock connects directly to your Ze
 | `--wifi-addr` | IP address | from config | ZeDMD WiFi address |
 | `--device` | path | auto-detect | USB serial device (e.g. `/dev/ttyUSB0`) |
 | `--brightness` | 0-15 | 10 | Display brightness |
+| `--hd` | — | — | Use ZeDMD HD resolution (256x64) |
+| `--width` | pixels | 128 (or 256 with `--hd`) | Display width |
+| `--height` | pixels | 32 (or 64 with `--hd`) | Display height |
 | `--color` | color name | `auto` | Clock color |
 | `--animation-color` | color name | same as clock | Animation color |
 | `--bootstrap` | — | — | Install libzedmd + DotClk resources |
@@ -101,6 +124,21 @@ That's it! With the default `auto` backend, zeClock connects directly to your Ze
 - `auto` (default): Tries libzedmd first, falls back to dmdserver TCP if unavailable
 - `zedmd`: Direct libzedmd only — exits with error if library not found or connection fails
 - `dmdserver`: TCP connection to a running dmdserver process (for development/virtual-dmd)
+
+**ZeDMD HD (256x64):**
+
+zeClock supports ZeDMD HD displays natively. The resolution is auto-detected from the hardware after connection — if your ZeDMD is flashed with HD firmware (256x64), zeClock adapts automatically. You can also force HD mode explicitly:
+
+```bash
+# Auto-detection (recommended — works if ZeDMD HD firmware is flashed)
+zeclock
+
+# Force HD resolution explicitly
+zeclock --hd
+
+# Custom resolution
+zeclock --width 256 --height 64
+```
 
 ### Configuration File
 
@@ -115,6 +153,13 @@ wifi_addr = 192.168.0.35
 # Brightness (0-15)
 brightness = 10
 
+[display]
+# Display resolution — auto-detected from hardware when possible
+# Standard ZeDMD: 128x32 (default)
+# ZeDMD HD: 256x64
+# width = 256
+# height = 64
+
 [dmdserver]
 # Used when --backend dmdserver is specified
 host = localhost
@@ -125,17 +170,7 @@ CLI arguments take precedence over config file values.
 
 ### Development Mode (Virtual DMD)
 
-For development without physical hardware, use the dmdserver backend with `virtual-dmd.py`:
-
-```bash
-# Terminal 1: Start virtual DMD (browser preview)
-make dev-start-virtual
-
-# Terminal 2: Start zeClock with dmdserver backend
-zeclock --backend dmdserver
-```
-
-This starts `scripts/virtual-dmd.py` which accepts DMDStream TCP connections and renders frames to a browser via WebSocket.
+For development without physical hardware, see [CONTRIBUTING.md](CONTRIBUTING.md#development-mode-virtual-dmd).
 
 ### Docker Deployment
 
@@ -154,139 +189,101 @@ wifi_addr = 192.168.0.35
 brightness = 10
 ```
 
-## Usage Examples
+## Plugins
 
-**Simple clock**
+zeClock includes built-in plugins that alternate with the clock display. Each plugin renders animated content on the DMD.
 
-```python
-from zeclock.clock import ZeClock
-import asyncio
+### Pinball
 
-clock = ZeClock()
-asyncio.run(clock.run())
+Retro pinball DMD animations with clock overlay. Plays randomly from 2300+ `.scn` animation files with DotBlt composition.
+
+![Pinball plugin demo](https://placehold.co/400x100/0a0a0a/ff8800?text=Pinball+Plugin+Demo)
+
+### Pong
+
+Two AI players compete in a real Pong match. The score persists across activations — the clock only takes over between points. First to 5 wins with confetti celebration.
+
+![Pong plugin demo](https://placehold.co/400x100/0a0a0a/ff8800?text=Pong+Plugin+Demo)
+
+### Weather
+
+Current conditions, tomorrow's forecast, 3-day outlook, and 7-day overview. Data from Open-Meteo API (no key required), cached 15 minutes.
+
+![Weather plugin demo](https://placehold.co/400x100/0a0a0a/ff8800?text=Weather+Plugin+Demo)
+
+### Eyes
+
+Animated robot eyes tracking a buzzing fly. The eyes react with expressions (surprised, annoyed, sleepy) based on the fly's behavior.
+
+![Eyes plugin demo](https://placehold.co/400x100/0a0a0a/ff8800?text=Eyes+Plugin+Demo)
+
+### Stock
+
+Real-time stock prices from Yahoo Finance with intraday sparkline graphs. Supports multiple symbols, pre/post market data.
+
+![Stock plugin demo](https://placehold.co/400x100/0a0a0a/ff8800?text=Stock+Plugin+Demo)
+
+### GIF
+
+Plays animated GIFs from `~/.zeclock/plugins/gif/`. Drop any `.gif` file in the directory and it will be randomly selected.
+
+### Plugin configuration
+
+Plugins are configured in `~/.zeclock/config/plugins.yaml`:
+
+```yaml
+clock_display_seconds: 5
+plugins:
+  - name: pinball
+    frequency: 40
+  - name: pong
+    frequency: 20
+  - name: weather
+    frequency: 20
+    settings:
+      latitude: 45.19
+      longitude: 5.72
+      city_name: Grenoble
+      language: fr
+  - name: eyes
+    frequency: 10
+  - name: stock
+    frequency: 10
+    settings:
+      symbols: ["AAPL", "MSFT", "^FCHI"]
 ```
 
-**Clock with DotClk animation**
+Override from CLI: `zeclock --plugins pinball,pong`
 
-```python
-from pathlib import Path
-from zeclock.readers import load_scene, load_font
-from zeclock.overlay import overlay_or
-from zeclock.backends import create_backend
-import time
+## Writing Plugins
 
-# Load an animation
-scene = load_scene(Path("~/.zeclock/resources/animations/Pinball/AFM/attract.scn").expanduser())
-
-# Load a font
-font = load_font(Path("~/.zeclock/resources/Fonts/Font1.fnt").expanduser())
-
-# Create backend (auto-selects libzedmd or dmdserver)
-backend = create_backend(backend="auto", wifi_addr="192.168.0.35")
-backend.connect()
-
-# Display animation with time
-for frame in scene:
-    time_str = time.strftime("%H:%M")
-    time_overlay = font.render_text(time_str, 128, 32)
-    merged = overlay_or(frame, time_overlay)
-    backend.send_frame(merged, color=(255, 128, 0))
-    time.sleep(0.04)  # 25 FPS
-
-backend.disconnect()
-```
+Want to create your own plugin? See the [Plugin Authoring Guide](docs/plugin_authoring.md) for the complete reference (interface, helpers API, lifecycle, testing), or [CONTRIBUTING.md](CONTRIBUTING.md#writing-plugins) for a quick overview.
 
 ## Project Structure
 
-```
-zeClock/
-├── zeclock/
-│   ├── __init__.py
-│   ├── clock.py                 # Main asynchronous clock loop
-│   ├── installer.py             # Runtime bootstrap (libzedmd & resources)
-│   ├── backend_config.py        # BackendConfig dataclass and config file parsing
-│   ├── overlay.py               # Bitmap blending and masking (DotBlt algorithm)
-│   ├── dmdserver_client.py      # Backward-compatible alias for DMDServerBackend
-│   ├── backends/
-│   │   ├── __init__.py          # Exports DMDBackend, create_backend()
-│   │   ├── base.py              # DMDBackend abstract base class
-│   │   ├── zedmd.py             # ZeDMDBackend (ctypes/libzedmd)
-│   │   ├── dmdserver.py         # DMDServerBackend (TCP socket)
-│   │   └── factory.py           # create_backend() factory function
-│   ├── readers/
-│   │   ├── __init__.py
-│   │   ├── fnt_reader.py        # Binary .fnt bitmap font loader
-│   │   └── scn_reader.py        # Binary .scn scene and animation loader
-│   └── resources/
-│       └── fonts/
-│           └── default.ttf      # Fallback TrueType vector font
-├── deploy/
-│   └── nas/
-│       ├── Dockerfile           # Single container with libzedmd
-│       ├── docker-compose.yml   # Single zeclock service
-│       └── zeclock-config/
-│           └── zeclock.ini      # NAS-specific config
-├── scripts/
-│   └── virtual-dmd.py           # Virtual DMD for browser preview
-├── examples/
-│   ├── demo.py                  # Simple rendering demonstration
-│   ├── run_clock.py             # Minimal clock launcher
-│   └── test_readers.py          # Quick loader integration tests
-├── tests/
-│   ├── test_backend_base.py     # Backend ABC tests
-│   ├── test_zedmd_backend.py    # ZeDMDBackend unit tests
-│   ├── test_backend_factory.py  # Factory selection tests
-│   └── ...
-├── pyproject.toml               # Unified modern packaging configuration (PEP 621)
-├── requirements.txt             # Minimum development requirements
-└── README.md                    # User manual
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full project structure and architecture details.
 
-**Installed resources**
+**Installed resources** (`~/.zeclock/`):
 
 ```
 ~/.zeclock/
-├── lib/
-│   ├── libzedmd.so              # ZeDMD communication library
-│   ├── libsockpp.so             # Socket library (dependency)
-│   ├── libserialport.so         # Serial port library (dependency)
-│   └── .libzedmd-version        # Installed version tag
+├── lib/                         # libzedmd native library
 ├── config/
 │   └── zeclock.ini              # User configuration
 └── resources/
-    ├── Fonts/
-    │   ├── Font1.fnt            # Default DotClk font
-    │   └── Font2.fnt
-    └── animations/
-        ├── Pinball/             # Animations by theme
-        │   ├── AFM/
-        │   ├── TronLegacy/
-        │   └── ...
-        ├── Classic/
-        └── Holiday/
+    └── animations/              # 2300+ retro .scn animations
 ```
+
+Fonts are bundled in the package — no separate download needed.
 
 ## Development
 
-**Development mode installation**
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, and architecture.
 
 ```bash
-git clone https://github.com/DMDTools/zeClock.git
-cd zeClock
-pip install -e ".[dev]"
-```
-
-**Tests**
-
-```bash
-pytest tests/
-```
-
-**Linter**
-
-```bash
-black zeclock/
-flake8 zeclock/
+make test              # Run tests + lint + type check
+make dev-start-virtual # Virtual DMD in browser (128x32)
+make dev-start-virtual-hd  # Virtual DMD HD (256x64)
 ```
 
 ## Troubleshooting
@@ -327,16 +324,6 @@ ls /dev/ttyUSB* /dev/ttyACM* /dev/cu.usbserial*
 zeclock --device /dev/ttyUSB0
 ```
 
-**Fallback to dmdserver for development**
-
-```bash
-# Start virtual DMD
-make dev-start-virtual
-
-# Use dmdserver backend explicitly
-zeclock --backend dmdserver
-```
-
 **Animations not displaying**
 
 ```bash
@@ -347,29 +334,9 @@ ls ~/.zeclock/resources/animations/
 zeclock --bootstrap
 ```
 
-**Performance / Low FPS**
-
-```python
-# Reduce resolution or FPS
-clock = ZeClock(width=128, height=32, fps=15)
-
-# Preload animations in RAM
-scene = load_scene("animation.scn")
-frames = list(scene)  # Force loading
-```
-
 ## Roadmap
 
-- [ ] **REST API**: HTTP control (clock changes, notifications)
-- [ ] **MQTT**: Home automation integration (Jeedom, Home Assistant)
-- [ ] **Plugins**: Extensible Python plugin system
-  - [ ] WeatherClock: Weather display
-  - [ ] Home automation data
-  - [ ] MAMEClock: High scores
-  - [ ] AWSClock: AWS costs
-- [ ] **Advanced attract mode**: Random rotation between multiple clocks
-- [ ] **Web interface**: Browser-based configuration
-- [ ] **Galaga Clock**: Animation where Galaga shoots changing digits
+See [TODO.md](TODO.md) for the full roadmap and planned features.
 
 ## References
 

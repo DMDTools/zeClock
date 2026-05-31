@@ -56,6 +56,8 @@ def create_mock_scene(
         frames.append(frame)
 
     scene.frames = frames
+    scene.width = width
+    scene.height = height
     return scene
 
 
