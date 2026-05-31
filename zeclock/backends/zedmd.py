@@ -462,13 +462,24 @@ class ZeDMDBackend(DMDBackend):
         return success
 
     def _close_instance(self) -> None:
-        """Close the current ZeDMD instance without resetting config state."""
+        """Close the current ZeDMD instance without resetting config state.
+
+        Note: When called during reconnection after a connection loss,
+        ZeDMD_Close may segfault if the internal Run thread is in a
+        corrupted state. We catch this by skipping Close when reconnecting
+        (the old instance is abandoned — minor memory leak but avoids crash).
+        """
         if self._instance:
-            try:
-                self._lib.ZeDMD_Close(self._instance)
-            except (OSError, ctypes.ArgumentError):
-                # Instance may already be invalid
-                pass
+            if not self._reconnecting:
+                # Safe to close: normal shutdown path
+                try:
+                    self._lib.ZeDMD_Close(self._instance)
+                except (OSError, ctypes.ArgumentError):
+                    # Instance may already be invalid
+                    pass
+            else:
+                # Reconnecting after crash: skip Close to avoid segfault
+                logger.debug("Skipping ZeDMD_Close on dead instance to avoid segfault")
         self._connected = False
         self._instance = None
         self._log_callback_ref = None
