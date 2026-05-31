@@ -1,8 +1,16 @@
-"""ZeDMD backend using libzedmd via ctypes."""
+"""ZeDMD backend using libzedmd via ctypes.
+
+Includes connection health monitoring and automatic reconnection for both
+USB and WiFi transports. Uses the libzedmd log callback to detect
+communication failures (StreamBytes errors, serial/TCP/UDP errors) and
+triggers reconnection with exponential backoff.
+"""
 
 import ctypes
 import logging
 import platform
+import threading
+import time
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -15,6 +23,14 @@ logger = logging.getLogger(__name__)
 
 # Library search path
 LIB_DIR = Path.home() / ".zeclock" / "lib"
+
+# Reconnection constants
+HEALTH_CHECK_INTERVAL = 5.0  # Seconds between health checks
+RECONNECT_DELAY_INITIAL = 2.0  # Initial delay before first reconnect attempt
+RECONNECT_DELAY_MAX = 30.0  # Maximum delay between reconnect attempts
+RECONNECT_DELAY_MULTIPLIER = 1.5  # Backoff multiplier
+# Number of StreamBytes failures (detected via log) before declaring disconnection
+FAILURE_THRESHOLD = 3
 
 
 def _find_library() -> Path:
@@ -48,12 +64,27 @@ def _find_library() -> Path:
     )
 
 
+# ctypes callback type matching: void (*)(const char* format, va_list args, const void* userData)
+# On Linux/macOS, va_list is a pointer-sized type. We use c_void_p for both args and userData.
+ZEDMD_LOG_CALLBACK = ctypes.CFUNCTYPE(
+    None, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_void_p
+)
+
+
 class ZeDMDBackend(DMDBackend):
     """Direct ZeDMD communication via libzedmd ctypes.
 
     This backend loads the libzedmd shared library and communicates
     directly with ZeDMD hardware over WiFi or USB, bypassing the
     need for a separate dmdserver process.
+
+    Connection monitoring strategy:
+    - Registers a log callback with libzedmd to intercept internal error messages
+    - Detects "StreamBytes failed", "libserialport error", "TCP stream error",
+      "UDP stream error" messages as indicators of connection loss
+    - After FAILURE_THRESHOLD consecutive failures, marks connection as lost
+    - Periodic health check via ZeDMD_GetWidth (returns 0 if no active connection)
+    - Automatic reconnection with exponential backoff (works for both USB and WiFi)
 
     Args:
         wifi_addr: WiFi IP address of the ZeDMD device.
@@ -82,6 +113,18 @@ class ZeDMDBackend(DMDBackend):
         self._connected = False
         self._instance: Optional[int] = None
 
+        # Health check and reconnection state
+        self._last_health_check = 0.0
+        self._consecutive_failures = 0
+        self._reconnect_delay = RECONNECT_DELAY_INITIAL
+        self._last_reconnect_attempt = 0.0
+        self._reconnecting = False
+
+        # Log-based failure detection (thread-safe)
+        self._stream_error_count = 0
+        self._stream_error_lock = threading.Lock()
+        self._last_lib_log: Optional[str] = None
+
         # Load library — raises ImportError if not found
         lib_path = _find_library()
         try:
@@ -89,6 +132,9 @@ class ZeDMDBackend(DMDBackend):
         except OSError as e:
             raise ImportError(f"Failed to load libzedmd from {lib_path}: {e}") from e
         self._setup_ctypes()
+
+        # Keep a reference to the callback to prevent garbage collection
+        self._log_callback_ref: object = None
 
     def _setup_ctypes(self) -> None:
         """Declare ctypes function signatures for the libzedmd C API."""
@@ -125,6 +171,87 @@ class ZeDMDBackend(DMDBackend):
             ctypes.POINTER(ctypes.c_uint8),
         ]
 
+        lib.ZeDMD_GetWidth.restype = ctypes.c_uint16
+        lib.ZeDMD_GetWidth.argtypes = [ctypes.c_void_p]
+
+        lib.ZeDMD_SetLogCallback.restype = None
+        lib.ZeDMD_SetLogCallback.argtypes = [
+            ctypes.c_void_p,
+            ZEDMD_LOG_CALLBACK,
+            ctypes.c_void_p,
+        ]
+
+        lib.ZeDMD_FormatLogMessage.restype = ctypes.c_char_p
+        lib.ZeDMD_FormatLogMessage.argtypes = [
+            ctypes.c_char_p,
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+        ]
+
+    def _log_callback(
+        self,
+        fmt: Optional[bytes],
+        args: Optional[ctypes.c_void_p],
+        user_data: Optional[ctypes.c_void_p],
+    ) -> None:
+        """Callback invoked by libzedmd for log messages.
+
+        Formats the message using ZeDMD_FormatLogMessage and inspects it
+        for error patterns indicating connection loss. This runs on the
+        libzedmd Run thread, so access to shared state is protected by a lock.
+        """
+        try:
+            # Use the library's own formatter to resolve the va_list
+            formatted = self._lib.ZeDMD_FormatLogMessage(fmt, args, user_data)
+            if not formatted:
+                return
+            msg = formatted.decode("utf-8", errors="replace")
+        except Exception:
+            return
+
+        # Forward to Python logging at appropriate level
+        error_patterns = (
+            "StreamBytes failed",
+            "libserialport error",
+            "TCP stream error",
+            "UDP stream error",
+            "Full frame forced, error",
+            "Unable to",
+            "failed",
+            "Failed",
+            "error",
+        )
+        is_error = any(pattern in msg for pattern in error_patterns)
+        if is_error:
+            logger.warning("libzedmd: %s", msg)
+        else:
+            logger.debug("libzedmd: %s", msg)
+        self._last_lib_log = msg
+
+        # Detect stream error patterns for reconnection logic
+        stream_error_patterns = (
+            "StreamBytes failed",
+            "libserialport error",
+            "TCP stream error",
+            "UDP stream error",
+            "Full frame forced, error",
+        )
+        if any(pattern in msg for pattern in stream_error_patterns):
+            with self._stream_error_lock:
+                self._stream_error_count += 1
+                count = self._stream_error_count
+            logger.debug("libzedmd stream error detected (#%d): %s", count, msg)
+
+    def _reset_error_count(self) -> None:
+        """Reset the stream error counter (called on successful operations)."""
+        with self._stream_error_lock:
+            self._stream_error_count = 0
+
+    def _get_error_count(self) -> int:
+        """Get the current stream error count (thread-safe)."""
+        with self._stream_error_lock:
+            return self._stream_error_count
+
     @property
     def connected(self) -> bool:
         """Whether the backend is currently connected to a display."""
@@ -133,8 +260,9 @@ class ZeDMDBackend(DMDBackend):
     def connect(self) -> bool:
         """Establish connection to the ZeDMD display.
 
-        Calls ZeDMD_GetInstance, then connects via WiFi (ZeDMD_OpenWiFi)
-        or USB (ZeDMD_Open). On success, configures frame size and brightness.
+        Calls ZeDMD_GetInstance, registers the log callback, then connects
+        via WiFi (ZeDMD_OpenWiFi) or USB (ZeDMD_Open). On success,
+        configures frame size and brightness.
 
         Returns:
             True if connection was established successfully, False otherwise.
@@ -143,6 +271,10 @@ class ZeDMDBackend(DMDBackend):
         if not self._instance:
             logger.error("Failed to create ZeDMD instance")
             return False
+
+        # Register log callback for error detection
+        self._log_callback_ref = ZEDMD_LOG_CALLBACK(self._log_callback)
+        self._lib.ZeDMD_SetLogCallback(self._instance, self._log_callback_ref, None)
 
         # Connect via WiFi or USB
         if self._wifi_addr:
@@ -156,13 +288,119 @@ class ZeDMDBackend(DMDBackend):
 
         if not ok:
             logger.warning("Failed to connect to ZeDMD")
+            # Clean up the instance on failure
+            self._instance = None
+            self._log_callback_ref = None
             return False
 
         # Configure display
         self._lib.ZeDMD_SetFrameSize(self._instance, self._width, self._height)
         self._lib.ZeDMD_SetBrightness(self._instance, self._brightness)
         self._connected = True
+        self._consecutive_failures = 0
+        self._reconnect_delay = RECONNECT_DELAY_INITIAL
+        self._last_health_check = time.monotonic()
+        self._reset_error_count()
+        logger.info("ZeDMD connected successfully")
         return True
+
+    def _check_health(self) -> bool:
+        """Check if the ZeDMD connection is still alive.
+
+        Two-pronged detection:
+        1. Check stream error count from log callback (detects USB serial
+           failures and WiFi TCP/UDP send errors in real-time)
+        2. Check ZeDMD_GetWidth — returns 0 when the internal active
+           connection pointer is null (e.g. after Close or fatal error)
+
+        Returns:
+            True if the connection appears healthy, False otherwise.
+        """
+        if not self._instance:
+            return False
+
+        # Check 1: Log-based error detection (most reliable for both USB & WiFi)
+        error_count = self._get_error_count()
+        if error_count >= FAILURE_THRESHOLD:
+            logger.warning(
+                "ZeDMD health check: %d stream errors detected via log callback",
+                error_count,
+            )
+            return False
+
+        # Check 2: Width probe (catches cases where pActive becomes null)
+        try:
+            width = self._lib.ZeDMD_GetWidth(self._instance)
+            if width == 0:
+                logger.warning("ZeDMD health check: GetWidth returned 0")
+                return False
+        except (OSError, ctypes.ArgumentError):
+            return False
+
+        return True
+
+    def _attempt_reconnect(self) -> bool:
+        """Attempt to reconnect to the ZeDMD device.
+
+        Closes the current (dead) connection and tries to establish
+        a new one. Uses exponential backoff between attempts.
+        Works for both USB (device re-enumeration) and WiFi (device reboot).
+
+        Returns:
+            True if reconnection succeeded, False otherwise.
+        """
+        now = time.monotonic()
+
+        # Respect backoff delay
+        time_since_last = now - self._last_reconnect_attempt
+        if time_since_last < self._reconnect_delay:
+            remaining = self._reconnect_delay - time_since_last
+            # Log waiting status once per second (avoid spam)
+            if int(remaining) != int(remaining + 1):
+                logger.info(
+                    "ZeDMD reconnection: waiting %.0fs before next attempt...",
+                    remaining,
+                )
+            return False
+
+        self._last_reconnect_attempt = now
+        logger.info(
+            "Attempting ZeDMD reconnection...",
+        )
+
+        # Close the old instance cleanly
+        self._close_instance()
+
+        # Try to reconnect
+        success = self.connect()
+
+        if success:
+            logger.info("ZeDMD reconnected successfully")
+            self._reconnecting = False
+        else:
+            # Increase backoff delay for next attempt
+            self._reconnect_delay = min(
+                self._reconnect_delay * RECONNECT_DELAY_MULTIPLIER,
+                RECONNECT_DELAY_MAX,
+            )
+            logger.info(
+                "ZeDMD reconnection failed — next retry in %.0fs",
+                self._reconnect_delay,
+            )
+
+        return success
+
+    def _close_instance(self) -> None:
+        """Close the current ZeDMD instance without resetting config state."""
+        if self._instance:
+            try:
+                self._lib.ZeDMD_Close(self._instance)
+            except (OSError, ctypes.ArgumentError):
+                # Instance may already be invalid
+                pass
+        self._connected = False
+        self._instance = None
+        self._log_callback_ref = None
 
     def send_frame(
         self,
@@ -172,9 +410,10 @@ class ZeDMDBackend(DMDBackend):
     ) -> bool:
         """Send a frame to the ZeDMD display.
 
-        Sends the image as RGB888 directly via ZeDMD_RenderRgb888,
-        avoiding any Python-level pixel conversion. If the image is
-        not RGB, it is colorized using the provided color tuple first.
+        Includes connection health monitoring: periodically checks if the
+        device is still reachable (via log-based error detection and
+        GetWidth probe), and catches errors during rendering.
+        If the connection is lost, enters reconnection mode.
 
         Args:
             image: PIL Image to send (any mode, will be converted to RGB).
@@ -182,19 +421,61 @@ class ZeDMDBackend(DMDBackend):
             color: RGB color tuple for grayscale colorization.
 
         Returns:
-            True if the frame was sent successfully, False otherwise.
+            True if the frame was sent successfully, False if the
+            connection appears to be lost (reconnection in progress).
         """
-        if not self._connected:
+        # If we're in reconnection mode, attempt reconnect
+        if self._reconnecting:
+            if not self._attempt_reconnect():
+                return False
+            # Reconnection succeeded, continue with frame send
+
+        if not self._connected or not self._instance:
             return False
+
+        # Periodic health check
+        now = time.monotonic()
+        if now - self._last_health_check >= HEALTH_CHECK_INTERVAL:
+            self._last_health_check = now
+            if not self._check_health():
+                logger.warning(
+                    "ZeDMD connection lost — will retry in %.0fs",
+                    self._reconnect_delay,
+                )
+                self._connected = False
+                self._reconnecting = True
+                return False
 
         # Colorize grayscale if needed
         if image.mode != "RGB":
             image = colorize_grayscale(image, color)
 
-        # Send RGB888 directly — no Python-level pixel conversion needed
-        rgb_data = image.tobytes()
-        frame_array = (ctypes.c_uint8 * len(rgb_data)).from_buffer_copy(rgb_data)
-        self._lib.ZeDMD_RenderRgb888(self._instance, frame_array)
+        # Send RGB888 directly
+        try:
+            rgb_data = image.tobytes()
+            frame_array = (ctypes.c_uint8 * len(rgb_data)).from_buffer_copy(rgb_data)
+            self._lib.ZeDMD_RenderRgb888(self._instance, frame_array)
+        except (OSError, ctypes.ArgumentError) as e:
+            self._consecutive_failures += 1
+            logger.warning(
+                "ZeDMD render error (failure #%d): %s",
+                self._consecutive_failures,
+                e,
+            )
+            if self._consecutive_failures >= FAILURE_THRESHOLD:
+                logger.error(
+                    "ZeDMD connection lost (repeated render failures) — will retry in %.0fs",
+                    self._reconnect_delay,
+                )
+                self._connected = False
+                self._reconnecting = True
+                return False
+            # Single failure might be transient
+            return True
+
+        # Successful render — reset ctypes-level failure counter
+        # (log-based errors are checked in health check)
+        self._consecutive_failures = 0
         return True
 
     def disconnect(self) -> None:
@@ -202,7 +483,5 @@ class ZeDMDBackend(DMDBackend):
 
         Calls ZeDMD_Close to release the hardware connection.
         """
-        if self._instance and self._connected:
-            self._lib.ZeDMD_Close(self._instance)
-        self._connected = False
-        self._instance = None
+        self._reconnecting = False
+        self._close_instance()

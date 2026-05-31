@@ -34,14 +34,17 @@ This document details the technologies, libraries, protocols, and tools that mak
   - **Stable display frequency**: The main loop dynamically calculates each frame's execution time to adapt `asyncio.sleep` and guarantee a regular framerate.
   - **Background pre-computation**: Loading and rendering `.scn` animations runs via `asyncio.create_task`. The main display loop stays smooth and responsive.
   - **Cooperative yielding**: `await asyncio.sleep(0)` in intensive loading loops to yield back to the event loop.
+- **threading** (standard module): Used in `ZeDMDBackend` for thread-safe access to connection health state. The libzedmd log callback executes on libzedmd's internal Run thread, so a `threading.Lock` protects the shared stream error counter accessed by both the callback thread and the Python asyncio thread.
 
 ### 5. Network Protocol & Communication
 
 - **Direct Hardware (libzedmd via ctypes)**: Default communication path using the `ZeDMDBackend`.
   - Loads `libzedmd.so` / `.dylib` / `.dll` from `~/.zeclock/lib/` via `ctypes.CDLL`.
-  - C API calls: `ZeDMD_GetInstance`, `ZeDMD_OpenWiFi` / `ZeDMD_Open`, `ZeDMD_SetFrameSize`, `ZeDMD_SetBrightness`, `ZeDMD_RenderRgb888`, `ZeDMD_Close`.
+  - C API calls: `ZeDMD_GetInstance`, `ZeDMD_OpenWiFi` / `ZeDMD_Open`, `ZeDMD_SetFrameSize`, `ZeDMD_SetBrightness`, `ZeDMD_RenderRgb888`, `ZeDMD_Close`, `ZeDMD_SetLogCallback`, `ZeDMD_FormatLogMessage`, `ZeDMD_GetWidth`.
+  - **Log callback**: A ctypes `CFUNCTYPE` callback is registered via `ZeDMD_SetLogCallback` to intercept libzedmd internal log messages. `ZeDMD_FormatLogMessage` resolves `va_list` arguments into readable strings. Error patterns (e.g., "StreamBytes failed", "libserialport error", "TCP stream error", "UDP stream error") are counted to detect connection loss.
   - **RGB888 passthrough**: Raw RGB bytes from PIL Image are sent directly to libzedmd without any Python-level pixel conversion (3 bytes per pixel: Red, Green, Blue).
   - **Connection modes**: WiFi (IP address) or USB serial (device path or auto-detection).
+  - **Connection health monitoring**: Two-pronged detection — log-based error counting (threshold of 3 consecutive failures) and periodic `ZeDMD_GetWidth` probe (returns 0 when internal connection pointer is null). Automatic reconnection with exponential backoff (initial 2s, max 30s, ×1.5 multiplier).
 
 - **TCP Sockets (standard `socket` module)**: Alternative communication via `DMDServerBackend` for development.
   - **DMDStream network header** (big-endian):

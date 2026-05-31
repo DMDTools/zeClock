@@ -61,7 +61,7 @@ Pluggable backend system for DMD communication. All backends implement the `DMDB
   - `disconnect() -> None`: Close the connection.
   - `connected` property: Whether the backend is currently connected.
   - Context manager protocol (`__enter__` / `__exit__`): Calls `connect()` / `disconnect()` automatically.
-- **`ZeDMDBackend` (`backends/zedmd.py`)**: Direct hardware communication via `libzedmd` (C shared library loaded through ctypes). Sends frames as RGB888 directly via `ZeDMD_RenderRgb888`, avoiding any Python-level pixel conversion. Supports WiFi and USB connections.
+- **`ZeDMDBackend` (`backends/zedmd.py`)**: Direct hardware communication via `libzedmd` (C shared library loaded through ctypes). Sends frames as RGB888 directly via `ZeDMD_RenderRgb888`, avoiding any Python-level pixel conversion. Supports WiFi and USB connections. Includes connection health monitoring via a log callback registered with libzedmd (`ZeDMD_SetLogCallback`) that detects transport errors (StreamBytes failures, serial/TCP/UDP errors) in real-time, combined with a periodic `ZeDMD_GetWidth` probe. Automatic reconnection uses exponential backoff and works for both USB and WiFi transports. Thread-safe error counting (via `threading.Lock`) protects shared state between the libzedmd internal thread and the Python asyncio thread.
 - **`DMDServerBackend` (`backends/dmdserver.py`)**: TCP client using the DMDStream protocol (refactored from `dmdserver_client.py`). Used for development with `virtual-dmd.py`.
 - **`BackendFactory` (`backends/factory.py`)**: Instantiates the correct backend based on `--backend` CLI argument (`auto`, `zedmd`, `dmdserver`). In `auto` mode, tries ZeDMD first, falls back to dmdserver.
 

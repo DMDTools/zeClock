@@ -88,6 +88,9 @@ class ZeClock:
         self.last_clock_time = ""
         self.last_clock_color: Optional[tuple] = None
 
+        # Reconnection state
+        self._reconnect_logged = False
+
         # Load font
         self.dotclk_font = None
         font_path = Path.home() / ".zeclock" / "resources" / "Fonts" / "STANDARD.fnt"
@@ -102,12 +105,22 @@ class ZeClock:
 
     async def run(self) -> None:
         """Main asynchronous loop with plugin-driven state machine."""
+        # Initial connection with retry loop
         if not self.dmd_client.connect():
-            print("❌ Cannot start: DMD backend is not available.")
+            print("⚠️ DMD backend not available — waiting for device...")
             print(
                 "👉 Check your backend configuration (--backend, --wifi-addr, --device)"
             )
-            return
+            delay = 2.0
+            while self.running:
+                await asyncio.sleep(delay)
+                if self.dmd_client.connect():
+                    print("✅ DMD backend connected")
+                    break
+                delay = min(delay * 1.5, 30.0)
+                logger.info("DMD still unavailable — next retry in %.0fs", delay)
+            if not self.running:
+                return
 
         # Initialize plugin system
         await self._init_plugin_system()
@@ -183,13 +196,17 @@ class ZeClock:
                 # Send to DMD
                 success = self.dmd_client.send_frame(frame)
 
-                # Reconnect if sending failed
+                # Handle connection loss — backend manages reconnection
                 if not success:
-                    print("⚠️ Reconnecting to DMD backend...")
-                    self.dmd_client.disconnect()
-                    if not self.dmd_client.connect():
-                        print("❌ Cannot reconnect to DMD backend")
-                        break
+                    if not self._reconnect_logged:
+                        print("⚠️ ZeDMD disconnected — attempting reconnection...")
+                        self._reconnect_logged = True
+                    # Slow down the loop while disconnected to avoid busy-waiting
+                    await asyncio.sleep(1.0)
+                    continue
+                elif self._reconnect_logged:
+                    print("✅ ZeDMD reconnected — resuming display")
+                    self._reconnect_logged = False
 
                 # Frame timing
                 elapsed = time.monotonic() - t0
@@ -377,7 +394,11 @@ def main() -> None:
     from .backend_config import load_config
     from .installer import check_and_install_resources
 
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
     logger = logging.getLogger(__name__)
 
     parser = argparse.ArgumentParser(description="zeClock - Animated DMD clock")
@@ -457,8 +478,17 @@ def main() -> None:
         default=None,
         help="Path to custom plugin configuration YAML file",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug logging (shows libzedmd internal messages)",
+    )
 
     args = parser.parse_args()
+
+    # Set log level based on --debug flag
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
 
     # Handle --plugin-config path validation (must check before any plugin operations)
     if args.plugin_config is not None:
