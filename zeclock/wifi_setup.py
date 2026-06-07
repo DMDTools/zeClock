@@ -325,13 +325,34 @@ PORTAL_HTML = """<!DOCTYPE html>
 class WifiSetupServer:
     """Captive portal web server for WiFi configuration."""
 
+    # URLs used by devices to detect captive portals
+    CAPTIVE_PORTAL_CHECKS = [
+        "/hotspot-detect.html",        # Apple iOS/macOS
+        "/library/test/success.html",   # Apple
+        "/generate_204",               # Android
+        "/gen_204",                    # Android
+        "/connecttest.txt",            # Windows
+        "/ncsi.txt",                   # Windows
+        "/redirect",                   # Windows 11
+    ]
+
     def __init__(self) -> None:
         self._app = web.Application()
+        self._pending_connect: bool = False
+
+        # Captive portal detection endpoints — must return redirect/non-success
+        for path in self.CAPTIVE_PORTAL_CHECKS:
+            self._app.router.add_get(path, self._handle_captive_check)
+
         self._app.router.add_get("/", self._handle_portal)
         self._app.router.add_get("/api/networks", self._handle_scan)
         self._app.router.add_post("/api/connect", self._handle_connect)
-        # Captive portal detection — redirect all to portal
-        self._app.router.add_get("/{path:.*}", self._handle_portal)
+        # Catch-all — redirect to portal
+        self._app.router.add_get("/{path:.*}", self._handle_captive_check)
+
+    async def _handle_captive_check(self, request: web.Request) -> web.Response:
+        """Respond to captive portal detection — redirect to our portal page."""
+        raise web.HTTPFound(f"http://{AP_IP}/")
 
     async def _handle_portal(self, request: web.Request) -> web.Response:
         return web.Response(text=PORTAL_HTML, content_type="text/html")
@@ -356,15 +377,26 @@ class WifiSetupServer:
                 {"success": False, "message": "No SSID provided"}, status=400
             )
 
+        # Return success immediately — the JS will show countdown
+        # Then connect in background (hotspot stays up for a few seconds)
+        asyncio.get_event_loop().call_later(
+            3, lambda: asyncio.ensure_future(self._do_connect(ssid, password))
+        )
+
+        return web.json_response(
+            {"success": True, "message": f"Connecting to {ssid}..."}
+        )
+
+    async def _do_connect(self, ssid: str, password: str) -> None:
+        """Connect to WiFi in background after response was sent."""
         success, message = await asyncio.get_event_loop().run_in_executor(
             None, connect_to_network, ssid, password
         )
-
         if success:
-            # Schedule server shutdown after response is sent
-            asyncio.get_event_loop().call_later(2, self._shutdown)
-
-        return web.json_response({"success": success, "message": message})
+            # Give client time to see the redirect message, then exit
+            await asyncio.sleep(5)
+            self._shutdown()
+        # If failed, hotspot was re-created by connect_to_network
 
     def _shutdown(self) -> None:
         """Stop the event loop to exit."""
