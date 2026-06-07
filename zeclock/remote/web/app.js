@@ -19,6 +19,9 @@ document.querySelectorAll('.tab').forEach(tab => {
         } else {
             stopTimerPolling();
         }
+        if (tab.dataset.tab === 'settings') {
+            loadConfig();
+        }
     });
 });
 
@@ -244,5 +247,170 @@ document.getElementById('message-text').addEventListener('keydown', (e) => {
 document.getElementById('speaker-message-text').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') sendSpeakerMessage();
 });
+
+// --- Configuration ---
+
+async function loadConfig() {
+    const [configResp, pluginsResp] = await Promise.all([
+        api('/api/config'),
+        api('/api/config/plugins'),
+    ]);
+
+    if (configResp && configResp.data) {
+        const cfg = configResp.data;
+
+        // ZeDMD
+        if (cfg.zedmd) {
+            document.getElementById('cfg-wifi-addr').value = cfg.zedmd.wifi_addr || '';
+            document.getElementById('cfg-brightness').value = cfg.zedmd.brightness || '10';
+        }
+        // Display
+        if (cfg.display) {
+            document.getElementById('cfg-font').value = cfg.display.font || 'STANDARD';
+        }
+        // Location
+        if (cfg.location) {
+            document.getElementById('cfg-latitude').value = cfg.location.latitude || '';
+            document.getElementById('cfg-longitude').value = cfg.location.longitude || '';
+            document.getElementById('cfg-city').value = cfg.location.city_name || '';
+        }
+        // Brightness schedule
+        if (cfg.brightness_schedule) {
+            document.getElementById('cfg-max-brightness').value = cfg.brightness_schedule.max_brightness || '7';
+            document.getElementById('cfg-schedule-default').value = cfg.brightness_schedule.default || '';
+            document.getElementById('cfg-sunrise-brightness').value = cfg.brightness_schedule.sunrise_brightness || '';
+            document.getElementById('cfg-sunset-brightness').value = cfg.brightness_schedule.sunset_brightness || '';
+        }
+        // REST API
+        if (cfg.rest_api) {
+            document.getElementById('cfg-rest-enabled').checked = cfg.rest_api.enabled === 'true';
+            document.getElementById('cfg-rest-port').value = cfg.rest_api.port || '8080';
+        }
+    }
+
+    if (pluginsResp && pluginsResp.data) {
+        const pCfg = pluginsResp.data;
+        document.getElementById('cfg-clock-seconds').value = pCfg.clock_display_seconds || 5;
+        renderPluginEntries(pCfg.plugins || []);
+    }
+}
+
+function renderPluginEntries(plugins) {
+    const container = document.getElementById('cfg-plugins-list');
+    container.innerHTML = plugins.map((p, i) => `
+        <div class="plugin-config-entry" data-index="${i}">
+            <div class="form-row">
+                <input type="text" class="plugin-name-input" value="${p.name || ''}" placeholder="Plugin name">
+                <input type="number" class="plugin-freq-input" value="${p.frequency || 20}" min="0" max="100" title="Frequency %">
+                <button class="btn btn-danger btn-small" onclick="removePluginEntry(${i})">✕</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function addPluginEntry() {
+    const container = document.getElementById('cfg-plugins-list');
+    const i = container.children.length;
+    const div = document.createElement('div');
+    div.className = 'plugin-config-entry';
+    div.dataset.index = i;
+    div.innerHTML = `
+        <div class="form-row">
+            <input type="text" class="plugin-name-input" value="" placeholder="Plugin name">
+            <input type="number" class="plugin-freq-input" value="20" min="0" max="100" title="Frequency %">
+            <button class="btn btn-danger btn-small" onclick="removePluginEntry(${i})">✕</button>
+        </div>
+    `;
+    container.appendChild(div);
+}
+
+function removePluginEntry(index) {
+    const container = document.getElementById('cfg-plugins-list');
+    const entry = container.querySelector(`[data-index="${index}"]`);
+    if (entry) entry.remove();
+}
+
+async function saveConfig() {
+    const statusEl = document.getElementById('config-status');
+    statusEl.textContent = 'Saving...';
+
+    // Build zeclock.ini structure
+    const config = {};
+
+    // ZeDMD section
+    const wifiAddr = document.getElementById('cfg-wifi-addr').value.trim();
+    const brightness = document.getElementById('cfg-brightness').value;
+    if (wifiAddr || brightness) {
+        config.zedmd = {};
+        if (wifiAddr) config.zedmd.wifi_addr = wifiAddr;
+        if (brightness) config.zedmd.brightness = brightness;
+    }
+
+    // Display section
+    const font = document.getElementById('cfg-font').value;
+    if (font) config.display = { font };
+
+    // Location section
+    const lat = document.getElementById('cfg-latitude').value.trim();
+    const lng = document.getElementById('cfg-longitude').value.trim();
+    const city = document.getElementById('cfg-city').value.trim();
+    if (lat || lng || city) {
+        config.location = {};
+        if (lat) config.location.latitude = lat;
+        if (lng) config.location.longitude = lng;
+        if (city) config.location.city_name = city;
+    }
+
+    // Brightness schedule
+    const maxBr = document.getElementById('cfg-max-brightness').value;
+    const schedDefault = document.getElementById('cfg-schedule-default').value.trim();
+    const sunriseBr = document.getElementById('cfg-sunrise-brightness').value.trim();
+    const sunsetBr = document.getElementById('cfg-sunset-brightness').value.trim();
+    if (maxBr || schedDefault || sunriseBr || sunsetBr) {
+        config.brightness_schedule = {};
+        if (maxBr) config.brightness_schedule.max_brightness = maxBr;
+        if (schedDefault) config.brightness_schedule.default = schedDefault;
+        if (sunriseBr) config.brightness_schedule.sunrise_brightness = sunriseBr;
+        if (sunsetBr) config.brightness_schedule.sunset_brightness = sunsetBr;
+    }
+
+    // REST API
+    const restEnabled = document.getElementById('cfg-rest-enabled').checked;
+    const restPort = document.getElementById('cfg-rest-port').value;
+    config.rest_api = {
+        enabled: restEnabled ? 'true' : 'false',
+        host: '0.0.0.0',
+        port: restPort,
+    };
+
+    // Build plugins.yaml structure
+    const pluginsConfig = {
+        clock_display_seconds: parseInt(document.getElementById('cfg-clock-seconds').value) || 5,
+        plugins: [],
+    };
+
+    document.querySelectorAll('.plugin-config-entry').forEach(entry => {
+        const name = entry.querySelector('.plugin-name-input').value.trim();
+        const freq = parseInt(entry.querySelector('.plugin-freq-input').value) || 20;
+        if (name) {
+            pluginsConfig.plugins.push({ name, frequency: freq, settings: {} });
+        }
+    });
+
+    // Save both configs
+    const [configResult, pluginsResult] = await Promise.all([
+        api('/api/config', 'POST', config),
+        api('/api/config/plugins', 'POST', pluginsConfig),
+    ]);
+
+    if (configResult?.success && pluginsResult?.success) {
+        statusEl.textContent = '✅ Configuration saved. Restart zeClock to apply.';
+        statusEl.style.color = '#4caf50';
+    } else {
+        const msg = configResult?.message || pluginsResult?.message || 'Unknown error';
+        statusEl.textContent = '❌ Error: ' + msg;
+        statusEl.style.color = '#f44336';
+    }
+}
 
 init();

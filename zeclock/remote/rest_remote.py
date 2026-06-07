@@ -106,6 +106,14 @@ class RestRemote:
             "/api/speaker-timer/set", self._handle_speaker_timer_set
         )
 
+        # Configuration API routes
+        self._app.router.add_get("/api/config", self._handle_get_config)
+        self._app.router.add_post("/api/config", self._handle_save_config)
+        self._app.router.add_get("/api/config/plugins", self._handle_get_plugins_config)
+        self._app.router.add_post(
+            "/api/config/plugins", self._handle_save_plugins_config
+        )
+
         # Static files for web UI (must be last to avoid catching API routes)
         if WEB_UI_DIR.exists():
             self._app.router.add_get("/ui/", self._handle_ui_index)
@@ -463,3 +471,118 @@ class RestRemote:
 
         status = SpeakerTimerPlugin.set_duration(seconds)
         return web.json_response({"success": True, "data": status})
+
+    # --- Configuration handlers ---
+
+    async def _handle_get_config(self, request: web.Request) -> web.Response:
+        """GET /api/config — Return current zeclock.ini as structured JSON."""
+        import configparser
+
+        config_path = Path.home() / ".zeclock" / "config" / "zeclock.ini"
+        if not config_path.exists():
+            return web.json_response(
+                {"success": True, "data": {}},
+            )
+
+        parser = configparser.ConfigParser()
+        parser.read(str(config_path))
+
+        # Convert to nested dict
+        data = {}
+        for section in parser.sections():
+            data[section] = dict(parser.items(section))
+
+        return web.json_response({"success": True, "data": data})
+
+    async def _handle_save_config(self, request: web.Request) -> web.Response:
+        """POST /api/config — Save zeclock.ini from structured JSON.
+
+        Body: {"zedmd": {"wifi_addr": "...", "brightness": "10"}, "display": {...}, ...}
+        """
+        import configparser
+
+        try:
+            body = await request.json()
+        except (json.JSONDecodeError, Exception):
+            return web.json_response(
+                {"success": False, "message": "Invalid JSON body"}, status=400
+            )
+
+        if not isinstance(body, dict):
+            return web.json_response(
+                {"success": False, "message": "Body must be a JSON object"}, status=400
+            )
+
+        config_path = Path.home() / ".zeclock" / "config" / "zeclock.ini"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+
+        parser = configparser.ConfigParser()
+        for section, values in body.items():
+            if not isinstance(values, dict):
+                continue
+            parser.add_section(section)
+            for key, value in values.items():
+                parser.set(section, str(key), str(value))
+
+        with open(config_path, "w") as f:
+            parser.write(f)
+
+        logger.info("Configuration saved to %s", config_path)
+        return web.json_response(
+            {
+                "success": True,
+                "message": "Configuration saved. Restart zeClock to apply changes.",
+            }
+        )
+
+    async def _handle_get_plugins_config(self, request: web.Request) -> web.Response:
+        """GET /api/config/plugins — Return current plugins.yaml as JSON."""
+        import yaml
+
+        config_path = Path.home() / ".zeclock" / "config" / "plugins.yaml"
+        if not config_path.exists():
+            return web.json_response({"success": True, "data": {}})
+
+        try:
+            with open(config_path, "r") as f:
+                data = yaml.safe_load(f)
+        except Exception as e:
+            return web.json_response(
+                {"success": False, "message": f"Failed to parse plugins.yaml: {e}"},
+                status=500,
+            )
+
+        return web.json_response({"success": True, "data": data or {}})
+
+    async def _handle_save_plugins_config(self, request: web.Request) -> web.Response:
+        """POST /api/config/plugins — Save plugins.yaml from JSON.
+
+        Body: {"clock_display_seconds": 5, "plugins": [...]}
+        """
+        import yaml
+
+        try:
+            body = await request.json()
+        except (json.JSONDecodeError, Exception):
+            return web.json_response(
+                {"success": False, "message": "Invalid JSON body"}, status=400
+            )
+
+        if not isinstance(body, dict):
+            return web.json_response(
+                {"success": False, "message": "Body must be a JSON object"}, status=400
+            )
+
+        config_path = Path.home() / ".zeclock" / "config" / "plugins.yaml"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(config_path, "w") as f:
+            yaml.dump(body, f, default_flow_style=False, sort_keys=False)
+
+        logger.info("Plugins configuration saved to %s", config_path)
+        return web.json_response(
+            {
+                "success": True,
+                "message": "Plugins configuration saved. Restart zeClock to apply changes.",
+            }
+        )
