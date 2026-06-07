@@ -419,6 +419,30 @@ class WifiSetupServer:
             await runner.cleanup()
 
 
+def _show_console_banner() -> None:
+    """Display setup instructions on HDMI console (tty1) if available."""
+    banner = f"""
+\033[2J\033[H
+\033[1;36m╔══════════════════════════════════════════╗
+║          🕒 zeClock WiFi Setup          ║
+╠══════════════════════════════════════════╣
+║                                          ║
+║  1. Connect to WiFi:                     ║
+║     Network:  \033[1;33m{AP_SSID:<24}\033[1;36m║
+║     Password: \033[1;33m{AP_PASSWORD:<24}\033[1;36m║
+║                                          ║
+║  2. Open in browser:                     ║
+║     \033[1;32mhttp://{AP_IP:<32}\033[1;36m║
+║                                          ║
+╚══════════════════════════════════════════╝\033[0m
+"""
+    try:
+        with open("/dev/tty1", "w") as tty:
+            tty.write(banner)
+    except (PermissionError, FileNotFoundError, OSError):
+        pass  # No HDMI console available
+
+
 def main() -> None:
     """Entry point for wifi-setup mode."""
     logging.basicConfig(
@@ -451,6 +475,9 @@ def main() -> None:
 
     print(f"📶 Connect to WiFi '{AP_SSID}' (password: {AP_PASSWORD})")
     print(f"   Then open http://{AP_IP} to configure your network")
+
+    # Display banner on HDMI console (tty1) if available
+    _show_console_banner()
 
     # Run the web server
     server = WifiSetupServer()
