@@ -484,7 +484,7 @@ class RestRemote:
                 {"success": True, "data": {}},
             )
 
-        parser = configparser.ConfigParser()
+        parser = configparser.RawConfigParser()
         parser.read(str(config_path))
 
         # Convert to nested dict
@@ -516,7 +516,7 @@ class RestRemote:
         config_path = Path.home() / ".zeclock" / "config" / "zeclock.ini"
         config_path.parent.mkdir(parents=True, exist_ok=True)
 
-        parser = configparser.ConfigParser()
+        parser = configparser.RawConfigParser()
         for section, values in body.items():
             if not isinstance(values, dict):
                 continue
