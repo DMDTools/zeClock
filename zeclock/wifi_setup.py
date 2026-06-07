@@ -421,21 +421,24 @@ class WifiSetupServer:
 
 def _show_console_banner() -> None:
     """Display setup instructions on HDMI console (tty1) if available."""
-    banner = f"""
-\033[2J\033[H
-\033[1;36m╔══════════════════════════════════════════╗
-║          🕒 zeClock WiFi Setup          ║
-╠══════════════════════════════════════════╣
-║                                          ║
-║  1. Connect to WiFi:                     ║
-║     Network:  \033[1;33m{AP_SSID:<24}\033[1;36m║
-║     Password: \033[1;33m{AP_PASSWORD:<24}\033[1;36m║
-║                                          ║
-║  2. Open in browser:                     ║
-║     \033[1;32mhttp://{AP_IP:<32}\033[1;36m║
-║                                          ║
-╚══════════════════════════════════════════╝\033[0m
-"""
+    banner = (
+        "\033[2J\033[H"
+        "\n"
+        "\033[1;36m"
+        "  ╔════════════════════════════════════════╗\n"
+        "  ║        🕒 zeClock WiFi Setup          ║\n"
+        "  ╠════════════════════════════════════════╣\n"
+        "  ║                                        ║\n"
+        "  ║  1. Connect to WiFi:                   ║\n"
+        f"  ║     Network:  \033[1;33m{AP_SSID}\033[1;36m\n"
+        "  ║     Password: \033[1;33m" + AP_PASSWORD + "\033[1;36m\n"
+        "  ║                                        ║\n"
+        "  ║  2. Open in browser:                   ║\n"
+        f"  ║     \033[1;32mhttp://{AP_IP}\033[1;36m\n"
+        "  ║                                        ║\n"
+        "  ╚════════════════════════════════════════╝\n"
+        "\033[0m\n"
+    )
     try:
         with open("/dev/tty1", "w") as tty:
             tty.write(banner)
