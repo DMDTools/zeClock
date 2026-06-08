@@ -478,7 +478,9 @@ class RestRemote:
         """GET /api/config — Return current zeclock.ini as structured JSON."""
         import configparser
 
-        config_path = Path.home() / ".zeclock" / "config" / "zeclock.ini"
+        from ..paths import get_config_dir
+
+        config_path = get_config_dir() / "zeclock.ini"
         if not config_path.exists():
             return web.json_response(
                 {"success": True, "data": {}},
@@ -513,7 +515,9 @@ class RestRemote:
                 {"success": False, "message": "Body must be a JSON object"}, status=400
             )
 
-        config_path = Path.home() / ".zeclock" / "config" / "zeclock.ini"
+        from ..paths import get_config_dir
+
+        config_path = get_config_dir() / "zeclock.ini"
         config_path.parent.mkdir(parents=True, exist_ok=True)
 
         parser = configparser.RawConfigParser()
@@ -539,7 +543,9 @@ class RestRemote:
         """GET /api/config/plugins — Return current plugins.yaml as JSON."""
         import yaml
 
-        config_path = Path.home() / ".zeclock" / "config" / "plugins.yaml"
+        from ..paths import get_config_dir
+
+        config_path = get_config_dir() / "plugins.yaml"
         if not config_path.exists():
             return web.json_response({"success": True, "data": {}})
 
@@ -573,7 +579,9 @@ class RestRemote:
                 {"success": False, "message": "Body must be a JSON object"}, status=400
             )
 
-        config_path = Path.home() / ".zeclock" / "config" / "plugins.yaml"
+        from ..paths import get_config_dir
+
+        config_path = get_config_dir() / "plugins.yaml"
         config_path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(config_path, "w") as f:

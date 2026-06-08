@@ -325,6 +325,11 @@ class CommandHandler:
         else:
             display_mode = self._clock._state.value
 
+        # Backend connection status
+        backend = self._clock.dmd_client
+        backend_connected = backend.connected if hasattr(backend, "connected") else False
+        backend_type = type(backend).__name__
+
         data = {
             "screen": screen_state,
             "display_mode": display_mode,
@@ -332,6 +337,10 @@ class CommandHandler:
             "forced_plugin": self._forced_plugin,
             "available_plugins": available_plugins,
             "text_overlay": self._text_overlay if self.has_text_overlay else None,
+            "backend": {
+                "type": backend_type,
+                "connected": backend_connected,
+            },
             "brightness": {
                 "sw_dimming": self._clock._current_sw_dimming,
                 "time_only": self._clock._current_is_time_only,

@@ -26,7 +26,9 @@ from ..overlay import upscale_nx
 logger = logging.getLogger(__name__)
 
 # Default GIF directory relative to user plugins path
-DEFAULT_GIF_DIR = Path.home() / ".zeclock" / "plugins" / "gif"
+from ..paths import get_plugins_dir
+
+DEFAULT_GIF_DIR = get_plugins_dir() / "gif"
 
 
 class GifPlugin(ClockPlugin):

@@ -221,6 +221,10 @@ class ZeClock:
 
     async def run(self) -> None:
         """Main asynchronous loop with plugin-driven state machine."""
+        # Initialize remote control EARLY so the web UI is available
+        # even while waiting for DMD connection
+        await self._init_remote_control()
+
         # Initial connection with retry loop
         if not self.dmd_client.connect():
             print("⚠️ DMD backend not available — waiting for device...")
@@ -258,9 +262,6 @@ class ZeClock:
 
         # Initialize plugin system
         await self._init_plugin_system()
-
-        # Initialize remote control
-        await self._init_remote_control()
 
         # Initialize brightness scheduler (fetch sunrise/sunset if configured)
         if self._brightness_scheduler and self._brightness_scheduler._has_sun_config:

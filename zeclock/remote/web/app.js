@@ -57,6 +57,15 @@ async function refreshStatus() {
     const data = await api('/api/status');
     if (data && data.data) {
         document.getElementById('status-display').textContent = JSON.stringify(data.data, null, 2);
+
+        // Update backend connection banner
+        const banner = document.getElementById('backend-banner');
+        if (data.data.backend && !data.data.backend.connected) {
+            banner.classList.remove('hidden');
+        } else {
+            banner.classList.add('hidden');
+        }
+
         // Update brightness display
         const br = data.data.brightness;
         if (br) {

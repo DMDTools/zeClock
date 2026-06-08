@@ -1,0 +1,11 @@
+# Built images
+*.img
+*.img.xz
+
+# Packer cache
+packer_cache/
+.packer_cache/
+.packer_plugins/
+
+# User-specific variables
+variables.pkrvars.hcl

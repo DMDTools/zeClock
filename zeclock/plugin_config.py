@@ -32,7 +32,9 @@ class PluginConfig:
     }
 
     def __init__(self, config_path: Optional[Path] = None):
-        self.path = config_path or Path.home() / ".zeclock" / "config" / "plugins.yaml"
+        from .paths import get_config_dir
+
+        self.path = config_path or get_config_dir() / "plugins.yaml"
         self.clock_display_seconds: int = CLOCK_DISPLAY_SECONDS_DEFAULT
         self.plugin_entries: List[Dict[str, Any]] = []
         self._raw: Dict[str, Any] = {}

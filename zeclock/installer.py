@@ -18,11 +18,13 @@ GITHUB_REPO_DMD = "vpinball/libdmdutil"
 GITHUB_REPO_ZEDMD = "PPUC/libzedmd"
 GITHUB_REPO_RESOURCES = "sigmafx/DotClk-Resources"
 
-ZECLOCK_DIR = Path.home() / ".zeclock"
-INSTALL_DIR = ZECLOCK_DIR / "bin"
-LIB_DIR = ZECLOCK_DIR / "lib"
-CONFIG_DIR = ZECLOCK_DIR / "config"
-RESOURCES_DIR = ZECLOCK_DIR / "resources"
+from .paths import get_data_dir, get_config_dir, get_install_dir, get_lib_dir, get_resources_dir
+
+ZECLOCK_DIR = get_data_dir()
+INSTALL_DIR = get_install_dir()
+LIB_DIR = get_lib_dir()
+CONFIG_DIR = get_config_dir()
+RESOURCES_DIR = get_resources_dir()
 
 # ANSI Color handling
 try:

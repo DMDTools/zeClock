@@ -1,8 +1,8 @@
 """Resource path resolution for zeClock.
 
 Fonts are bundled in the package (zeclock/resources/fonts/) and also
-installed to ~/.zeclock/resources/Fonts/ during bootstrap. The bundled
-fonts take priority so zeClock works without running --bootstrap first.
+installed to the data directory resources/Fonts/ during bootstrap.
+The bundled fonts take priority so zeClock works without running --bootstrap first.
 """
 
 from pathlib import Path
@@ -13,7 +13,7 @@ def get_fonts_dir() -> Path:
 
     Resolution order:
     1. Bundled fonts in the zeclock package (zeclock/resources/fonts/)
-    2. User-installed fonts (~/.zeclock/resources/Fonts/)
+    2. User-installed fonts (<data_dir>/resources/Fonts/)
 
     Returns:
         Path to the directory containing .fnt files.
@@ -24,7 +24,9 @@ def get_fonts_dir() -> Path:
         return bundled
 
     # Fallback: user-installed fonts
-    user_fonts = Path.home() / ".zeclock" / "resources" / "Fonts"
+    from ..paths import get_resources_dir as _get_resources_dir
+
+    user_fonts = _get_resources_dir() / "Fonts"
     if user_fonts.exists():
         return user_fonts
 
@@ -36,10 +38,11 @@ def get_resources_dir() -> Path:
     """Get the base resources directory.
 
     For fonts, use get_fonts_dir() instead. This returns the user-level
-    resources directory (~/.zeclock/resources/) which contains animations
-    and other downloaded content.
+    resources directory which contains animations and other downloaded content.
 
     Returns:
-        Path to ~/.zeclock/resources/
+        Path to the resources directory.
     """
-    return Path.home() / ".zeclock" / "resources"
+    from ..paths import get_resources_dir as _get_resources_dir
+
+    return _get_resources_dir()

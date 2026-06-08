@@ -1,0 +1,15 @@
+[Unit]
+Description=zeClock WiFi Setup Portal
+After=NetworkManager.service rfkill-unblock-wifi.service
+Wants=NetworkManager.service
+Requires=rfkill-unblock-wifi.service
+
+[Service]
+Type=simple
+ExecStart=/home/zeclock/venv/bin/python -m zeclock.wifi_setup
+Restart=on-failure
+RestartSec=30
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

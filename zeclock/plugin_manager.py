@@ -66,7 +66,9 @@ class PluginManager:
 
         # Set up resources path for PluginHelpers
         if resources_path is None:
-            resources_path = Path.home() / ".zeclock" / "resources"
+            from .paths import get_resources_dir
+
+            resources_path = get_resources_dir()
         self._resources_path = resources_path
 
         # Create the PluginHelpers instance to inject into plugins
@@ -99,7 +101,9 @@ class PluginManager:
         self._load_plugins_from_directory(builtin_dir, source="builtin")
 
         # Ensure user plugin directory exists
-        user_plugin_dir = Path.home() / ".zeclock" / "plugins"
+        from .paths import get_plugins_dir
+
+        user_plugin_dir = get_plugins_dir()
         if not user_plugin_dir.exists():
             try:
                 user_plugin_dir.mkdir(parents=True, exist_ok=True)
