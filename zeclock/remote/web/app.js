@@ -338,6 +338,9 @@ async function loadConfig() {
         document.getElementById('cfg-clock-seconds').value = pCfg.clock_display_seconds || 5;
         renderPluginEntries(pCfg.plugins || []);
     }
+
+    // Load and render auto-generated plugin config forms
+    loadPluginConfigForms(pluginsResp && pluginsResp.data);
 }
 
 function renderPluginEntries(plugins) {
@@ -456,6 +459,290 @@ async function saveConfig() {
         statusEl.textContent = '❌ Error: ' + msg;
         statusEl.style.color = '#f44336';
     }
+}
+
+// --- Plugin Configuration Forms (auto-generated from schema) ---
+
+async function loadPluginConfigForms(currentPluginsConfig) {
+    const schemaResp = await api('/api/plugins/config-schema');
+    if (!schemaResp || !schemaResp.plugins) return;
+
+    const container = document.getElementById('plugin-config-forms');
+    const plugins = schemaResp.plugins.filter(p => p.schema && p.schema.length > 0);
+
+    if (plugins.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+
+    // Get current settings from plugins.yaml for pre-filling form values
+    const currentSettings = {};
+    if (currentPluginsConfig && currentPluginsConfig.plugins) {
+        currentPluginsConfig.plugins.forEach(p => {
+            if (p.name && p.settings) {
+                currentSettings[p.name] = p.settings;
+            }
+        });
+    }
+
+    container.innerHTML = plugins.map(plugin => {
+        const settings = currentSettings[plugin.name] || {};
+        const fieldsHtml = plugin.schema.map(field => renderPluginField(plugin.name, field, settings)).join('');
+
+        return `
+            <div class="plugin-config-card" data-plugin="${plugin.name}">
+                <h2>${capitalize(plugin.name)}</h2>
+                <p class="plugin-description">${plugin.description || ''}</p>
+                ${fieldsHtml}
+                <button class="btn btn-accent btn-save-plugin" onclick="savePluginConfig('${plugin.name}')">Save ${capitalize(plugin.name)} Settings</button>
+            </div>
+        `;
+    }).join('');
+
+    // Initialize city autocomplete handlers after forms are rendered
+    initCityAutocomplete();
+}
+
+function renderPluginField(pluginName, field, settings) {
+    const currentValue = settings[field.name] || field.default || '';
+    const requiredAttr = field.required ? 'required' : '';
+    const fieldId = `plugin-cfg-${pluginName}-${field.name}`;
+    let inputHtml = '';
+    let hintHtml = '';
+
+    switch (field.field_type) {
+        case 'number':
+            inputHtml = `<input type="number" id="${fieldId}" value="${currentValue}" ${requiredAttr} data-plugin="${pluginName}" data-field="${field.name}">`;
+            break;
+        case 'list':
+            inputHtml = `<input type="text" id="${fieldId}" value="${Array.isArray(currentValue) ? currentValue.join(', ') : currentValue}" ${requiredAttr} data-plugin="${pluginName}" data-field="${field.name}">`;
+            hintHtml = `<div class="field-hint">Comma-separated values</div>`;
+            break;
+        case 'city':
+            inputHtml = `<div class="city-input-wrapper"><input type="text" id="${fieldId}" value="${getCityDisplayValue(currentValue)}" ${requiredAttr} data-plugin="${pluginName}" data-field="${field.name}" data-field-type="city" class="city-autocomplete-input" autocomplete="off"></div>`;
+            break;
+        default: // text
+            inputHtml = `<input type="text" id="${fieldId}" value="${currentValue}" ${requiredAttr} data-plugin="${pluginName}" data-field="${field.name}">`;
+            break;
+    }
+
+    const descriptionHtml = field.description ? `<div class="field-description">${field.description}</div>` : '';
+
+    return `
+        <div class="form-group">
+            <label for="${fieldId}">${field.label}${field.required ? ' *' : ''}</label>
+            ${inputHtml}
+            ${hintHtml}
+            ${descriptionHtml}
+        </div>
+    `;
+}
+
+function getCityDisplayValue(value) {
+    if (!value) return '';
+    if (typeof value === 'object' && value.display_name) return value.display_name;
+    if (typeof value === 'string') return value;
+    return '';
+}
+
+function capitalize(str) {
+    return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+async function savePluginConfig(pluginName) {
+    // First, get the current plugins.yaml content
+    const pluginsResp = await api('/api/config/plugins');
+    if (!pluginsResp || !pluginsResp.data) {
+        showPluginSaveStatus(pluginName, false, 'Failed to load current config');
+        return;
+    }
+
+    const pluginsConfig = pluginsResp.data;
+    if (!pluginsConfig.plugins) {
+        pluginsConfig.plugins = [];
+    }
+
+    // Find the plugin entry or create one
+    let pluginEntry = pluginsConfig.plugins.find(p => p.name === pluginName);
+    if (!pluginEntry) {
+        pluginEntry = { name: pluginName, frequency: 20, settings: {} };
+        pluginsConfig.plugins.push(pluginEntry);
+    }
+    if (!pluginEntry.settings) {
+        pluginEntry.settings = {};
+    }
+
+    // Collect form values for this plugin
+    const card = document.querySelector(`.plugin-config-card[data-plugin="${pluginName}"]`);
+    const inputs = card.querySelectorAll('input[data-field]');
+
+    inputs.forEach(input => {
+        const fieldName = input.dataset.field;
+        const fieldType = input.dataset.fieldType;
+        let value = input.value.trim();
+
+        if (fieldType === 'city') {
+            // For city fields, store the value (autocomplete task 9 will add lat/long handling)
+            if (input._cityData) {
+                pluginEntry.settings[fieldName] = input._cityData;
+            } else {
+                pluginEntry.settings[fieldName] = value;
+            }
+        } else if (input.type === 'number') {
+            pluginEntry.settings[fieldName] = value ? Number(value) : null;
+        } else {
+            pluginEntry.settings[fieldName] = value || null;
+        }
+    });
+
+    // Save via POST /api/config/plugins
+    const result = await api('/api/config/plugins', 'POST', pluginsConfig);
+
+    if (result && result.success) {
+        showPluginSaveStatus(pluginName, true, 'Settings saved and applied.');
+    } else {
+        const msg = result?.message || 'Unknown error';
+        showPluginSaveStatus(pluginName, false, msg);
+    }
+}
+
+// --- City Autocomplete ---
+
+let cityAutocompleteTimeout = null;
+
+function initCityAutocomplete() {
+    const cityInputs = document.querySelectorAll('.city-autocomplete-input');
+    cityInputs.forEach(input => {
+        input.addEventListener('input', handleCityInput);
+        input.addEventListener('keydown', handleCityKeydown);
+    });
+
+    // Close dropdowns when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.city-input-wrapper')) {
+            closeCityDropdowns();
+        }
+    });
+}
+
+function handleCityInput(e) {
+    const input = e.target;
+    const query = input.value.trim();
+
+    // Clear any pending debounce
+    if (cityAutocompleteTimeout) {
+        clearTimeout(cityAutocompleteTimeout);
+        cityAutocompleteTimeout = null;
+    }
+
+    // Clear stored city data when user types (selection invalidated)
+    input._cityData = null;
+
+    // Only search if 3+ characters
+    if (query.length < 3) {
+        removeCityDropdown(input);
+        return;
+    }
+
+    // Debounce: wait 300ms after last keystroke
+    cityAutocompleteTimeout = setTimeout(() => {
+        searchCities(input, query);
+    }, 300);
+}
+
+function handleCityKeydown(e) {
+    if (e.key === 'Escape') {
+        removeCityDropdown(e.target);
+    }
+}
+
+async function searchCities(input, query) {
+    const data = await api(`/api/geocode/search?q=${encodeURIComponent(query)}`);
+
+    if (!data || !data.results) {
+        showCityDropdown(input, []);
+        return;
+    }
+
+    showCityDropdown(input, data.results);
+}
+
+function showCityDropdown(input, results) {
+    const wrapper = input.closest('.city-input-wrapper');
+    if (!wrapper) return;
+
+    // Remove existing dropdown
+    removeCityDropdown(input);
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'city-autocomplete-dropdown';
+
+    if (results.length === 0) {
+        dropdown.innerHTML = '<div class="city-autocomplete-no-results">No results found</div>';
+    } else {
+        const items = results.slice(0, 5);
+        dropdown.innerHTML = items.map((result, index) => `
+            <div class="city-autocomplete-item" data-index="${index}">
+                ${escapeHtml(result.display_name)}
+            </div>
+        `).join('');
+
+        // Attach click handlers to items
+        dropdown.querySelectorAll('.city-autocomplete-item').forEach((item, index) => {
+            item.addEventListener('click', () => {
+                selectCity(input, items[index]);
+            });
+        });
+    }
+
+    wrapper.appendChild(dropdown);
+}
+
+function selectCity(input, result) {
+    input.value = result.display_name;
+    input._cityData = {
+        display_name: result.display_name,
+        latitude: result.latitude,
+        longitude: result.longitude,
+        country: result.country
+    };
+    removeCityDropdown(input);
+}
+
+function removeCityDropdown(input) {
+    const wrapper = input.closest('.city-input-wrapper');
+    if (!wrapper) return;
+    const existing = wrapper.querySelector('.city-autocomplete-dropdown');
+    if (existing) existing.remove();
+}
+
+function closeCityDropdowns() {
+    document.querySelectorAll('.city-autocomplete-dropdown').forEach(d => d.remove());
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function showPluginSaveStatus(pluginName, success, message) {
+    const card = document.querySelector(`.plugin-config-card[data-plugin="${pluginName}"]`);
+    if (!card) return;
+
+    // Remove any existing status message
+    const existing = card.querySelector('.plugin-save-status');
+    if (existing) existing.remove();
+
+    const statusEl = document.createElement('div');
+    statusEl.className = 'plugin-save-status muted';
+    statusEl.style.marginTop = '0.5rem';
+    statusEl.style.color = success ? '#4caf50' : '#f44336';
+    statusEl.textContent = (success ? '✅ ' : '❌ ') + message;
+    card.appendChild(statusEl);
+
+    // Auto-remove after 5 seconds
+    setTimeout(() => statusEl.remove(), 5000);
 }
 
 init();

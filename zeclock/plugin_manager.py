@@ -17,6 +17,7 @@ from .plugin_config import PluginConfig
 from .plugin_registry import PluginRegistry
 from .plugins.base import (
     ClockPlugin,
+    PluginNotConfiguredError,
     validate_frame_delay_ms,
     validate_plugin_name,
 )
@@ -371,6 +372,16 @@ class PluginManager:
             )
             self.registry.mark_failed(plugin.name)
             return False
+        except PluginNotConfiguredError:
+            logger.info(
+                f"Plugin '{plugin.name}' is not configured, marking as unconfigured"
+            )
+            plugin._unconfigured = True
+            self.active_plugin = plugin
+            self.consecutive_errors = 0
+            self.plugin_start_time = time.time()
+            self.last_good_frame = None
+            return True
         except Exception as e:
             logger.error(f"Plugin '{plugin.name}' initialization failed: {e}")
             self.registry.mark_failed(plugin.name)
@@ -380,6 +391,52 @@ class PluginManager:
         self.consecutive_errors = 0
         self.plugin_start_time = time.time()
         self.last_good_frame = None
+        return True
+
+    async def reconfigure_plugin(self, plugin_name: str) -> bool:
+        """Reconfigure a plugin with fresh settings from plugins.yaml.
+
+        Reloads config from disk and calls the plugin's reconfigure() method.
+        If the plugin is currently active, it remains active with new config.
+
+        Args:
+            plugin_name: Name of the plugin to reconfigure.
+
+        Returns:
+            True if reconfiguration succeeded, False otherwise.
+        """
+        entry = self.registry.get_plugin(plugin_name)
+        if not entry:
+            logger.warning(f"Cannot reconfigure unknown plugin '{plugin_name}'")
+            return False
+
+        # Reload config from disk
+        self.config.reload()
+        config = self.get_plugin_config_with_helpers(plugin_name)
+
+        try:
+            await asyncio.wait_for(
+                entry.plugin.reconfigure(config), timeout=self.init_timeout
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"Plugin '{plugin_name}' reconfigure timed out, marking failed"
+            )
+            self.registry.mark_failed(plugin_name)
+            return False
+        except PluginNotConfiguredError:
+            logger.info(
+                f"Plugin '{plugin_name}' not configured after reconfigure"
+            )
+            entry.plugin._unconfigured = True
+            return True
+        except Exception as e:
+            logger.error(f"Plugin '{plugin_name}' reconfigure failed: {e}")
+            return False
+
+        # Clear unconfigured flag on success
+        entry.plugin._unconfigured = False
+        logger.info(f"Plugin '{plugin_name}' reconfigured successfully")
         return True
 
     async def get_frame(self) -> Optional[Image.Image]:
@@ -397,6 +454,9 @@ class PluginManager:
         """
         if self.active_plugin is None:
             return None
+
+        if getattr(self.active_plugin, '_unconfigured', False):
+            return self._render_configure_message(self.active_plugin.name)
 
         try:
             frame = await asyncio.wait_for(
@@ -426,6 +486,22 @@ class PluginManager:
         self.last_good_frame = frame
         self.consecutive_errors = 0
         return frame
+
+    def _render_configure_message(self, name: str) -> Image.Image:
+        """Render a 'configure me' message for an unconfigured plugin.
+
+        Uses the MENU bitmap font, centered horizontally and vertically.
+        Plugin name is truncated to 12 characters if longer.
+
+        Args:
+            name: The plugin's display name.
+
+        Returns:
+            PIL Image in RGB mode with the configure message.
+        """
+        truncated_name = name[:12]
+        text = f"{truncated_name}: Configure me"
+        return self._helpers.render_text(text, centered=True, font_name="MENU")
 
     def should_deactivate(self) -> bool:
         """Check if the active plugin should be deactivated.

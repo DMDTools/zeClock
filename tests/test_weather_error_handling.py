@@ -165,8 +165,8 @@ class TestSignalCompletionNoCache:
     """Tests for signaling completion when no cache and API unreachable (Requirement 6.7)."""
 
     @pytest.mark.asyncio
-    async def test_returns_none_when_no_cache(self, weather_plugin):
-        """Plugin should return None immediately if no cache is available."""
+    async def test_returns_loading_frame_when_no_cache(self, weather_plugin):
+        """Plugin should return a loading frame (not None) when no cache is available."""
         config = {
             "latitude": 48.8566,
             "longitude": 2.3522,
@@ -182,7 +182,8 @@ class TestSignalCompletionNoCache:
         weather_plugin._cache = None
 
         frame = await weather_plugin.render_frame(128, 32)
-        assert frame is None, "Should signal completion when no cache available"
+        # Should return a loading frame (not None) to avoid signaling completion
+        assert frame is not None, "Should return loading frame, not signal completion"
 
     @pytest.mark.asyncio
     async def test_returns_none_when_not_initialized(self, weather_plugin):
@@ -215,104 +216,105 @@ class TestConfigReading:
         assert weather_plugin._initialized is True
 
     @pytest.mark.asyncio
-    async def test_signal_completion_missing_latitude(self, weather_plugin):
-        """Plugin should not initialize if latitude is missing."""
+    async def test_geocodes_when_city_provided_without_coords(self, weather_plugin):
+        """Plugin should geocode city when lat/long are missing but city is provided."""
+        from zeclock.geocoder import GeoResult
+
         config = {
-            "longitude": 2.3522,
-            "city_name": "Paris",
+            "city": "Paris",
         }
+
+        mock_result = GeoResult(
+            latitude=48.8566, longitude=2.3522, display_name="Paris", country="France"
+        )
 
         with patch.object(
             weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
         ):
-            await weather_plugin.initialize(config)
-
-        assert weather_plugin._initialized is False
-        frame = await weather_plugin.render_frame(128, 32)
-        assert frame is None
-
-    @pytest.mark.asyncio
-    async def test_signal_completion_missing_longitude(self, weather_plugin):
-        """Plugin should not initialize if longitude is missing."""
-        config = {
-            "latitude": 48.8566,
-            "city_name": "Paris",
-        }
-
-        with patch.object(
-            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
-        ):
-            await weather_plugin.initialize(config)
-
-        assert weather_plugin._initialized is False
-        frame = await weather_plugin.render_frame(128, 32)
-        assert frame is None
-
-    @pytest.mark.asyncio
-    async def test_signal_completion_missing_city_name(self, weather_plugin):
-        """Plugin should not initialize if city_name is missing."""
-        config = {
-            "latitude": 48.8566,
-            "longitude": 2.3522,
-        }
-
-        with patch.object(
-            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
-        ):
-            await weather_plugin.initialize(config)
-
-        assert weather_plugin._initialized is False
-        frame = await weather_plugin.render_frame(128, 32)
-        assert frame is None
-
-    @pytest.mark.asyncio
-    async def test_signal_completion_empty_city_name(self, weather_plugin):
-        """Plugin should not initialize if city_name is empty string."""
-        config = {
-            "latitude": 48.8566,
-            "longitude": 2.3522,
-            "city_name": "",
-        }
-
-        with patch.object(
-            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
-        ):
-            await weather_plugin.initialize(config)
-
-        assert weather_plugin._initialized is False
-
-    @pytest.mark.asyncio
-    async def test_signal_completion_all_fields_missing(self, weather_plugin):
-        """Plugin should not initialize if all required fields are missing."""
-        config = {}
-
-        with patch.object(
-            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
-        ):
-            await weather_plugin.initialize(config)
-
-        assert weather_plugin._initialized is False
-        frame = await weather_plugin.render_frame(128, 32)
-        assert frame is None
-
-    @pytest.mark.asyncio
-    async def test_logs_warning_for_missing_fields(self, weather_plugin, caplog):
-        """Plugin should log a warning identifying missing config fields."""
-        import logging
-
-        config = {
-            "latitude": 48.8566,
-            # longitude and city_name missing
-        }
-
-        with caplog.at_level(logging.WARNING):
-            with patch.object(
-                weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+            with patch(
+                "zeclock.plugins.weather_plugin.geocode", return_value=mock_result
             ):
                 await weather_plugin.initialize(config)
 
-        assert "longitude" in caplog.text
-        assert "city_name" in caplog.text
+        assert weather_plugin._initialized is True
+        assert weather_plugin._latitude == 48.8566
+        assert weather_plugin._longitude == 2.3522
+
+    @pytest.mark.asyncio
+    async def test_raises_error_when_geocode_fails(self, weather_plugin):
+        """Plugin should raise PluginNotConfiguredError when geocoding fails."""
+        from zeclock.plugins.base import PluginNotConfiguredError
+
+        config = {
+            "city": "NonexistentCity12345",
+        }
+
+        with patch(
+            "zeclock.plugins.weather_plugin.geocode", return_value=None
+        ):
+            with pytest.raises(PluginNotConfiguredError):
+                await weather_plugin.initialize(config)
+
+    @pytest.mark.asyncio
+    async def test_initializes_with_explicit_coords_no_city(self, weather_plugin):
+        """Plugin should initialize with explicit coords even without city_name."""
+        config = {
+            "latitude": 48.8566,
+            "longitude": 2.3522,
+        }
+
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
+            await weather_plugin.initialize(config)
+
+        assert weather_plugin._initialized is True
+        assert weather_plugin._latitude == 48.8566
+        assert weather_plugin._longitude == 2.3522
+
+    @pytest.mark.asyncio
+    async def test_skips_geocode_when_both_coords_and_city(self, weather_plugin):
+        """Plugin should use explicit coords and skip geocoding when both provided."""
+        config = {
+            "latitude": 40.7128,
+            "longitude": -74.0060,
+            "city_name": "New York",
+        }
+
+        with patch.object(
+            weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
+        ):
+            with patch(
+                "zeclock.plugins.weather_plugin.geocode"
+            ) as mock_geocode:
+                await weather_plugin.initialize(config)
+                mock_geocode.assert_not_called()
+
+        assert weather_plugin._initialized is True
+        assert weather_plugin._latitude == 40.7128
+        assert weather_plugin._longitude == -74.0060
+
+    @pytest.mark.asyncio
+    async def test_raises_error_when_no_coords_and_no_city(self, weather_plugin):
+        """Plugin should raise PluginNotConfiguredError when no location info."""
+        from zeclock.plugins.base import PluginNotConfiguredError
+
+        config = {}
+
+        with pytest.raises(PluginNotConfiguredError):
+            await weather_plugin.initialize(config)
+
+    @pytest.mark.asyncio
+    async def test_raises_error_when_empty_city_and_no_coords(self, weather_plugin):
+        """Plugin should raise PluginNotConfiguredError with empty city and no coords."""
+        from zeclock.plugins.base import PluginNotConfiguredError
+
+        config = {
+            "city_name": "",
+        }
+
+        with pytest.raises(PluginNotConfiguredError):
+            await weather_plugin.initialize(config)
 
 
 class TestTemperatureUnitConfig:

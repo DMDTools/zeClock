@@ -115,6 +115,12 @@ class RestRemote:
             "/api/config/plugins", self._handle_save_plugins_config
         )
 
+        # Plugin config schema and geocode routes
+        self._app.router.add_get(
+            "/api/plugins/config-schema", self._handle_plugins_config_schema
+        )
+        self._app.router.add_get("/api/geocode/search", self._handle_geocode_search)
+
         # Static files for web UI (must be last to avoid catching API routes)
         if WEB_UI_DIR.exists():
             self._app.router.add_get("/ui/", self._handle_ui_index)
@@ -396,6 +402,61 @@ class RestRemote:
             }
         )
 
+    # --- Plugin Config Schema and Geocode handlers ---
+
+    async def _handle_plugins_config_schema(
+        self, request: web.Request
+    ) -> web.Response:
+        """GET /api/plugins/config-schema — Return aggregated config schemas."""
+        pm = self._handler._clock._plugin_manager
+        if pm is None:
+            return web.json_response({"plugins": []})
+
+        plugins = []
+        for entry in pm.registry.get_all_plugins():
+            schema = entry.plugin.config_schema
+            plugins.append({
+                "name": entry.name,
+                "description": entry.plugin.description,
+                "schema": [
+                    {
+                        "name": field.name,
+                        "label": field.label,
+                        "field_type": field.field_type,
+                        "required": field.required,
+                        "description": field.description,
+                        "default": field.default,
+                    }
+                    for field in schema
+                ],
+            })
+
+        return web.json_response({"plugins": plugins})
+
+    async def _handle_geocode_search(self, request: web.Request) -> web.Response:
+        """GET /api/geocode/search?q=<query> — Search cities via geocoder."""
+        from ..geocoder import search_cities
+
+        query = request.query.get("q", "")
+        if len(query.strip()) < 3:
+            return web.json_response(
+                {"success": False, "message": "Query must be at least 3 characters"},
+                status=400,
+            )
+
+        results = search_cities(query)
+        return web.json_response({
+            "results": [
+                {
+                    "display_name": r.display_name,
+                    "country": r.country,
+                    "latitude": r.latitude,
+                    "longitude": r.longitude,
+                }
+                for r in results
+            ]
+        })
+
     # --- Speaker Timer handlers ---
 
     async def _handle_speaker_timer_status(self, request: web.Request) -> web.Response:
@@ -602,9 +663,21 @@ class RestRemote:
             yaml.dump(body, f, default_flow_style=False, sort_keys=False)
 
         logger.info("Plugins configuration saved to %s", config_path)
-        return web.json_response(
-            {
-                "success": True,
-                "message": "Plugins configuration saved. Restart zeClock to apply changes.",
-            }
-        )
+
+        # Reconfigure affected plugins without restart
+        pm = self._handler._clock._plugin_manager
+        reconfigured = []
+        if pm and body.get("plugins"):
+            for plugin_entry in body["plugins"]:
+                name = plugin_entry.get("name", "")
+                if name and pm.registry.has_plugin(name):
+                    success = await pm.reconfigure_plugin(name)
+                    if success:
+                        reconfigured.append(name)
+
+        if reconfigured:
+            msg = f"Configuration saved and applied to: {', '.join(reconfigured)}"
+        else:
+            msg = "Configuration saved."
+
+        return web.json_response({"success": True, "message": msg})

@@ -382,41 +382,68 @@ class ZeClock:
                             self._clock_only_start = now
 
                 elif self._state == ClockState.PLUGIN_ACTIVE:
-                    # Check if plugin should be deactivated
-                    # Skip deactivation if plugin is forced by remote control
-                    forced = (
-                        self._command_handler
-                        and self._command_handler.forced_plugin is not None
+                    # Check if forced plugin changed (user clicked a different plugin)
+                    forced_name = (
+                        self._command_handler.forced_plugin
+                        if self._command_handler
+                        else None
                     )
-                    if (
-                        not forced
-                        and self._plugin_manager
-                        and self._plugin_manager.should_deactivate()
-                    ):
-                        await self._plugin_manager.deactivate_plugin()
-                        self._state = ClockState.CLOCK_ONLY
-                        self._clock_only_start = time.time()
+                    current_name = (
+                        self._plugin_manager.active_plugin.name
+                        if self._plugin_manager and self._plugin_manager.active_plugin
+                        else None
+                    )
+                    if forced_name and forced_name != current_name:
+                        # Forced plugin changed — switch immediately
+                        if self._plugin_manager:
+                            await self._plugin_manager.deactivate_plugin()
+                        self._state = ClockState.PLUGIN_SELECT
                         frame = self._render_clock_frame()
-                        frame_time = 0.5
+                        frame_time = 0.04  # minimal delay to re-enter loop fast
+                    elif not forced_name and forced_name is not None:
+                        # forced_plugin was cleared (resume) — let normal deactivation handle it
+                        pass
                     else:
-                        # Get frame from active plugin
-                        assert self._plugin_manager is not None
-                        plugin_frame = await self._plugin_manager.get_frame()
-                        if plugin_frame is None:
-                            # Plugin signals completion
+                        # Check if plugin should be deactivated
+                        # Skip deactivation if plugin is forced by remote control
+                        forced = forced_name is not None
+                        if (
+                            not forced
+                            and self._plugin_manager
+                            and self._plugin_manager.should_deactivate()
+                        ):
                             await self._plugin_manager.deactivate_plugin()
                             self._state = ClockState.CLOCK_ONLY
                             self._clock_only_start = time.time()
                             frame = self._render_clock_frame()
                             frame_time = 0.5
                         else:
-                            frame = plugin_frame
-                            # Use plugin's frame delay
-                            active = self._plugin_manager.active_plugin
-                            if active:
-                                frame_time = active.frame_delay_ms / 1000.0
+                            # Get frame from active plugin
+                            assert self._plugin_manager is not None
+                            plugin_frame = await self._plugin_manager.get_frame()
+                            if plugin_frame is None:
+                                # Plugin signals completion
+                                if forced:
+                                    # Forced plugin completed — re-activate immediately
+                                    logger.debug(
+                                        "Forced plugin completed, re-activating"
+                                    )
+                                    await self._plugin_manager.deactivate_plugin()
+                                    self._state = ClockState.PLUGIN_SELECT
+                                else:
+                                    await self._plugin_manager.deactivate_plugin()
+                                    self._state = ClockState.CLOCK_ONLY
+                                    self._clock_only_start = time.time()
+                                frame = self._render_clock_frame()
+                                frame_time = 0.5
                             else:
-                                frame_time = 0.04  # 40ms default
+                                frame = plugin_frame
+                                # Use plugin's frame delay
+                                active = self._plugin_manager.active_plugin
+                                if active:
+                                    frame_time = active.frame_delay_ms / 1000.0
+                                else:
+                                    frame_time = 0.04  # 40ms default
 
                 # Brightness scheduling (checked once per minute)
                 await self._update_brightness()

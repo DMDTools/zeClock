@@ -205,7 +205,7 @@ class CommandHandler:
         plugin_name = params.get("plugin")
 
         if plugin_name is None:
-            # Resume normal rotation
+            # Just clear the flag — main loop handles deactivation
             self._forced_plugin = None
             logger.info("Remote: resumed normal plugin rotation")
             return CommandResult(success=True, message="Resumed normal rotation")
@@ -226,30 +226,13 @@ class CommandHandler:
                 data={"available_plugins": available},
             )
 
+        # Just set the flag — the main loop detects the change and handles
+        # deactivation/activation safely (no race with render loop).
         self._forced_plugin = plugin_name
-
-        # Deactivate current plugin and force the requested one
-        if pm.is_plugin_active():
-            await pm.deactivate_plugin()
-
-        entry = pm.registry.get_plugin(plugin_name)
-        if entry:
-            success = await pm.activate_plugin(entry.plugin)
-            if success:
-                from ..clock import ClockState
-
-                self._clock._state = ClockState.PLUGIN_ACTIVE
-                logger.info(f"Remote: forced plugin '{plugin_name}'")
-                return CommandResult(
-                    success=True, message=f"Displaying plugin '{plugin_name}'"
-                )
-            else:
-                self._forced_plugin = None
-                return CommandResult(
-                    success=False, message=f"Plugin '{plugin_name}' failed to activate"
-                )
-
-        return CommandResult(success=False, message=f"Plugin '{plugin_name}' not found")
+        logger.info(f"Remote: forced plugin '{plugin_name}'")
+        return CommandResult(
+            success=True, message=f"Displaying plugin '{plugin_name}'"
+        )
 
     def _handle_display_text(self, params: Dict[str, Any]) -> CommandResult:
         """Display free text on the screen for a given duration."""

@@ -69,6 +69,10 @@ class PluginConfig:
         self._raw = data
         self._parse_config(data)
 
+    def reload(self) -> None:
+        """Reload configuration from disk. Alias for load()."""
+        self.load()
+
     def _parse_config(self, data: Dict[str, Any]) -> None:
         """Parse and validate configuration data."""
         # clock_display_seconds
