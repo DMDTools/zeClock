@@ -225,22 +225,65 @@ class ZeClock:
         # even while waiting for DMD connection
         await self._init_remote_control()
 
-        # Initial connection with retry loop
+        # Initialize discovery state (shared with REST API for live UI updates)
+        from .discovery import DiscoveryState, discover_zedmd
+
+        self._discovery_state = DiscoveryState()
+
+        # Initial connection attempt (USB or configured WiFi)
         if not self.dmd_client.connect():
-            print("⚠️ DMD backend not available — waiting for device...")
-            print(
-                "👉 Check your backend configuration (--backend, --wifi-addr, --device)"
-            )
-            delay = 2.0
-            while self.running:
-                await asyncio.sleep(delay)
-                if self.dmd_client.connect():
-                    print("✅ DMD backend connected")
-                    break
-                delay = min(delay * 1.5, 30.0)
-                logger.info("DMD still unavailable — next retry in %.0fs", delay)
-            if not self.running:
-                return
+            # If no WiFi addr configured, try auto-discovery
+            if hasattr(self.dmd_client, "_wifi_addr") and not self.dmd_client._wifi_addr:
+                print("⚠️ ZeDMD not found via USB — starting network discovery...")
+                self._discovery_state.update("scanning", "ZeDMD not found via USB, starting network discovery...")
+
+                # Run discovery in a thread to not block the event loop
+                result = await asyncio.get_event_loop().run_in_executor(
+                    None, discover_zedmd, self._discovery_state
+                )
+
+                if result:
+                    # Found via discovery — reconfigure the backend with the discovered IP
+                    print(f"✅ ZeDMD discovered at {result.ip}:{result.port} (v{result.version})")
+                    self.dmd_client._wifi_addr = result.ip
+                    if self.dmd_client.connect():
+                        print("✅ ZeDMD connected via WiFi")
+                    else:
+                        print("⚠️ Discovery found ZeDMD but connection failed — retrying...")
+                else:
+                    print("⚠️ ZeDMD not found on network — waiting for device...")
+
+            if not self.dmd_client.connected:
+                print(
+                    "👉 Check your backend configuration (--backend, --wifi-addr, --device)"
+                )
+                self._discovery_state.update("waiting", "Waiting for ZeDMD...")
+                delay = 2.0
+                while self.running:
+                    await asyncio.sleep(delay)
+                    # Retry USB first
+                    if self.dmd_client.connect():
+                        print("✅ DMD backend connected")
+                        self._discovery_state.update("found", "ZeDMD connected")
+                        break
+                    # Periodically retry discovery (every 30s)
+                    if delay >= 30.0 and not self.dmd_client._wifi_addr:
+                        self._discovery_state.update("scanning", "Retrying network discovery...")
+                        result = await asyncio.get_event_loop().run_in_executor(
+                            None, discover_zedmd, self._discovery_state
+                        )
+                        if result:
+                            self.dmd_client._wifi_addr = result.ip
+                            if self.dmd_client.connect():
+                                print(f"✅ ZeDMD discovered and connected at {result.ip}")
+                                self._discovery_state.update("found", f"ZeDMD connected at {result.ip}")
+                                break
+                    delay = min(delay * 1.5, 30.0)
+                    logger.info("DMD still unavailable — next retry in %.0fs", delay)
+                if not self.running:
+                    return
+        else:
+            self._discovery_state.update("found", "ZeDMD connected")
 
         # After connection, adapt to detected display resolution (ZeDMD HD auto-detect)
         if hasattr(self.dmd_client, "width") and hasattr(self.dmd_client, "height"):

@@ -62,6 +62,7 @@ async function refreshStatus() {
         const banner = document.getElementById('backend-banner');
         if (data.data.backend && !data.data.backend.connected) {
             banner.classList.remove('hidden');
+            pollDiscovery();
         } else {
             banner.classList.add('hidden');
         }
@@ -76,6 +77,41 @@ async function refreshStatus() {
                 document.getElementById('brightness-value').textContent = br.override;
             }
         }
+    }
+}
+
+async function pollDiscovery() {
+    const data = await api('/api/discovery');
+    if (!data || !data.data) return;
+
+    const disc = data.data;
+    const log = document.getElementById('discovery-log');
+    const bannerText = document.querySelector('.banner-text');
+
+    // Update banner text
+    if (disc.status === 'found') {
+        bannerText.textContent = `✅ ${disc.message}`;
+    } else if (disc.message) {
+        bannerText.textContent = disc.message;
+    }
+
+    // Update discovery log with steps
+    if (disc.steps && disc.steps.length > 0) {
+        const lastShown = log.dataset.lastCount || 0;
+        if (disc.steps.length > lastShown) {
+            log.innerHTML = disc.steps.map((step, i) => {
+                const cls = i === disc.steps.length - 1 ? 'step active' :
+                           step.includes('found') || step.includes('connected') ? 'step found' : 'step';
+                return `<div class="${cls}">${step}</div>`;
+            }).join('');
+            log.dataset.lastCount = disc.steps.length;
+            log.scrollTop = log.scrollHeight;
+        }
+    }
+
+    // Keep polling fast while discovery is active
+    if (disc.status !== 'found' && disc.status !== 'idle') {
+        setTimeout(pollDiscovery, 2000);
     }
 }
 

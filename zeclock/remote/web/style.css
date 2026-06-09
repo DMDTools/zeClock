@@ -80,6 +80,36 @@ header h1 {
     font-weight: 500;
 }
 
+.banner-content {
+    flex: 1;
+}
+
+.discovery-log {
+    margin-top: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    max-height: 120px;
+    overflow-y: auto;
+    font-family: monospace;
+}
+
+.discovery-log .step {
+    padding: 2px 0;
+    border-left: 2px solid var(--secondary);
+    padding-left: 8px;
+    margin: 2px 0;
+}
+
+.discovery-log .step.active {
+    border-left-color: var(--warning);
+    color: var(--text);
+}
+
+.discovery-log .step.found {
+    border-left-color: var(--success);
+    color: var(--success);
+}
+
 @keyframes pulse-border {
     0%, 100% { border-color: var(--warning); }
     50% { border-color: var(--secondary); }

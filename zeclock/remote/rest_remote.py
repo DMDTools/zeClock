@@ -72,6 +72,7 @@ class RestRemote:
 
         # API routes
         self._app.router.add_get("/api/status", self._handle_status)
+        self._app.router.add_get("/api/discovery", self._handle_discovery)
         self._app.router.add_get("/api/screen/on", self._handle_screen_on)
         self._app.router.add_post("/api/screen/on", self._handle_screen_on)
         self._app.router.add_get("/api/screen/off", self._handle_screen_off)
@@ -161,6 +162,19 @@ class RestRemote:
         cmd = RemoteCommand(type=CommandType.GET_STATUS)
         result = await self._handler.execute(cmd)
         return self._json_response(result)
+
+    async def _handle_discovery(self, request: web.Request) -> web.Response:
+        """GET /api/discovery — Return live discovery state."""
+        clock = self._handler._clock
+        if hasattr(clock, "_discovery_state"):
+            return web.json_response({
+                "success": True,
+                "data": clock._discovery_state.to_dict(),
+            })
+        return web.json_response({
+            "success": True,
+            "data": {"status": "idle", "message": "", "steps": [], "candidates": [], "result": None},
+        })
 
     async def _handle_screen_on(self, request: web.Request) -> web.Response:
         """POST /api/screen/on — Turn screen on."""
