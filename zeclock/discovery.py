@@ -115,7 +115,11 @@ def get_arp_table() -> List[dict]:
 
 
 def ping_sweep(subnet: str, count: int = 1) -> None:
-    """Quick ping sweep to populate ARP table."""
+    """Quick ping sweep to populate ARP table.
+
+    Uses broadcast ping first, then parallel individual pings across
+    the full .1-.254 range for hosts that don't respond to broadcast.
+    """
     # Use a fast broadcast ping to populate ARP cache
     try:
         subprocess.run(
@@ -126,22 +130,32 @@ def ping_sweep(subnet: str, count: int = 1) -> None:
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         pass
 
-    # Also try individual pings on common DHCP ranges (faster than full /24)
-    # This helps if broadcast ping is blocked
+    # Parallel pings across full subnet range (.1-.254)
+    # Use a batch approach: fire all pings, wait for them to complete
+    procs = []
     try:
-        for i in range(1, 50):
-            subprocess.Popen(
+        for i in range(1, 255):
+            p = subprocess.Popen(
                 ["ping", "-c", "1", "-W", "1", f"{subnet}.{i}"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
-        time.sleep(1.5)
+            procs.append(p)
+        # Wait for all pings to finish (max 3s total)
+        deadline = time.time() + 3.0
+        for p in procs:
+            remaining = max(0.01, deadline - time.time())
+            try:
+                p.wait(timeout=remaining)
+            except subprocess.TimeoutExpired:
+                p.kill()
     except (FileNotFoundError, OSError):
         pass
 
 
 def get_local_subnet() -> Optional[str]:
     """Get the local subnet (e.g. '192.168.0') from the default route."""
+    # Try ip route first
     try:
         result = subprocess.run(
             ["ip", "route", "show", "default"],
@@ -159,6 +173,26 @@ def get_local_subnet() -> Optional[str]:
                 return ".".join(octets[:3])
     except (subprocess.TimeoutExpired, FileNotFoundError, ValueError):
         pass
+
+    # Fallback: try to get subnet from any non-loopback interface IP
+    try:
+        result = subprocess.run(
+            ["ip", "-4", "addr", "show"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if line.startswith("inet ") and "127.0.0.1" not in line:
+                # e.g. "inet 192.168.0.42/24 brd 192.168.0.255 scope global wlan0"
+                addr = line.split()[1].split("/")[0]
+                octets = addr.split(".")
+                if len(octets) == 4:
+                    return ".".join(octets[:3])
+    except (subprocess.TimeoutExpired, FileNotFoundError, ValueError):
+        pass
+
     return None
 
 
