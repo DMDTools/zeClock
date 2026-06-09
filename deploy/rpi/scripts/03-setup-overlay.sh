@@ -173,6 +173,8 @@ fi
 if [ -b "${DEVICE}" ]; then
     CURRENT_FS=$(blkid -s TYPE -o value "${DEVICE}" 2>/dev/null || echo "")
     if [ "${CURRENT_FS}" = "f2fs" ]; then
+        # Run fsck before mounting (fixes corruption from power loss)
+        fsck.f2fs -a "${DEVICE}" 2>/dev/null || true
         mount -t f2fs -o noatime "${DEVICE}" /data
         exit 0
     fi

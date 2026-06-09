@@ -164,50 +164,69 @@ def connect_to_network(ssid: str, password: str) -> Tuple[bool, str]:
     teardown_hotspot()
     time.sleep(2)
 
-    # Delete any existing connection with this SSID to avoid conflicts
+    # Delete any existing connection with this SSID
     subprocess.run(
         ["nmcli", "connection", "delete", ssid],
         capture_output=True,
         timeout=10,
     )
 
-    # Create the connection profile with credentials explicitly set
-    cmd_add = [
-        "nmcli",
-        "connection",
-        "add",
-        "type", "wifi",
-        "con-name", ssid,
-        "ssid", ssid,
-        "wifi-sec.key-mgmt", "wpa-psk",
-        "wifi-sec.psk", password,
-        "ifname", AP_INTERFACE,
-        "connection.autoconnect", "yes",
-    ]
-    result = subprocess.run(cmd_add, capture_output=True, text=True, timeout=15)
-    if result.returncode != 0:
-        error = result.stderr.strip() or "Failed to create connection"
-        logger.warning(f"Failed to add connection for '{ssid}': {error}")
+    # Write the connection file directly (most reliable method on Trixie)
+    # nmcli connection add + up has PSK storage issues under overlayfs
+    conn_file = f"/etc/NetworkManager/system-connections/{ssid}.nmconnection"
+    conn_content = f"""[connection]
+id={ssid}
+type=wifi
+interface-name={AP_INTERFACE}
+autoconnect=true
+
+[wifi]
+mode=infrastructure
+ssid={ssid}
+
+[wifi-security]
+key-mgmt=wpa-psk
+psk={password}
+
+[ipv4]
+method=auto
+
+[ipv6]
+addr-gen-mode=default
+method=auto
+"""
+    try:
+        import os
+        with open(conn_file, "w") as f:
+            f.write(conn_content)
+        os.chmod(conn_file, 0o600)
+    except OSError as e:
+        logger.warning(f"Failed to write connection file: {e}")
         create_hotspot()
-        return False, error
+        return False, f"Failed to save connection: {e}"
+
+    # Reload NM to pick up the new file
+    subprocess.run(["nmcli", "connection", "reload"], capture_output=True, timeout=10)
+    time.sleep(1)
 
     # Activate the connection
-    cmd_up = ["nmcli", "connection", "up", ssid]
-    result = subprocess.run(cmd_up, capture_output=True, text=True, timeout=30)
+    result = subprocess.run(
+        ["nmcli", "connection", "up", ssid],
+        capture_output=True, text=True, timeout=30
+    )
 
     if result.returncode == 0:
         logger.info(f"Connected to '{ssid}'")
-        # Persist the connection to /data so it survives reboot (overlay-safe)
+        # Persist the connection to /data for reboot survival
         _persist_connection(ssid)
         return True, f"Connected to {ssid}"
     else:
         error = result.stderr.strip() or "Connection failed"
         logger.warning(f"Failed to connect to '{ssid}': {error}")
-        # Remove the failed connection and re-create hotspot
+        # Cleanup and re-create hotspot
         subprocess.run(
             ["nmcli", "connection", "delete", ssid],
-            capture_output=True,
-            timeout=10,
+            capture_output=True, timeout=10,
         )
         create_hotspot()
         return False, error
