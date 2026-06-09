@@ -197,6 +197,8 @@ def connect_to_network(ssid: str, password: str) -> Tuple[bool, str]:
 
     if result.returncode == 0:
         logger.info(f"Connected to '{ssid}'")
+        # Persist the connection to /data so it survives reboot (overlay-safe)
+        _persist_connection(ssid)
         return True, f"Connected to {ssid}"
     else:
         error = result.stderr.strip() or "Connection failed"
@@ -209,6 +211,33 @@ def connect_to_network(ssid: str, password: str) -> Tuple[bool, str]:
         )
         create_hotspot()
         return False, error
+
+
+def _persist_connection(ssid: str) -> None:
+    """Copy the NM connection profile to /data for persistence across reboots."""
+    import shutil
+    from pathlib import Path
+
+    src_dir = Path("/etc/NetworkManager/system-connections")
+    data_dir = Path("/data/networkmanager/system-connections")
+
+    if not data_dir.exists():
+        try:
+            data_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            logger.warning("Cannot create /data/networkmanager/system-connections")
+            return
+
+    # Find the connection file (NM names it <con-name>.nmconnection)
+    src_file = src_dir / f"{ssid}.nmconnection"
+    if src_file.exists():
+        dst_file = data_dir / f"{ssid}.nmconnection"
+        try:
+            shutil.copy2(src_file, dst_file)
+            dst_file.chmod(0o600)
+            logger.info(f"Persisted connection to {dst_file}")
+        except OSError as e:
+            logger.warning(f"Failed to persist connection: {e}")
         logger.warning(f"Failed to connect to '{ssid}': {error}")
         # Re-create hotspot so user can retry
         create_hotspot()

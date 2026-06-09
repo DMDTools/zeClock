@@ -315,7 +315,9 @@ systemctl enable init-data-partition.service
 
 cat > /usr/local/sbin/bind-persistent-dirs.sh << 'BINDSCRIPT'
 #!/bin/bash
-# Bind-mount persistent directories from /data.
+# Restore persistent data from /data into the overlay filesystem.
+# Instead of bind-mount (which can hide existing files), we COPY files
+# from /data into the overlay layer so NM sees them normally.
 set -e
 
 DATA="/data"
@@ -323,16 +325,26 @@ if ! mountpoint -q "${DATA}" 2>/dev/null; then
     exit 0
 fi
 
-# NetworkManager connections
+# Restore NetworkManager connections from /data
 if [ -d "${DATA}/networkmanager/system-connections" ]; then
-    mount --bind "${DATA}/networkmanager/system-connections" /etc/NetworkManager/system-connections 2>/dev/null || true
+    for f in "${DATA}/networkmanager/system-connections/"*.nmconnection; do
+        [ -f "$f" ] || continue
+        cp "$f" /etc/NetworkManager/system-connections/
+        chmod 600 /etc/NetworkManager/system-connections/"$(basename "$f")"
+    done
 fi
 
-# SSH host keys
+# Restore SSH host keys from /data
 if [ -d "${DATA}/ssh" ] && [ -f "${DATA}/ssh/ssh_host_ed25519_key" ]; then
     for key in "${DATA}"/ssh/ssh_host_*; do
-        base=$(basename "${key}")
-        [ -f "/etc/ssh/${base}" ] && mount --bind "${key}" "/etc/ssh/${base}" 2>/dev/null || true
+        [ -f "$key" ] || continue
+        base=$(basename "$key")
+        cp "$key" "/etc/ssh/${base}"
+        if echo "$base" | grep -q "\.pub$"; then
+            chmod 644 "/etc/ssh/${base}"
+        else
+            chmod 600 "/etc/ssh/${base}"
+        fi
     done
 fi
 
