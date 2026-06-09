@@ -141,6 +141,10 @@ systemctl mask apt-daily-upgrade.timer 2>/dev/null || true
 systemctl mask systemd-remount-fs.service 2>/dev/null || true
 systemctl mask sshswitch.service 2>/dev/null || true
 
+# Disable systemd-networkd-wait-online (we use NetworkManager, not networkd — saves 2min boot)
+systemctl disable systemd-networkd-wait-online.service 2>/dev/null || true
+systemctl mask systemd-networkd-wait-online.service 2>/dev/null || true
+
 # Remove firstboot init from cmdline.txt if present
 sed -i 's| init=/usr/lib/raspberrypi-sys-mods/firstboot||' /boot/firmware/cmdline.txt 2>/dev/null || true
 
