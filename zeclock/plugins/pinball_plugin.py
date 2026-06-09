@@ -54,9 +54,9 @@ class PinballPlugin(ClockPlugin):
         self._frame_index: int = 0
         self._color: Tuple[int, int, int] = COLOR_MAP[DEFAULT_COLOR]
         self._animation_color: Tuple[int, int, int] = COLOR_MAP[DEFAULT_COLOR]
-        self._animations_dir: Path = (
-            Path.home() / ".zeclock" / "resources" / "animations"
-        )
+        from ..paths import get_resources_dir
+
+        self._animations_dir: Path = get_resources_dir() / "animations"
         self._font: Optional[BitmapFont] = None
         self._upscale_mode: str = "epx"
         # Background pre-computation state

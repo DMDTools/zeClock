@@ -1,0 +1,22 @@
+[Unit]
+Description=zeClock - Smart DMD Clock
+After=network-online.target bind-persistent-dirs.service
+Wants=network-online.target bind-persistent-dirs.service
+
+[Service]
+Type=simple
+User=zeclock
+Group=zeclock
+WorkingDirectory=/home/zeclock/app
+Environment=PATH=/home/zeclock/venv/bin:/usr/local/bin:/usr/bin
+Environment=LD_LIBRARY_PATH=/home/zeclock/.zeclock/lib
+Environment=ZECLOCK_CONFIG_DIR=/data/zeclock/config
+Environment=ZECLOCK_DATA_DIR=/data/zeclock
+Environment=ZECLOCK_RESOURCES_DIR=/data/zeclock/resources
+Environment=ZECLOCK_LIB_DIR=/home/zeclock/.zeclock/lib
+ExecStart=/home/zeclock/venv/bin/python -m zeclock --backend zedmd --no-prompt
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

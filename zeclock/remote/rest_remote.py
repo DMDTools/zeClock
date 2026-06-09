@@ -72,6 +72,7 @@ class RestRemote:
 
         # API routes
         self._app.router.add_get("/api/status", self._handle_status)
+        self._app.router.add_get("/api/discovery", self._handle_discovery)
         self._app.router.add_get("/api/screen/on", self._handle_screen_on)
         self._app.router.add_post("/api/screen/on", self._handle_screen_on)
         self._app.router.add_get("/api/screen/off", self._handle_screen_off)
@@ -105,6 +106,20 @@ class RestRemote:
         self._app.router.add_post(
             "/api/speaker-timer/set", self._handle_speaker_timer_set
         )
+
+        # Configuration API routes
+        self._app.router.add_get("/api/config", self._handle_get_config)
+        self._app.router.add_post("/api/config", self._handle_save_config)
+        self._app.router.add_get("/api/config/plugins", self._handle_get_plugins_config)
+        self._app.router.add_post(
+            "/api/config/plugins", self._handle_save_plugins_config
+        )
+
+        # Plugin config schema and geocode routes
+        self._app.router.add_get(
+            "/api/plugins/config-schema", self._handle_plugins_config_schema
+        )
+        self._app.router.add_get("/api/geocode/search", self._handle_geocode_search)
 
         # Static files for web UI (must be last to avoid catching API routes)
         if WEB_UI_DIR.exists():
@@ -153,6 +168,19 @@ class RestRemote:
         cmd = RemoteCommand(type=CommandType.GET_STATUS)
         result = await self._handler.execute(cmd)
         return self._json_response(result)
+
+    async def _handle_discovery(self, request: web.Request) -> web.Response:
+        """GET /api/discovery — Return live discovery state."""
+        clock = self._handler._clock
+        if hasattr(clock, "_discovery_state"):
+            return web.json_response({
+                "success": True,
+                "data": clock._discovery_state.to_dict(),
+            })
+        return web.json_response({
+            "success": True,
+            "data": {"status": "idle", "message": "", "steps": [], "candidates": [], "result": None},
+        })
 
     async def _handle_screen_on(self, request: web.Request) -> web.Response:
         """POST /api/screen/on — Turn screen on."""
@@ -374,6 +402,61 @@ class RestRemote:
             }
         )
 
+    # --- Plugin Config Schema and Geocode handlers ---
+
+    async def _handle_plugins_config_schema(
+        self, request: web.Request
+    ) -> web.Response:
+        """GET /api/plugins/config-schema — Return aggregated config schemas."""
+        pm = self._handler._clock._plugin_manager
+        if pm is None:
+            return web.json_response({"plugins": []})
+
+        plugins = []
+        for entry in pm.registry.get_all_plugins():
+            schema = entry.plugin.config_schema
+            plugins.append({
+                "name": entry.name,
+                "description": entry.plugin.description,
+                "schema": [
+                    {
+                        "name": field.name,
+                        "label": field.label,
+                        "field_type": field.field_type,
+                        "required": field.required,
+                        "description": field.description,
+                        "default": field.default,
+                    }
+                    for field in schema
+                ],
+            })
+
+        return web.json_response({"plugins": plugins})
+
+    async def _handle_geocode_search(self, request: web.Request) -> web.Response:
+        """GET /api/geocode/search?q=<query> — Search cities via geocoder."""
+        from ..geocoder import search_cities
+
+        query = request.query.get("q", "")
+        if len(query.strip()) < 3:
+            return web.json_response(
+                {"success": False, "message": "Query must be at least 3 characters"},
+                status=400,
+            )
+
+        results = search_cities(query)
+        return web.json_response({
+            "results": [
+                {
+                    "display_name": r.display_name,
+                    "country": r.country,
+                    "latitude": r.latitude,
+                    "longitude": r.longitude,
+                }
+                for r in results
+            ]
+        })
+
     # --- Speaker Timer handlers ---
 
     async def _handle_speaker_timer_status(self, request: web.Request) -> web.Response:
@@ -463,3 +546,138 @@ class RestRemote:
 
         status = SpeakerTimerPlugin.set_duration(seconds)
         return web.json_response({"success": True, "data": status})
+
+    # --- Configuration handlers ---
+
+    async def _handle_get_config(self, request: web.Request) -> web.Response:
+        """GET /api/config — Return current zeclock.ini as structured JSON."""
+        import configparser
+
+        from ..paths import get_config_dir
+
+        config_path = get_config_dir() / "zeclock.ini"
+        if not config_path.exists():
+            return web.json_response(
+                {"success": True, "data": {}},
+            )
+
+        parser = configparser.RawConfigParser()
+        parser.read(str(config_path))
+
+        # Convert to nested dict
+        data = {}
+        for section in parser.sections():
+            data[section] = dict(parser.items(section))
+
+        return web.json_response({"success": True, "data": data})
+
+    async def _handle_save_config(self, request: web.Request) -> web.Response:
+        """POST /api/config — Save zeclock.ini from structured JSON.
+
+        Body: {"zedmd": {"wifi_addr": "...", "brightness": "10"}, "display": {...}, ...}
+        """
+        import configparser
+
+        try:
+            body = await request.json()
+        except (json.JSONDecodeError, Exception):
+            return web.json_response(
+                {"success": False, "message": "Invalid JSON body"}, status=400
+            )
+
+        if not isinstance(body, dict):
+            return web.json_response(
+                {"success": False, "message": "Body must be a JSON object"}, status=400
+            )
+
+        from ..paths import get_config_dir
+
+        config_path = get_config_dir() / "zeclock.ini"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+
+        parser = configparser.RawConfigParser()
+        for section, values in body.items():
+            if not isinstance(values, dict):
+                continue
+            parser.add_section(section)
+            for key, value in values.items():
+                parser.set(section, str(key), str(value))
+
+        with open(config_path, "w") as f:
+            parser.write(f)
+
+        logger.info("Configuration saved to %s", config_path)
+        return web.json_response(
+            {
+                "success": True,
+                "message": "Configuration saved. Restart zeClock to apply changes.",
+            }
+        )
+
+    async def _handle_get_plugins_config(self, request: web.Request) -> web.Response:
+        """GET /api/config/plugins — Return current plugins.yaml as JSON."""
+        import yaml
+
+        from ..paths import get_config_dir
+
+        config_path = get_config_dir() / "plugins.yaml"
+        if not config_path.exists():
+            return web.json_response({"success": True, "data": {}})
+
+        try:
+            with open(config_path, "r") as f:
+                data = yaml.safe_load(f)
+        except Exception as e:
+            return web.json_response(
+                {"success": False, "message": f"Failed to parse plugins.yaml: {e}"},
+                status=500,
+            )
+
+        return web.json_response({"success": True, "data": data or {}})
+
+    async def _handle_save_plugins_config(self, request: web.Request) -> web.Response:
+        """POST /api/config/plugins — Save plugins.yaml from JSON.
+
+        Body: {"clock_display_seconds": 5, "plugins": [...]}
+        """
+        import yaml
+
+        try:
+            body = await request.json()
+        except (json.JSONDecodeError, Exception):
+            return web.json_response(
+                {"success": False, "message": "Invalid JSON body"}, status=400
+            )
+
+        if not isinstance(body, dict):
+            return web.json_response(
+                {"success": False, "message": "Body must be a JSON object"}, status=400
+            )
+
+        from ..paths import get_config_dir
+
+        config_path = get_config_dir() / "plugins.yaml"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(config_path, "w") as f:
+            yaml.dump(body, f, default_flow_style=False, sort_keys=False)
+
+        logger.info("Plugins configuration saved to %s", config_path)
+
+        # Reconfigure affected plugins without restart
+        pm = self._handler._clock._plugin_manager
+        reconfigured = []
+        if pm and body.get("plugins"):
+            for plugin_entry in body["plugins"]:
+                name = plugin_entry.get("name", "")
+                if name and pm.registry.has_plugin(name):
+                    success = await pm.reconfigure_plugin(name)
+                    if success:
+                        reconfigured.append(name)
+
+        if reconfigured:
+            msg = f"Configuration saved and applied to: {', '.join(reconfigured)}"
+        else:
+            msg = "Configuration saved."
+
+        return web.json_response({"success": True, "message": msg})

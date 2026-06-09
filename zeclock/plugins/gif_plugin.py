@@ -20,13 +20,15 @@ from typing import List, Optional
 
 from PIL import Image
 
-from .base import ClockPlugin
+from .base import ClockPlugin, ConfigField, PluginNotConfiguredError
 from ..overlay import upscale_nx
 
 logger = logging.getLogger(__name__)
 
 # Default GIF directory relative to user plugins path
-DEFAULT_GIF_DIR = Path.home() / ".zeclock" / "plugins" / "gif"
+from ..paths import get_plugins_dir
+
+DEFAULT_GIF_DIR = get_plugins_dir() / "gif"
 
 
 class GifPlugin(ClockPlugin):
@@ -53,6 +55,19 @@ class GifPlugin(ClockPlugin):
         return "Displays animated GIFs on the DMD"
 
     @property
+    def config_schema(self) -> List[ConfigField]:
+        """Declare configuration fields for the gif plugin."""
+        return [
+            ConfigField(
+                "gif_dir",
+                "GIF Directory",
+                "text",
+                required=True,
+                description="Path to directory containing .gif files",
+            )
+        ]
+
+    @property
     def frame_delay_ms(self) -> int:
         # Return current frame's delay; default 100ms if unknown
         if self._frame_delays and self._frame_index < len(self._frame_delays):
@@ -65,9 +80,18 @@ class GifPlugin(ClockPlugin):
         Config keys:
             gif_dir (str): Path to directory containing .gif files.
                            Default: ~/.zeclock/plugins/gif/
+
+        Raises:
+            PluginNotConfiguredError: If gif_dir is missing, does not exist,
+                or contains zero .gif files.
         """
         self._helpers = config.get("_helpers")
         self._upscale_mode = config.get("_upscale_mode", "epx")
+
+        # Wait for any existing load thread to finish before resetting state
+        if self._load_thread and self._load_thread.is_alive():
+            self._load_thread.join(timeout=2.0)
+
         self._frames = []
         self._frame_delays = []
         self._frame_index = 0
@@ -80,17 +104,17 @@ class GifPlugin(ClockPlugin):
         else:
             gif_dir = DEFAULT_GIF_DIR
 
-        if not gif_dir.exists():
-            logger.warning("[gif] GIF directory does not exist: %s", gif_dir)
-            self._load_done = True
-            return
+        if not gif_dir.is_dir():
+            raise PluginNotConfiguredError(
+                f"Gif plugin: directory does not exist: {gif_dir}"
+            )
 
         # Find all .gif files recursively
         gif_files = list(gif_dir.rglob("*.gif"))
         if not gif_files:
-            logger.warning("[gif] No .gif files found in %s", gif_dir)
-            self._load_done = True
-            return
+            raise PluginNotConfiguredError(
+                f"Gif plugin: no .gif files found in {gif_dir}"
+            )
 
         # Pick one at random
         gif_path = random.choice(gif_files)

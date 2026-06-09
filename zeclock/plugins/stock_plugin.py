@@ -15,7 +15,7 @@ from typing import List, Optional, Tuple
 import aiohttp
 from PIL import Image
 
-from .base import PagedPlugin
+from .base import ConfigField, PagedPlugin, PluginNotConfiguredError
 from .helpers import draw_staleness_indicator
 
 logger = logging.getLogger(__name__)
@@ -67,6 +67,19 @@ class StockPlugin(PagedPlugin):
     def description(self) -> str:
         return "Stock prices and daily change display"
 
+    @property
+    def config_schema(self) -> List[ConfigField]:
+        """Declare configuration fields for the stock plugin."""
+        return [
+            ConfigField(
+                "symbols",
+                "Stock Symbols",
+                "text",
+                required=True,
+                description="Comma-separated tickers (e.g. AAPL,MSFT)",
+            )
+        ]
+
     # Class-level cache shared across activations
     _shared_cache: Optional["StockData"] = None
 
@@ -94,22 +107,34 @@ class StockPlugin(PagedPlugin):
 
         Args:
             config: Plugin-specific settings from plugins.yaml.
+
+        Raises:
+            PluginNotConfiguredError: If symbols is missing, null, empty,
+                or contains only whitespace strings.
         """
         self._helpers = config.get("_helpers")
 
         # Read symbols configuration
         symbols = config.get("symbols", [])
         if not symbols:
-            logger.warning("[stock] No symbols configured")
-            self._initialized = False
-            return
+            raise PluginNotConfiguredError(
+                "Stock plugin requires at least one stock symbol to be configured."
+            )
+
+        # Handle string input (comma-separated from Web UI) vs list
+        if isinstance(symbols, str):
+            symbols = [s.strip() for s in symbols.split(",") if s.strip()]
+            if not symbols:
+                raise PluginNotConfiguredError(
+                    "Stock plugin requires at least one stock symbol to be configured."
+                )
 
         # Normalize symbols to uppercase
         self._symbols = [s.upper().strip() for s in symbols if s.strip()]
         if not self._symbols:
-            logger.warning("[stock] No valid symbols after filtering")
-            self._initialized = False
-            return
+            raise PluginNotConfiguredError(
+                "Stock plugin requires at least one non-empty stock symbol."
+            )
 
         # Read optional configuration
         page_duration = config.get("page_duration_seconds", 5)
@@ -126,6 +151,9 @@ class StockPlugin(PagedPlugin):
         )
 
         self._initialized = True
+
+        # Invalidate cache on reconfigure (symbols may have changed)
+        self._cache = None
 
         # Fetch stock data
         await self._refresh_cache_if_needed()

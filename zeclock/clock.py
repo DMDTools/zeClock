@@ -221,22 +221,69 @@ class ZeClock:
 
     async def run(self) -> None:
         """Main asynchronous loop with plugin-driven state machine."""
-        # Initial connection with retry loop
+        # Initialize remote control EARLY so the web UI is available
+        # even while waiting for DMD connection
+        await self._init_remote_control()
+
+        # Initialize discovery state (shared with REST API for live UI updates)
+        from .discovery import DiscoveryState, discover_zedmd
+
+        self._discovery_state = DiscoveryState()
+
+        # Initial connection attempt (USB or configured WiFi)
         if not self.dmd_client.connect():
-            print("⚠️ DMD backend not available — waiting for device...")
-            print(
-                "👉 Check your backend configuration (--backend, --wifi-addr, --device)"
-            )
-            delay = 2.0
-            while self.running:
-                await asyncio.sleep(delay)
-                if self.dmd_client.connect():
-                    print("✅ DMD backend connected")
-                    break
-                delay = min(delay * 1.5, 30.0)
-                logger.info("DMD still unavailable — next retry in %.0fs", delay)
-            if not self.running:
-                return
+            # If no WiFi addr configured, try auto-discovery
+            if hasattr(self.dmd_client, "_wifi_addr") and not self.dmd_client._wifi_addr:
+                print("⚠️ ZeDMD not found via USB — starting network discovery...")
+                self._discovery_state.update("scanning", "ZeDMD not found via USB, starting network discovery...")
+
+                # Run discovery in a thread to not block the event loop
+                result = await asyncio.get_event_loop().run_in_executor(
+                    None, discover_zedmd, self._discovery_state
+                )
+
+                if result:
+                    # Found via discovery — reconfigure the backend with the discovered IP
+                    print(f"✅ ZeDMD discovered at {result.ip}:{result.port} (v{result.version})")
+                    self.dmd_client._wifi_addr = result.ip
+                    if self.dmd_client.connect():
+                        print("✅ ZeDMD connected via WiFi")
+                    else:
+                        print("⚠️ Discovery found ZeDMD but connection failed — retrying...")
+                else:
+                    print("⚠️ ZeDMD not found on network — waiting for device...")
+
+            if not self.dmd_client.connected:
+                print(
+                    "👉 Check your backend configuration (--backend, --wifi-addr, --device)"
+                )
+                self._discovery_state.update("waiting", "Waiting for ZeDMD...")
+                delay = 2.0
+                while self.running:
+                    await asyncio.sleep(delay)
+                    # Retry USB first
+                    if self.dmd_client.connect():
+                        print("✅ DMD backend connected")
+                        self._discovery_state.update("found", "ZeDMD connected")
+                        break
+                    # Periodically retry discovery (every 30s)
+                    if delay >= 30.0 and not self.dmd_client._wifi_addr:
+                        self._discovery_state.update("scanning", "Retrying network discovery...")
+                        result = await asyncio.get_event_loop().run_in_executor(
+                            None, discover_zedmd, self._discovery_state
+                        )
+                        if result:
+                            self.dmd_client._wifi_addr = result.ip
+                            if self.dmd_client.connect():
+                                print(f"✅ ZeDMD discovered and connected at {result.ip}")
+                                self._discovery_state.update("found", f"ZeDMD connected at {result.ip}")
+                                break
+                    delay = min(delay * 1.5, 30.0)
+                    logger.info("DMD still unavailable — next retry in %.0fs", delay)
+                if not self.running:
+                    return
+        else:
+            self._discovery_state.update("found", "ZeDMD connected")
 
         # After connection, adapt to detected display resolution (ZeDMD HD auto-detect)
         if hasattr(self.dmd_client, "width") and hasattr(self.dmd_client, "height"):
@@ -258,9 +305,6 @@ class ZeClock:
 
         # Initialize plugin system
         await self._init_plugin_system()
-
-        # Initialize remote control
-        await self._init_remote_control()
 
         # Initialize brightness scheduler (fetch sunrise/sunset if configured)
         if self._brightness_scheduler and self._brightness_scheduler._has_sun_config:
@@ -338,41 +382,68 @@ class ZeClock:
                             self._clock_only_start = now
 
                 elif self._state == ClockState.PLUGIN_ACTIVE:
-                    # Check if plugin should be deactivated
-                    # Skip deactivation if plugin is forced by remote control
-                    forced = (
-                        self._command_handler
-                        and self._command_handler.forced_plugin is not None
+                    # Check if forced plugin changed (user clicked a different plugin)
+                    forced_name = (
+                        self._command_handler.forced_plugin
+                        if self._command_handler
+                        else None
                     )
-                    if (
-                        not forced
-                        and self._plugin_manager
-                        and self._plugin_manager.should_deactivate()
-                    ):
-                        await self._plugin_manager.deactivate_plugin()
-                        self._state = ClockState.CLOCK_ONLY
-                        self._clock_only_start = time.time()
+                    current_name = (
+                        self._plugin_manager.active_plugin.name
+                        if self._plugin_manager and self._plugin_manager.active_plugin
+                        else None
+                    )
+                    if forced_name and forced_name != current_name:
+                        # Forced plugin changed — switch immediately
+                        if self._plugin_manager:
+                            await self._plugin_manager.deactivate_plugin()
+                        self._state = ClockState.PLUGIN_SELECT
                         frame = self._render_clock_frame()
-                        frame_time = 0.5
+                        frame_time = 0.04  # minimal delay to re-enter loop fast
+                    elif not forced_name and forced_name is not None:
+                        # forced_plugin was cleared (resume) — let normal deactivation handle it
+                        pass
                     else:
-                        # Get frame from active plugin
-                        assert self._plugin_manager is not None
-                        plugin_frame = await self._plugin_manager.get_frame()
-                        if plugin_frame is None:
-                            # Plugin signals completion
+                        # Check if plugin should be deactivated
+                        # Skip deactivation if plugin is forced by remote control
+                        forced = forced_name is not None
+                        if (
+                            not forced
+                            and self._plugin_manager
+                            and self._plugin_manager.should_deactivate()
+                        ):
                             await self._plugin_manager.deactivate_plugin()
                             self._state = ClockState.CLOCK_ONLY
                             self._clock_only_start = time.time()
                             frame = self._render_clock_frame()
                             frame_time = 0.5
                         else:
-                            frame = plugin_frame
-                            # Use plugin's frame delay
-                            active = self._plugin_manager.active_plugin
-                            if active:
-                                frame_time = active.frame_delay_ms / 1000.0
+                            # Get frame from active plugin
+                            assert self._plugin_manager is not None
+                            plugin_frame = await self._plugin_manager.get_frame()
+                            if plugin_frame is None:
+                                # Plugin signals completion
+                                if forced:
+                                    # Forced plugin completed — re-activate immediately
+                                    logger.debug(
+                                        "Forced plugin completed, re-activating"
+                                    )
+                                    await self._plugin_manager.deactivate_plugin()
+                                    self._state = ClockState.PLUGIN_SELECT
+                                else:
+                                    await self._plugin_manager.deactivate_plugin()
+                                    self._state = ClockState.CLOCK_ONLY
+                                    self._clock_only_start = time.time()
+                                frame = self._render_clock_frame()
+                                frame_time = 0.5
                             else:
-                                frame_time = 0.04  # 40ms default
+                                frame = plugin_frame
+                                # Use plugin's frame delay
+                                active = self._plugin_manager.active_plugin
+                                if active:
+                                    frame_time = active.frame_delay_ms / 1000.0
+                                else:
+                                    frame_time = 0.04  # 40ms default
 
                 # Brightness scheduling (checked once per minute)
                 await self._update_brightness()

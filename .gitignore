@@ -62,4 +62,3 @@ Makefile.local
 dmd-simulator
 libdmdutil.src
 DotClk
-deploy

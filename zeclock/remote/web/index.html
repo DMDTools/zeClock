@@ -12,10 +12,19 @@
         <div id="connection-status" class="status-dot connected" title="Connected"></div>
     </header>
 
+    <div id="backend-banner" class="backend-banner hidden">
+        <span class="banner-icon">⏳</span>
+        <div class="banner-content">
+            <span class="banner-text">Waiting for ZeDMD display connection...</span>
+            <div id="discovery-log" class="discovery-log"></div>
+        </div>
+    </div>
+
     <nav>
         <button class="tab active" data-tab="dashboard">Dashboard</button>
         <button class="tab" data-tab="speaker-timer">Speaker Timer</button>
         <button class="tab" data-tab="message">Message</button>
+        <button class="tab" data-tab="settings">⚙️ Settings</button>
     </nav>
 
     <main>
@@ -122,6 +131,98 @@
                     <button class="btn btn-secondary" onclick="quickMessage('Thank you!')">Thank you!</button>
                 </div>
             </div>
+        </section>
+
+        <!-- Settings Tab -->
+        <section id="tab-settings" class="tab-content">
+            <div class="card">
+                <h2>ZeDMD Backend</h2>
+                <div class="form-group">
+                    <label for="cfg-wifi-addr">ZeDMD WiFi Address</label>
+                    <input type="text" id="cfg-wifi-addr" placeholder="192.168.0.35">
+                </div>
+                <div class="form-group">
+                    <label for="cfg-brightness">Default Brightness (0-15)</label>
+                    <input type="number" id="cfg-brightness" min="0" max="15" value="10">
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Display</h2>
+                <div class="form-group">
+                    <label for="cfg-font">Font</label>
+                    <select id="cfg-font">
+                        <option value="STANDARD">STANDARD</option>
+                        <option value="BOLD">BOLD</option>
+                        <option value="NARROW">NARROW</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Location</h2>
+                <div class="form-group">
+                    <label for="cfg-latitude">Latitude</label>
+                    <input type="number" id="cfg-latitude" step="0.0001" placeholder="45.1885">
+                </div>
+                <div class="form-group">
+                    <label for="cfg-longitude">Longitude</label>
+                    <input type="number" id="cfg-longitude" step="0.0001" placeholder="5.7245">
+                </div>
+                <div class="form-group">
+                    <label for="cfg-city">City Name</label>
+                    <input type="text" id="cfg-city" placeholder="Grenoble">
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Brightness Schedule</h2>
+                <div class="form-group">
+                    <label for="cfg-max-brightness">Max Brightness (0-15)</label>
+                    <input type="number" id="cfg-max-brightness" min="0" max="15" value="7">
+                </div>
+                <div class="form-group">
+                    <label for="cfg-schedule-default">Default Schedule (e.g. 22:00-08:00 20%)</label>
+                    <input type="text" id="cfg-schedule-default" placeholder="22:00-08:00 20%">
+                </div>
+                <div class="form-group">
+                    <label for="cfg-sunrise-brightness">Sunrise Brightness %</label>
+                    <input type="text" id="cfg-sunrise-brightness" placeholder="100%">
+                </div>
+                <div class="form-group">
+                    <label for="cfg-sunset-brightness">Sunset Brightness %</label>
+                    <input type="text" id="cfg-sunset-brightness" placeholder="10%">
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>REST API</h2>
+                <div class="form-group">
+                    <label><input type="checkbox" id="cfg-rest-enabled" checked> Enabled</label>
+                </div>
+                <div class="form-group">
+                    <label for="cfg-rest-port">Port</label>
+                    <input type="number" id="cfg-rest-port" min="1" max="65535" value="8080">
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Plugins</h2>
+                <div class="form-group">
+                    <label for="cfg-clock-seconds">Clock Display Seconds</label>
+                    <input type="number" id="cfg-clock-seconds" min="1" max="300" value="5">
+                </div>
+                <div id="cfg-plugins-list"></div>
+                <button class="btn btn-secondary" onclick="addPluginEntry()" style="margin-top: 0.75rem;">+ Add Plugin</button>
+            </div>
+
+            <!-- Auto-generated plugin configuration forms -->
+            <div id="plugin-config-forms"></div>
+
+            <div class="button-row" style="margin-top: 1.5rem;">
+                <button class="btn btn-success btn-large" onclick="saveConfig()">💾 Save Configuration</button>
+            </div>
+            <div id="config-status" class="muted" style="margin-top: 0.75rem;"></div>
         </section>
     </main>
 

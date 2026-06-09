@@ -3,7 +3,8 @@
 import logging
 import re
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any, List, Optional
 
 from PIL import Image
 
@@ -66,6 +67,34 @@ def validate_frame_delay_ms(delay: int) -> bool:
     return FRAME_DELAY_MIN_MS <= delay <= FRAME_DELAY_MAX_MS
 
 
+@dataclass
+class ConfigField:
+    """Descriptor for a plugin configuration field.
+
+    Used by plugins to declare their required settings via the
+    config_schema property. The Web UI uses these to auto-generate
+    configuration forms.
+    """
+
+    name: str  # Key in plugins.yaml settings dict
+    label: str  # Human-readable label for Web UI (max 50 chars)
+    field_type: str  # "text" | "number" | "city" | "list"
+    required: bool = True
+    description: str = ""  # max 200 chars
+    default: Any = None
+
+
+class PluginNotConfiguredError(Exception):
+    """Raised by plugin.initialize() when required config is missing.
+
+    When a plugin raises this during initialization, the Plugin_System
+    marks it as "unconfigured" (not "failed") and displays a
+    "configure me" message on the DMD during rotation.
+    """
+
+    pass
+
+
 class ClockPlugin(ABC):
     """Base class for all zeClock display plugins.
 
@@ -101,6 +130,20 @@ class ClockPlugin(ABC):
         """
         return True
 
+    @property
+    def config_schema(self) -> List[ConfigField]:
+        """Override to declare configuration fields.
+
+        Returns a list of ConfigField instances describing the settings
+        this plugin requires. The Web UI uses these to auto-generate
+        configuration forms.
+
+        Returns:
+            List of ConfigField descriptors. Empty list means no
+            configuration is needed.
+        """
+        return []
+
     @abstractmethod
     async def initialize(self, config: dict) -> None:
         """Prepare the plugin for rendering.
@@ -134,6 +177,21 @@ class ClockPlugin(ABC):
     async def cleanup(self) -> None:
         """Release resources. Called when plugin is deactivated."""
         ...
+
+    async def reconfigure(self, config: dict) -> None:
+        """Re-initialize the plugin with new configuration.
+
+        Called when settings are changed via the Web UI without restarting.
+        The default implementation just calls initialize() again.
+        Plugins can override this for more targeted reloading.
+
+        Args:
+            config: New plugin-specific settings from plugins.yaml.
+
+        Raises:
+            PluginNotConfiguredError: If new config is invalid/incomplete.
+        """
+        await self.initialize(config)
 
 
 class PagedPlugin(ClockPlugin):

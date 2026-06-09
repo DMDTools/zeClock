@@ -19,6 +19,9 @@ document.querySelectorAll('.tab').forEach(tab => {
         } else {
             stopTimerPolling();
         }
+        if (tab.dataset.tab === 'settings') {
+            loadConfig();
+        }
     });
 });
 
@@ -54,6 +57,16 @@ async function refreshStatus() {
     const data = await api('/api/status');
     if (data && data.data) {
         document.getElementById('status-display').textContent = JSON.stringify(data.data, null, 2);
+
+        // Update backend connection banner
+        const banner = document.getElementById('backend-banner');
+        if (data.data.backend && !data.data.backend.connected) {
+            banner.classList.remove('hidden');
+            pollDiscovery();
+        } else {
+            banner.classList.add('hidden');
+        }
+
         // Update brightness display
         const br = data.data.brightness;
         if (br) {
@@ -64,6 +77,41 @@ async function refreshStatus() {
                 document.getElementById('brightness-value').textContent = br.override;
             }
         }
+    }
+}
+
+async function pollDiscovery() {
+    const data = await api('/api/discovery');
+    if (!data || !data.data) return;
+
+    const disc = data.data;
+    const log = document.getElementById('discovery-log');
+    const bannerText = document.querySelector('.banner-text');
+
+    // Update banner text
+    if (disc.status === 'found') {
+        bannerText.textContent = `✅ ${disc.message}`;
+    } else if (disc.message) {
+        bannerText.textContent = disc.message;
+    }
+
+    // Update discovery log with steps
+    if (disc.steps && disc.steps.length > 0) {
+        const lastShown = log.dataset.lastCount || 0;
+        if (disc.steps.length > lastShown) {
+            log.innerHTML = disc.steps.map((step, i) => {
+                const cls = i === disc.steps.length - 1 ? 'step active' :
+                           step.includes('found') || step.includes('connected') ? 'step found' : 'step';
+                return `<div class="${cls}">${step}</div>`;
+            }).join('');
+            log.dataset.lastCount = disc.steps.length;
+            log.scrollTop = log.scrollHeight;
+        }
+    }
+
+    // Keep polling fast while discovery is active
+    if (disc.status !== 'found' && disc.status !== 'idle') {
+        setTimeout(pollDiscovery, 2000);
     }
 }
 
@@ -244,5 +292,457 @@ document.getElementById('message-text').addEventListener('keydown', (e) => {
 document.getElementById('speaker-message-text').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') sendSpeakerMessage();
 });
+
+// --- Configuration ---
+
+async function loadConfig() {
+    const [configResp, pluginsResp] = await Promise.all([
+        api('/api/config'),
+        api('/api/config/plugins'),
+    ]);
+
+    if (configResp && configResp.data) {
+        const cfg = configResp.data;
+
+        // ZeDMD
+        if (cfg.zedmd) {
+            document.getElementById('cfg-wifi-addr').value = cfg.zedmd.wifi_addr || '';
+            document.getElementById('cfg-brightness').value = cfg.zedmd.brightness || '10';
+        }
+        // Display
+        if (cfg.display) {
+            document.getElementById('cfg-font').value = cfg.display.font || 'STANDARD';
+        }
+        // Location
+        if (cfg.location) {
+            document.getElementById('cfg-latitude').value = cfg.location.latitude || '';
+            document.getElementById('cfg-longitude').value = cfg.location.longitude || '';
+            document.getElementById('cfg-city').value = cfg.location.city_name || '';
+        }
+        // Brightness schedule
+        if (cfg.brightness_schedule) {
+            document.getElementById('cfg-max-brightness').value = cfg.brightness_schedule.max_brightness || '7';
+            document.getElementById('cfg-schedule-default').value = cfg.brightness_schedule.default || '';
+            document.getElementById('cfg-sunrise-brightness').value = cfg.brightness_schedule.sunrise_brightness || '';
+            document.getElementById('cfg-sunset-brightness').value = cfg.brightness_schedule.sunset_brightness || '';
+        }
+        // REST API
+        if (cfg.rest_api) {
+            document.getElementById('cfg-rest-enabled').checked = cfg.rest_api.enabled === 'true';
+            document.getElementById('cfg-rest-port').value = cfg.rest_api.port || '8080';
+        }
+    }
+
+    if (pluginsResp && pluginsResp.data) {
+        const pCfg = pluginsResp.data;
+        document.getElementById('cfg-clock-seconds').value = pCfg.clock_display_seconds || 5;
+        renderPluginEntries(pCfg.plugins || []);
+    }
+
+    // Load and render auto-generated plugin config forms
+    loadPluginConfigForms(pluginsResp && pluginsResp.data);
+}
+
+function renderPluginEntries(plugins) {
+    const container = document.getElementById('cfg-plugins-list');
+    container.innerHTML = plugins.map((p, i) => `
+        <div class="plugin-config-entry" data-index="${i}">
+            <div class="form-row">
+                <input type="text" class="plugin-name-input" value="${p.name || ''}" placeholder="Plugin name">
+                <input type="number" class="plugin-freq-input" value="${p.frequency || 20}" min="0" max="100" title="Frequency %">
+                <button class="btn btn-danger btn-small" onclick="removePluginEntry(${i})">✕</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function addPluginEntry() {
+    const container = document.getElementById('cfg-plugins-list');
+    const i = container.children.length;
+    const div = document.createElement('div');
+    div.className = 'plugin-config-entry';
+    div.dataset.index = i;
+    div.innerHTML = `
+        <div class="form-row">
+            <input type="text" class="plugin-name-input" value="" placeholder="Plugin name">
+            <input type="number" class="plugin-freq-input" value="20" min="0" max="100" title="Frequency %">
+            <button class="btn btn-danger btn-small" onclick="removePluginEntry(${i})">✕</button>
+        </div>
+    `;
+    container.appendChild(div);
+}
+
+function removePluginEntry(index) {
+    const container = document.getElementById('cfg-plugins-list');
+    const entry = container.querySelector(`[data-index="${index}"]`);
+    if (entry) entry.remove();
+}
+
+async function saveConfig() {
+    const statusEl = document.getElementById('config-status');
+    statusEl.textContent = 'Saving...';
+
+    // Build zeclock.ini structure
+    const config = {};
+
+    // ZeDMD section
+    const wifiAddr = document.getElementById('cfg-wifi-addr').value.trim();
+    const brightness = document.getElementById('cfg-brightness').value;
+    if (wifiAddr || brightness) {
+        config.zedmd = {};
+        if (wifiAddr) config.zedmd.wifi_addr = wifiAddr;
+        if (brightness) config.zedmd.brightness = brightness;
+    }
+
+    // Display section
+    const font = document.getElementById('cfg-font').value;
+    if (font) config.display = { font };
+
+    // Location section
+    const lat = document.getElementById('cfg-latitude').value.trim();
+    const lng = document.getElementById('cfg-longitude').value.trim();
+    const city = document.getElementById('cfg-city').value.trim();
+    if (lat || lng || city) {
+        config.location = {};
+        if (lat) config.location.latitude = lat;
+        if (lng) config.location.longitude = lng;
+        if (city) config.location.city_name = city;
+    }
+
+    // Brightness schedule
+    const maxBr = document.getElementById('cfg-max-brightness').value;
+    const schedDefault = document.getElementById('cfg-schedule-default').value.trim();
+    const sunriseBr = document.getElementById('cfg-sunrise-brightness').value.trim();
+    const sunsetBr = document.getElementById('cfg-sunset-brightness').value.trim();
+    if (maxBr || schedDefault || sunriseBr || sunsetBr) {
+        config.brightness_schedule = {};
+        if (maxBr) config.brightness_schedule.max_brightness = maxBr;
+        if (schedDefault) config.brightness_schedule.default = schedDefault;
+        if (sunriseBr) config.brightness_schedule.sunrise_brightness = sunriseBr;
+        if (sunsetBr) config.brightness_schedule.sunset_brightness = sunsetBr;
+    }
+
+    // REST API
+    const restEnabled = document.getElementById('cfg-rest-enabled').checked;
+    const restPort = document.getElementById('cfg-rest-port').value;
+    config.rest_api = {
+        enabled: restEnabled ? 'true' : 'false',
+        host: '0.0.0.0',
+        port: restPort,
+    };
+
+    // Build plugins.yaml structure
+    const pluginsConfig = {
+        clock_display_seconds: parseInt(document.getElementById('cfg-clock-seconds').value) || 5,
+        plugins: [],
+    };
+
+    document.querySelectorAll('.plugin-config-entry').forEach(entry => {
+        const name = entry.querySelector('.plugin-name-input').value.trim();
+        const freq = parseInt(entry.querySelector('.plugin-freq-input').value) || 20;
+        if (name) {
+            pluginsConfig.plugins.push({ name, frequency: freq, settings: {} });
+        }
+    });
+
+    // Save both configs
+    const [configResult, pluginsResult] = await Promise.all([
+        api('/api/config', 'POST', config),
+        api('/api/config/plugins', 'POST', pluginsConfig),
+    ]);
+
+    if (configResult?.success && pluginsResult?.success) {
+        statusEl.textContent = '✅ Configuration saved. Restart zeClock to apply.';
+        statusEl.style.color = '#4caf50';
+    } else {
+        const msg = configResult?.message || pluginsResult?.message || 'Unknown error';
+        statusEl.textContent = '❌ Error: ' + msg;
+        statusEl.style.color = '#f44336';
+    }
+}
+
+// --- Plugin Configuration Forms (auto-generated from schema) ---
+
+async function loadPluginConfigForms(currentPluginsConfig) {
+    const schemaResp = await api('/api/plugins/config-schema');
+    if (!schemaResp || !schemaResp.plugins) return;
+
+    const container = document.getElementById('plugin-config-forms');
+    const plugins = schemaResp.plugins.filter(p => p.schema && p.schema.length > 0);
+
+    if (plugins.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+
+    // Get current settings from plugins.yaml for pre-filling form values
+    const currentSettings = {};
+    if (currentPluginsConfig && currentPluginsConfig.plugins) {
+        currentPluginsConfig.plugins.forEach(p => {
+            if (p.name && p.settings) {
+                currentSettings[p.name] = p.settings;
+            }
+        });
+    }
+
+    container.innerHTML = plugins.map(plugin => {
+        const settings = currentSettings[plugin.name] || {};
+        const fieldsHtml = plugin.schema.map(field => renderPluginField(plugin.name, field, settings)).join('');
+
+        return `
+            <div class="plugin-config-card" data-plugin="${plugin.name}">
+                <h2>${capitalize(plugin.name)}</h2>
+                <p class="plugin-description">${plugin.description || ''}</p>
+                ${fieldsHtml}
+                <button class="btn btn-accent btn-save-plugin" onclick="savePluginConfig('${plugin.name}')">Save ${capitalize(plugin.name)} Settings</button>
+            </div>
+        `;
+    }).join('');
+
+    // Initialize city autocomplete handlers after forms are rendered
+    initCityAutocomplete();
+}
+
+function renderPluginField(pluginName, field, settings) {
+    const currentValue = settings[field.name] || field.default || '';
+    const requiredAttr = field.required ? 'required' : '';
+    const fieldId = `plugin-cfg-${pluginName}-${field.name}`;
+    let inputHtml = '';
+    let hintHtml = '';
+
+    switch (field.field_type) {
+        case 'number':
+            inputHtml = `<input type="number" id="${fieldId}" value="${currentValue}" ${requiredAttr} data-plugin="${pluginName}" data-field="${field.name}">`;
+            break;
+        case 'list':
+            inputHtml = `<input type="text" id="${fieldId}" value="${Array.isArray(currentValue) ? currentValue.join(', ') : currentValue}" ${requiredAttr} data-plugin="${pluginName}" data-field="${field.name}">`;
+            hintHtml = `<div class="field-hint">Comma-separated values</div>`;
+            break;
+        case 'city':
+            inputHtml = `<div class="city-input-wrapper"><input type="text" id="${fieldId}" value="${getCityDisplayValue(currentValue)}" ${requiredAttr} data-plugin="${pluginName}" data-field="${field.name}" data-field-type="city" class="city-autocomplete-input" autocomplete="off"></div>`;
+            break;
+        default: // text
+            inputHtml = `<input type="text" id="${fieldId}" value="${currentValue}" ${requiredAttr} data-plugin="${pluginName}" data-field="${field.name}">`;
+            break;
+    }
+
+    const descriptionHtml = field.description ? `<div class="field-description">${field.description}</div>` : '';
+
+    return `
+        <div class="form-group">
+            <label for="${fieldId}">${field.label}${field.required ? ' *' : ''}</label>
+            ${inputHtml}
+            ${hintHtml}
+            ${descriptionHtml}
+        </div>
+    `;
+}
+
+function getCityDisplayValue(value) {
+    if (!value) return '';
+    if (typeof value === 'object' && value.display_name) return value.display_name;
+    if (typeof value === 'string') return value;
+    return '';
+}
+
+function capitalize(str) {
+    return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+async function savePluginConfig(pluginName) {
+    // First, get the current plugins.yaml content
+    const pluginsResp = await api('/api/config/plugins');
+    if (!pluginsResp || !pluginsResp.data) {
+        showPluginSaveStatus(pluginName, false, 'Failed to load current config');
+        return;
+    }
+
+    const pluginsConfig = pluginsResp.data;
+    if (!pluginsConfig.plugins) {
+        pluginsConfig.plugins = [];
+    }
+
+    // Find the plugin entry or create one
+    let pluginEntry = pluginsConfig.plugins.find(p => p.name === pluginName);
+    if (!pluginEntry) {
+        pluginEntry = { name: pluginName, frequency: 20, settings: {} };
+        pluginsConfig.plugins.push(pluginEntry);
+    }
+    if (!pluginEntry.settings) {
+        pluginEntry.settings = {};
+    }
+
+    // Collect form values for this plugin
+    const card = document.querySelector(`.plugin-config-card[data-plugin="${pluginName}"]`);
+    const inputs = card.querySelectorAll('input[data-field]');
+
+    inputs.forEach(input => {
+        const fieldName = input.dataset.field;
+        const fieldType = input.dataset.fieldType;
+        let value = input.value.trim();
+
+        if (fieldType === 'city') {
+            // For city fields, store the value (autocomplete task 9 will add lat/long handling)
+            if (input._cityData) {
+                pluginEntry.settings[fieldName] = input._cityData;
+            } else {
+                pluginEntry.settings[fieldName] = value;
+            }
+        } else if (input.type === 'number') {
+            pluginEntry.settings[fieldName] = value ? Number(value) : null;
+        } else {
+            pluginEntry.settings[fieldName] = value || null;
+        }
+    });
+
+    // Save via POST /api/config/plugins
+    const result = await api('/api/config/plugins', 'POST', pluginsConfig);
+
+    if (result && result.success) {
+        showPluginSaveStatus(pluginName, true, 'Settings saved and applied.');
+    } else {
+        const msg = result?.message || 'Unknown error';
+        showPluginSaveStatus(pluginName, false, msg);
+    }
+}
+
+// --- City Autocomplete ---
+
+let cityAutocompleteTimeout = null;
+
+function initCityAutocomplete() {
+    const cityInputs = document.querySelectorAll('.city-autocomplete-input');
+    cityInputs.forEach(input => {
+        input.addEventListener('input', handleCityInput);
+        input.addEventListener('keydown', handleCityKeydown);
+    });
+
+    // Close dropdowns when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.city-input-wrapper')) {
+            closeCityDropdowns();
+        }
+    });
+}
+
+function handleCityInput(e) {
+    const input = e.target;
+    const query = input.value.trim();
+
+    // Clear any pending debounce
+    if (cityAutocompleteTimeout) {
+        clearTimeout(cityAutocompleteTimeout);
+        cityAutocompleteTimeout = null;
+    }
+
+    // Clear stored city data when user types (selection invalidated)
+    input._cityData = null;
+
+    // Only search if 3+ characters
+    if (query.length < 3) {
+        removeCityDropdown(input);
+        return;
+    }
+
+    // Debounce: wait 300ms after last keystroke
+    cityAutocompleteTimeout = setTimeout(() => {
+        searchCities(input, query);
+    }, 300);
+}
+
+function handleCityKeydown(e) {
+    if (e.key === 'Escape') {
+        removeCityDropdown(e.target);
+    }
+}
+
+async function searchCities(input, query) {
+    const data = await api(`/api/geocode/search?q=${encodeURIComponent(query)}`);
+
+    if (!data || !data.results) {
+        showCityDropdown(input, []);
+        return;
+    }
+
+    showCityDropdown(input, data.results);
+}
+
+function showCityDropdown(input, results) {
+    const wrapper = input.closest('.city-input-wrapper');
+    if (!wrapper) return;
+
+    // Remove existing dropdown
+    removeCityDropdown(input);
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'city-autocomplete-dropdown';
+
+    if (results.length === 0) {
+        dropdown.innerHTML = '<div class="city-autocomplete-no-results">No results found</div>';
+    } else {
+        const items = results.slice(0, 5);
+        dropdown.innerHTML = items.map((result, index) => `
+            <div class="city-autocomplete-item" data-index="${index}">
+                ${escapeHtml(result.display_name)}
+            </div>
+        `).join('');
+
+        // Attach click handlers to items
+        dropdown.querySelectorAll('.city-autocomplete-item').forEach((item, index) => {
+            item.addEventListener('click', () => {
+                selectCity(input, items[index]);
+            });
+        });
+    }
+
+    wrapper.appendChild(dropdown);
+}
+
+function selectCity(input, result) {
+    input.value = result.display_name;
+    input._cityData = {
+        display_name: result.display_name,
+        latitude: result.latitude,
+        longitude: result.longitude,
+        country: result.country
+    };
+    removeCityDropdown(input);
+}
+
+function removeCityDropdown(input) {
+    const wrapper = input.closest('.city-input-wrapper');
+    if (!wrapper) return;
+    const existing = wrapper.querySelector('.city-autocomplete-dropdown');
+    if (existing) existing.remove();
+}
+
+function closeCityDropdowns() {
+    document.querySelectorAll('.city-autocomplete-dropdown').forEach(d => d.remove());
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function showPluginSaveStatus(pluginName, success, message) {
+    const card = document.querySelector(`.plugin-config-card[data-plugin="${pluginName}"]`);
+    if (!card) return;
+
+    // Remove any existing status message
+    const existing = card.querySelector('.plugin-save-status');
+    if (existing) existing.remove();
+
+    const statusEl = document.createElement('div');
+    statusEl.className = 'plugin-save-status muted';
+    statusEl.style.marginTop = '0.5rem';
+    statusEl.style.color = success ? '#4caf50' : '#f44336';
+    statusEl.textContent = (success ? '✅ ' : '❌ ') + message;
+    card.appendChild(statusEl);
+
+    // Auto-remove after 5 seconds
+    setTimeout(() => statusEl.remove(), 5000);
+}
 
 init();

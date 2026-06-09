@@ -1,0 +1,13 @@
+[Unit]
+Description=Ensure WiFi radio is enabled
+After=NetworkManager.service
+Wants=NetworkManager.service
+Before=wifi-connect.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/nmcli r wifi on
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

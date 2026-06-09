@@ -205,7 +205,7 @@ class CommandHandler:
         plugin_name = params.get("plugin")
 
         if plugin_name is None:
-            # Resume normal rotation
+            # Just clear the flag — main loop handles deactivation
             self._forced_plugin = None
             logger.info("Remote: resumed normal plugin rotation")
             return CommandResult(success=True, message="Resumed normal rotation")
@@ -226,30 +226,13 @@ class CommandHandler:
                 data={"available_plugins": available},
             )
 
+        # Just set the flag — the main loop detects the change and handles
+        # deactivation/activation safely (no race with render loop).
         self._forced_plugin = plugin_name
-
-        # Deactivate current plugin and force the requested one
-        if pm.is_plugin_active():
-            await pm.deactivate_plugin()
-
-        entry = pm.registry.get_plugin(plugin_name)
-        if entry:
-            success = await pm.activate_plugin(entry.plugin)
-            if success:
-                from ..clock import ClockState
-
-                self._clock._state = ClockState.PLUGIN_ACTIVE
-                logger.info(f"Remote: forced plugin '{plugin_name}'")
-                return CommandResult(
-                    success=True, message=f"Displaying plugin '{plugin_name}'"
-                )
-            else:
-                self._forced_plugin = None
-                return CommandResult(
-                    success=False, message=f"Plugin '{plugin_name}' failed to activate"
-                )
-
-        return CommandResult(success=False, message=f"Plugin '{plugin_name}' not found")
+        logger.info(f"Remote: forced plugin '{plugin_name}'")
+        return CommandResult(
+            success=True, message=f"Displaying plugin '{plugin_name}'"
+        )
 
     def _handle_display_text(self, params: Dict[str, Any]) -> CommandResult:
         """Display free text on the screen for a given duration."""
@@ -325,6 +308,11 @@ class CommandHandler:
         else:
             display_mode = self._clock._state.value
 
+        # Backend connection status
+        backend = self._clock.dmd_client
+        backend_connected = backend.connected if hasattr(backend, "connected") else False
+        backend_type = type(backend).__name__
+
         data = {
             "screen": screen_state,
             "display_mode": display_mode,
@@ -332,6 +320,10 @@ class CommandHandler:
             "forced_plugin": self._forced_plugin,
             "available_plugins": available_plugins,
             "text_overlay": self._text_overlay if self.has_text_overlay else None,
+            "backend": {
+                "type": backend_type,
+                "connected": backend_connected,
+            },
             "brightness": {
                 "sw_dimming": self._clock._current_sw_dimming,
                 "time_only": self._clock._current_is_time_only,

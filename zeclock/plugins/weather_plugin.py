@@ -14,9 +14,10 @@ from typing import List, Optional
 import aiohttp
 from PIL import Image
 
-from .base import PagedPlugin
+from .base import ConfigField, PagedPlugin, PluginNotConfiguredError
 from .helpers import draw_staleness_indicator
 from .weather_icons import get_weather_icon_image
+from ..geocoder import geocode
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +151,19 @@ class WeatherPlugin(PagedPlugin):
     def description(self) -> str:
         return "Current weather and forecast display"
 
+    @property
+    def config_schema(self) -> List[ConfigField]:
+        """Declare configuration fields for the weather plugin."""
+        return [
+            ConfigField(
+                "city",
+                "City",
+                "city",
+                required=True,
+                description="Location for weather data",
+            )
+        ]
+
     def __init__(self) -> None:
         """Initialize WeatherPlugin with default state."""
         super().__init__()
@@ -165,38 +179,86 @@ class WeatherPlugin(PagedPlugin):
         """Initialize the plugin with configuration.
 
         Config keys:
-            latitude (float): City latitude coordinate (required)
-            longitude (float): City longitude coordinate (required)
-            city_name (str): Display name for the city (required)
+            latitude (float): City latitude coordinate (optional if city provided)
+            longitude (float): City longitude coordinate (optional if city provided)
+            city_name (str): Display name for the city / city to geocode
+            city (str): City name for geocoding (alternative to lat/long)
             temperature_unit (str): "celsius" or "fahrenheit" (default: "celsius")
             page_duration_seconds (int): Duration per page 2-30s (default: 4)
 
         Args:
             config: Plugin-specific settings from plugins.yaml.
+
+        Raises:
+            PluginNotConfiguredError: If no valid location can be determined.
         """
         self._helpers = config.get("_helpers")
 
-        # Read required configuration
-        self._latitude = config.get("latitude")
-        self._longitude = config.get("longitude")
-        self._city_name = config.get("city_name", "")
+        # Read location configuration
+        lat = config.get("latitude")
+        lon = config.get("longitude")
+        # "city" is the autocomplete/geocoding field (string or object)
+        # "city_name" is just a display label (never triggers geocoding)
+        city_raw = config.get("city", "")
+        display_name = config.get("city_name", "")
 
-        # Validate required fields
-        missing_fields = []
-        if self._latitude is None:
-            missing_fields.append("latitude")
-        if self._longitude is None:
-            missing_fields.append("longitude")
-        if not self._city_name:
-            missing_fields.append("city_name")
+        # Handle city field: can be a string or an object from autocomplete
+        # e.g. {"display_name": "Grenoble, ...", "latitude": 45.18, "longitude": 5.73}
+        city_str = ""
+        city_coords = None
+        if isinstance(city_raw, dict):
+            # Extract just the city name (first part before comma)
+            full_name = city_raw.get("display_name", "")
+            city_str = full_name.split(",")[0].strip() if full_name else ""
+            c_lat = city_raw.get("latitude")
+            c_lon = city_raw.get("longitude")
+            if (
+                c_lat is not None
+                and c_lon is not None
+                and isinstance(c_lat, (int, float))
+                and isinstance(c_lon, (int, float))
+            ):
+                city_coords = (float(c_lat), float(c_lon))
+        elif isinstance(city_raw, str) and city_raw.strip():
+            city_str = city_raw.strip()
 
-        if missing_fields:
-            logger.warning(
-                "[weather] Missing required config fields: %s",
-                ", ".join(missing_fields),
+        # Determine if explicit lat/long are provided (both non-null numeric)
+        has_coords = (
+            lat is not None
+            and lon is not None
+            and isinstance(lat, (int, float))
+            and isinstance(lon, (int, float))
+        )
+
+        # Priority: city (autocomplete object with coords) > city (string to geocode) > explicit coords
+        if city_coords:
+            # City selected via autocomplete with embedded coordinates
+            self._latitude = city_coords[0]
+            self._longitude = city_coords[1]
+            self._city_name = city_str or display_name or f"{self._latitude},{self._longitude}"
+        elif city_str:
+            # City name provided as string — geocode it
+            result = geocode(city_str)
+            if result is None:
+                raise PluginNotConfiguredError(
+                    f"Could not resolve city '{city_str}' to coordinates. "
+                    "Check city name or provide explicit latitude/longitude."
+                )
+            # Cache geocoded result in memory for session
+            self._latitude = result.latitude
+            self._longitude = result.longitude
+            self._city_name = city_str
+        elif has_coords:
+            # Fallback to explicit coordinates only if no city configured
+            self._latitude = float(lat)
+            self._longitude = float(lon)
+            self._city_name = display_name or f"{self._latitude},{self._longitude}"
+        else:
+            # No city and no coords → cannot proceed
+            raise PluginNotConfiguredError(
+                "Weather plugin requires either a city name or "
+                "latitude/longitude coordinates."
             )
-            self._initialized = False
-            return
 
         # Read optional configuration
         self._temperature_unit = config.get("temperature_unit", "celsius")
@@ -218,13 +280,24 @@ class WeatherPlugin(PagedPlugin):
 
         self._initialized = True
 
-        # Attempt to fetch weather data if cache is stale or empty
+        # Force cache invalidation on reconfigure (coords may have changed)
+        self._cache = None
+
+        # Attempt to fetch weather data
         await self._refresh_cache_if_needed()
 
     async def render_frame(self, width: int, height: int) -> Optional[Image.Image]:
         """Render the next weather frame with staleness indicator."""
-        if not self._initialized or self._cache is None:
+        if not self._initialized:
             return None
+
+        # If cache is empty, attempt to fetch (may have failed during init)
+        if self._cache is None:
+            await self._refresh_cache_if_needed()
+            if self._cache is None:
+                # Still no data — render a loading/waiting frame instead of None
+                # (returning None signals "plugin done" which breaks forced mode)
+                return self._render_loading_frame(width, height)
 
         # Get total frame index before PagedPlugin advances it
         total_idx = self._total_frame_index()
@@ -238,6 +311,18 @@ class WeatherPlugin(PagedPlugin):
             draw_staleness_indicator(frame, total_idx, self._frame_delay_ms)
 
         return frame
+
+    def _render_loading_frame(self, width: int, height: int) -> Image.Image:
+        """Render a 'loading' placeholder while weather data is being fetched."""
+        if self._helpers is None:
+            return Image.new("RGB", (width, height), (0, 0, 0))
+
+        frame = self._helpers.create_frame()
+        text = self._city_name or "Weather"
+        text_frame = self._helpers.render_text_centered_at(
+            text, cx=width // 2, y=height // 2 - 4, color=(255, 128, 0), font_name="MENU"
+        )
+        return self._helpers.composite_frames(frame, text_frame)
 
     def render_page(self, page: int, width: int, height: int) -> Image.Image:
         """Render a specific weather page."""

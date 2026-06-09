@@ -54,6 +54,67 @@ header h1 {
     background: var(--success);
 }
 
+/* Backend connection banner */
+.backend-banner {
+    background: var(--bg-input);
+    border: 1px solid var(--warning);
+    border-radius: var(--radius);
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    animation: pulse-border 2s ease-in-out infinite;
+}
+
+.backend-banner.hidden {
+    display: none;
+}
+
+.banner-icon {
+    font-size: 1.5rem;
+}
+
+.banner-text {
+    color: var(--warning);
+    font-weight: 500;
+}
+
+.banner-content {
+    flex: 1;
+}
+
+.discovery-log {
+    margin-top: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    max-height: 120px;
+    overflow-y: auto;
+    font-family: monospace;
+}
+
+.discovery-log .step {
+    padding: 2px 0;
+    border-left: 2px solid var(--secondary);
+    padding-left: 8px;
+    margin: 2px 0;
+}
+
+.discovery-log .step.active {
+    border-left-color: var(--warning);
+    color: var(--text);
+}
+
+.discovery-log .step.found {
+    border-left-color: var(--success);
+    color: var(--success);
+}
+
+@keyframes pulse-border {
+    0%, 100% { border-color: var(--warning); }
+    50% { border-color: var(--secondary); }
+}
+
 /* Navigation tabs */
 nav {
     display: flex;
@@ -340,4 +401,189 @@ input:focus {
     .plugins-grid {
         grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
     }
+}
+
+/* --- Settings tab styles --- */
+
+.form-group {
+    margin-bottom: 1rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.3rem;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.form-group input[type="text"],
+.form-group input[type="number"],
+.form-group select {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 0.95rem;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.form-group input[type="checkbox"] {
+    margin-right: 0.5rem;
+}
+
+.form-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.form-row .plugin-name-input {
+    flex: 2;
+    padding: 0.4rem 0.6rem;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+}
+
+.form-row .plugin-freq-input {
+    flex: 0 0 70px;
+    padding: 0.4rem 0.6rem;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    text-align: center;
+}
+
+.btn-small {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.8rem;
+}
+
+.plugin-config-entry {
+    padding: 0.25rem 0;
+}
+
+/* --- Plugin configuration form cards --- */
+
+.plugin-config-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.plugin-config-card h2 {
+    font-size: 1.1rem;
+    margin-bottom: 0.25rem;
+    color: var(--accent);
+}
+
+.plugin-config-card .plugin-description {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+}
+
+.plugin-config-card .form-group {
+    margin-bottom: 1rem;
+}
+
+.plugin-config-card .form-group label {
+    display: block;
+    margin-bottom: 0.3rem;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.plugin-config-card .form-group input[type="text"],
+.plugin-config-card .form-group input[type="number"] {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 0.95rem;
+}
+
+.plugin-config-card .form-group input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.plugin-config-card .field-hint {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    margin-top: 0.25rem;
+}
+
+.plugin-config-card .field-description {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    margin-top: 0.2rem;
+    font-style: italic;
+}
+
+.plugin-config-card .city-input-wrapper {
+    position: relative;
+}
+
+.plugin-config-card .city-input-wrapper input {
+    width: 100%;
+}
+
+/* City autocomplete dropdown */
+.city-autocomplete-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 var(--radius) var(--radius);
+    max-height: 200px;
+    overflow-y: auto;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.city-autocomplete-item {
+    padding: 0.6rem 0.75rem;
+    cursor: pointer;
+    color: var(--text);
+    font-size: 0.9rem;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+}
+
+.city-autocomplete-item:last-child {
+    border-bottom: none;
+}
+
+.city-autocomplete-item:hover {
+    background: var(--accent);
+    color: #fff;
+}
+
+.city-autocomplete-no-results {
+    padding: 0.6rem 0.75rem;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    font-style: italic;
+}
+
+.plugin-config-card .btn-save-plugin {
+    margin-top: 1rem;
 }

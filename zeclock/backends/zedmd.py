@@ -21,7 +21,9 @@ from .base import DMDBackend
 logger = logging.getLogger(__name__)
 
 # Library search path
-LIB_DIR = Path.home() / ".zeclock" / "lib"
+from ..paths import get_lib_dir
+
+LIB_DIR = get_lib_dir()
 
 
 def _find_library() -> Path:

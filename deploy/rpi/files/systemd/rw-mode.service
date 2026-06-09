@@ -1,0 +1,13 @@
+[Unit]
+Description=Disable overlay for maintenance (when 'nooverlay' in cmdline)
+ConditionKernelCommandLine=nooverlay
+After=local-fs.target
+
+[Service]
+Type=oneshot
+# raspi-config's overlay checks for this flag to skip overlay setup
+ExecStart=/bin/true
+RemainAfterExit=yes
+
+[Install]
+WantedBy=local-fs.target

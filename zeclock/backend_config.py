@@ -11,10 +11,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Optional
 
+from .paths import get_config_dir
+
 logger = logging.getLogger(__name__)
 
 # Default config file location
-CONFIG_DIR = Path.home() / ".zeclock" / "config"
+CONFIG_DIR = get_config_dir()
 CONFIG_FILE = CONFIG_DIR / "zeclock.ini"
 
 # Days of the week for schedule parsing
