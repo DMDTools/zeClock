@@ -254,6 +254,10 @@ def _persist_connection(ssid: str) -> None:
         try:
             shutil.copy2(src_file, dst_file)
             dst_file.chmod(0o600)
+            # fsync to ensure persistence against power loss
+            fd = os.open(str(dst_file), os.O_RDONLY)
+            os.fsync(fd)
+            os.close(fd)
             logger.info(f"Persisted connection to {dst_file}")
         except OSError as e:
             logger.warning(f"Failed to persist connection: {e}")
