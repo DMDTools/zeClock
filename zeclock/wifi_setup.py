@@ -164,25 +164,51 @@ def connect_to_network(ssid: str, password: str) -> Tuple[bool, str]:
     teardown_hotspot()
     time.sleep(2)
 
-    # Try to connect
-    cmd = [
+    # Delete any existing connection with this SSID to avoid conflicts
+    subprocess.run(
+        ["nmcli", "connection", "delete", ssid],
+        capture_output=True,
+        timeout=10,
+    )
+
+    # Create the connection profile with credentials explicitly set
+    cmd_add = [
         "nmcli",
-        "device",
-        "wifi",
-        "connect",
-        ssid,
-        "password",
-        password,
-        "ifname",
-        AP_INTERFACE,
+        "connection",
+        "add",
+        "type", "wifi",
+        "con-name", ssid,
+        "ssid", ssid,
+        "wifi-sec.key-mgmt", "wpa-psk",
+        "wifi-sec.psk", password,
+        "ifname", AP_INTERFACE,
+        "connection.autoconnect", "yes",
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    result = subprocess.run(cmd_add, capture_output=True, text=True, timeout=15)
+    if result.returncode != 0:
+        error = result.stderr.strip() or "Failed to create connection"
+        logger.warning(f"Failed to add connection for '{ssid}': {error}")
+        create_hotspot()
+        return False, error
+
+    # Activate the connection
+    cmd_up = ["nmcli", "connection", "up", ssid]
+    result = subprocess.run(cmd_up, capture_output=True, text=True, timeout=30)
 
     if result.returncode == 0:
         logger.info(f"Connected to '{ssid}'")
         return True, f"Connected to {ssid}"
     else:
         error = result.stderr.strip() or "Connection failed"
+        logger.warning(f"Failed to connect to '{ssid}': {error}")
+        # Remove the failed connection and re-create hotspot
+        subprocess.run(
+            ["nmcli", "connection", "delete", ssid],
+            capture_output=True,
+            timeout=10,
+        )
+        create_hotspot()
+        return False, error
         logger.warning(f"Failed to connect to '{ssid}': {error}")
         # Re-create hotspot so user can retry
         create_hotspot()

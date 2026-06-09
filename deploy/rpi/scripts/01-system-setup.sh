@@ -45,15 +45,19 @@ touch /boot/firmware/ssh
 # Pre-generate SSH host keys (required for read-only root — sshd can't generate them at boot)
 ssh-keygen -A
 
-# --- Single apt-get update for all packages ---
-apt-get update
-
-# Install only what's missing from Trixie Lite
-apt-get install -y --no-install-recommends \
-    git \
-    libserialport-dev \
-    wireless-tools \
-    f2fs-tools
+# --- Install runtime dependencies from pre-downloaded .deb files ---
+# (avoids apt-get update which downloads 27 MB of package lists)
+if [ -d /tmp/zeclock-debs ] && [ "$(ls /tmp/zeclock-debs/*.deb 2>/dev/null | wc -l)" -gt 0 ]; then
+    dpkg -i /tmp/zeclock-debs/*.deb
+    rm -rf /tmp/zeclock-debs
+    ldconfig
+else
+    # Fallback: use apt if .debs not available
+    apt-get update
+    apt-get install -y --no-install-recommends libserialport0 f2fs-tools
+    apt-get clean
+    rm -rf /var/lib/apt/lists/*
+fi
 
 # --- Network setup ---
 echo ">>> Setting up NetworkManager..."
@@ -109,9 +113,5 @@ fi
 
 # Enable NetworkManager
 systemctl enable NetworkManager
-
-# Clean apt cache
-apt-get clean
-rm -rf /var/lib/apt/lists/*
 
 echo ">>> System + network setup complete."

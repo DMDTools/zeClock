@@ -12,7 +12,7 @@ Environment=PATH=/home/zeclock/venv/bin:/usr/local/bin:/usr/bin
 Environment=LD_LIBRARY_PATH=/home/zeclock/.zeclock/lib
 Environment=ZECLOCK_CONFIG_DIR=/data/zeclock/config
 Environment=ZECLOCK_DATA_DIR=/data/zeclock
-Environment=ZECLOCK_RESOURCES_DIR=/home/zeclock/.zeclock/resources
+Environment=ZECLOCK_RESOURCES_DIR=/data/zeclock/resources
 Environment=ZECLOCK_LIB_DIR=/home/zeclock/.zeclock/lib
 ExecStart=/home/zeclock/venv/bin/python -m zeclock --backend zedmd --no-prompt
 Restart=always

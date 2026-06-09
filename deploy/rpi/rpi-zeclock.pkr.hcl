@@ -96,7 +96,13 @@ source "arm" "rpi_zeclock" {
 build {
   sources = ["source.arm.rpi_zeclock"]
 
-  # Step 1: System + network setup (single apt-get update)
+  # Copy pre-downloaded .deb packages (229 KB) — needed by 01-system-setup.sh
+  provisioner "file" {
+    source      = "/tmp/zeclock-export/.debs/"
+    destination = "/tmp/zeclock-debs/"
+  }
+
+  # Step 1: System + network setup
   provisioner "shell" {
     environment_vars = [
       "TIMEZONE=${var.timezone}",
@@ -107,7 +113,13 @@ build {
     script = "scripts/01-system-setup.sh"
   }
 
-  # Step 2: Install zeClock (pre-built libzedmd + Python app)
+  # Copy zeClock source + pre-downloaded wheels + DotClk zip
+  provisioner "file" {
+    source      = "/tmp/zeclock-export/"
+    destination = "/tmp/zeclock-src/"
+  }
+
+  # Step 2: Install zeClock (pre-built libzedmd + Python deps from wheels + DotClk)
   provisioner "shell" {
     environment_vars = [
       "LIBZEDMD_VERSION=${var.libzedmd_version}",
@@ -115,17 +127,11 @@ build {
     script = "scripts/02-install-zeclock.sh"
   }
 
-  # Copy zeClock source code into the image (clean export, no .git/.venv)
-  provisioner "file" {
-    source      = "/tmp/zeclock-export/"
-    destination = "/tmp/zeclock-src/"
-  }
-
-  # Install zeClock from copied source
+  # Install zeClock app from copied source
   provisioner "shell" {
     inline = [
       "mv /tmp/zeclock-src /home/zeclock/app",
-      "/home/zeclock/venv/bin/pip install --no-cache-dir /home/zeclock/app",
+      "/home/zeclock/venv/bin/pip install --no-cache-dir --no-deps /home/zeclock/app",
       "chown -R zeclock:zeclock /home/zeclock",
     ]
   }

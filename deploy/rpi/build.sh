@@ -30,7 +30,16 @@ mkdir -p "${EXPORT_DIR}"
 git -C "${REPO_ROOT}" archive --format=tar HEAD | tar -x -C "${EXPORT_DIR}"
 echo "  Exported to ${EXPORT_DIR} ($(du -sh "${EXPORT_DIR}" | cut -f1))"
 
-# --- Pre-download pip wheels for aarch64 (avoids slow pip in qemu chroot) ---
+# --- Pre-download .deb packages for aarch64 (avoids apt-get update in chroot) ---
+echo "Pre-downloading .deb packages..."
+DEBS_DIR="${EXPORT_DIR}/.debs"
+mkdir -p "${DEBS_DIR}"
+# f2fs-tools and libserialport0 for arm64 - direct from Debian mirrors
+curl -sSL -o "${DEBS_DIR}/f2fs-tools.deb" \
+    "http://deb.debian.org/debian/pool/main/f/f2fs-tools/f2fs-tools_1.16.0-1.1+b1_arm64.deb"
+curl -sSL -o "${DEBS_DIR}/libserialport0.deb" \
+    "http://deb.debian.org/debian/pool/main/libs/libserialport/libserialport0_0.1.2-1_arm64.deb"
+echo "  Packages: $(ls "${DEBS_DIR}"/*.deb | wc -l) files ($(du -sh "${DEBS_DIR}" | cut -f1))"
 echo "Pre-downloading Python wheels for aarch64..."
 WHEELS_DIR="${EXPORT_DIR}/.wheels"
 mkdir -p "${WHEELS_DIR}"
@@ -45,7 +54,7 @@ pip download \
     --abi cp313 \
     --only-binary=:all: \
     pillow colorama pyyaml aiohttp pyserial 2>/dev/null || true
-# Also download the pure-python fallbacks (no-binary)
+# Also download pure-python packages
 pip download \
     --dest "${WHEELS_DIR}" \
     --platform any \
@@ -55,9 +64,15 @@ pip download \
     --only-binary=:all: \
     pillow colorama pyyaml aiohttp pyserial 2>/dev/null || true
 echo "  Wheels: $(ls "${WHEELS_DIR}" | wc -l) files ($(du -sh "${WHEELS_DIR}" | cut -f1))"
+
+# --- Pre-download DotClk resources zip (15 MB, included in image, extracted to /data at first boot) ---
+echo "Pre-downloading DotClk resources zip..."
+curl -sSL -o "${EXPORT_DIR}/.dotclk-resources.zip" \
+    https://github.com/sigmafx/DotClk-Resources/archive/refs/heads/master.zip
+echo "  Resources zip: $(du -sh "${EXPORT_DIR}/.dotclk-resources.zip" | cut -f1)"
 echo ""
 
-# --- Build with Packer (boot + root partitions only) ---
+# --- Build with Packer ---
 echo "Building Raspberry Pi image with Packer..."
 echo "  Docker image: ${DOCKER_IMAGE}"
 echo "  Output: ${SCRIPT_DIR}/${OUTPUT_IMG}"
@@ -74,13 +89,6 @@ docker run --rm \
 
 # --- Cleanup export ---
 rm -rf "${EXPORT_DIR}"
-
-# --- Note: /data partition (p3) is NOT created in the image ---
-# The first-boot service (setup-data-partition.service) will:
-# 1. Create partition 3 using remaining SD card space
-# 2. Format it as f2fs
-# 3. Mount it at /data
-# This way the image works on any SD card size.
 
 # --- Output ---
 if [ -f "${SCRIPT_DIR}/${OUTPUT_IMG}" ]; then

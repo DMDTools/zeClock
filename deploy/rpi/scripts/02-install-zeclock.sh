@@ -37,14 +37,14 @@ echo ">>> Installing zeClock Python application..."
 python3 -m venv "${ZECLOCK_HOME}/venv"
 source "${ZECLOCK_HOME}/venv/bin/activate"
 
-# Install Python deps (app itself will be installed via file provisioner)
-# Use pre-downloaded wheels if available (faster than pip over network in qemu)
-if [ -d /tmp/zeclock-src/.wheels ] && [ "$(ls /tmp/zeclock-src/.wheels/*.whl 2>/dev/null | wc -l)" -gt 0 ]; then
-    echo "  Using pre-downloaded wheels..."
-    pip install --no-cache-dir --no-index --find-links /tmp/zeclock-src/.wheels \
-        pillow colorama pyyaml aiohttp pyserial 2>/dev/null \
-    || pip install --no-cache-dir pillow colorama pyyaml aiohttp pyserial
+# Install Python deps using pre-downloaded wheels (no network, fast)
+WHEELS="/tmp/zeclock-src/.wheels"
+if [ -d "${WHEELS}" ] && [ "$(ls ${WHEELS}/*.whl 2>/dev/null | wc -l)" -gt 0 ]; then
+    echo "  Using pre-downloaded wheels from ${WHEELS}..."
+    pip install --no-cache-dir --no-index --find-links "${WHEELS}" \
+        pillow colorama pyyaml aiohttp pyserial
 else
+    echo "  WARNING: No pre-downloaded wheels found, downloading from network..."
     pip install --no-cache-dir \
         pillow \
         colorama \
@@ -55,15 +55,17 @@ fi
 
 deactivate
 
-echo ">>> Downloading DotClk resources..."
+echo ">>> Bundling DotClk resources zip (will be extracted to /data at first boot)..."
 
+# Store the zip in the image — extraction happens on /data at first boot
 mkdir -p "${ZECLOCK_DATA}/resources"
-curl -sSL -o /tmp/res.zip \
-    https://github.com/sigmafx/DotClk-Resources/archive/refs/heads/master.zip
-unzip -q /tmp/res.zip -d /tmp/res
-cp -r /tmp/res/DotClk-Resources-master/Fonts "${ZECLOCK_DATA}/resources/Fonts"
-cp -r /tmp/res/DotClk-Resources-master/Scenes "${ZECLOCK_DATA}/resources/animations"
-rm -rf /tmp/res /tmp/res.zip
+if [ -f /tmp/zeclock-src/.dotclk-resources.zip ]; then
+    cp /tmp/zeclock-src/.dotclk-resources.zip "${ZECLOCK_DATA}/resources/.dotclk-resources.zip"
+else
+    curl -sSL -o "${ZECLOCK_DATA}/resources/.dotclk-resources.zip" \
+        https://github.com/sigmafx/DotClk-Resources/archive/refs/heads/master.zip
+fi
+echo "  Zip size: $(du -sh "${ZECLOCK_DATA}/resources/.dotclk-resources.zip" | cut -f1)"
 
 # Copy custom fonts from the app if available
 if [ -d "${ZECLOCK_HOME}/app/DotClk/Fonts" ]; then

@@ -111,8 +111,12 @@ if ! grep -q "^overlay" /etc/initramfs-tools/modules; then
     echo "overlay" >> /etc/initramfs-tools/modules
 fi
 
-# Regenerate initramfs
-update-initramfs -u -k all
+# Regenerate initramfs (once, for both kernels)
+# This is the ONLY initramfs regeneration in the entire build
+KERNELS=$(ls /lib/modules/ 2>/dev/null)
+for k in ${KERNELS}; do
+    update-initramfs -c -k "${k}"
+done
 
 # ==========================================================================
 # 2. Disable services incompatible with overlay/read-only root
@@ -132,6 +136,10 @@ rm -f /var/swap
 # Disable apt timers (can't update on RO root)
 systemctl mask apt-daily.timer 2>/dev/null || true
 systemctl mask apt-daily-upgrade.timer 2>/dev/null || true
+
+# Mask services that fail harmlessly under overlayfs
+systemctl mask systemd-remount-fs.service 2>/dev/null || true
+systemctl mask sshswitch.service 2>/dev/null || true
 
 # Remove firstboot init from cmdline.txt if present
 sed -i 's| init=/usr/lib/raspberrypi-sys-mods/firstboot||' /boot/firmware/cmdline.txt 2>/dev/null || true
@@ -244,6 +252,29 @@ mkdir -p "${DATA}/ssh"
 if [ ! -f "${DATA}/zeclock/config/zeclock.ini" ]; then
     cp /overlay/lower/home/zeclock/.zeclock/config/zeclock.ini "${DATA}/zeclock/config/" 2>/dev/null || \
     cp /home/zeclock/.zeclock/config/zeclock.ini "${DATA}/zeclock/config/" 2>/dev/null || true
+fi
+
+# Extract DotClk resources (fonts + animations) from bundled zip to /data
+if [ ! -d "${DATA}/zeclock/resources/Fonts" ] || [ ! -d "${DATA}/zeclock/resources/animations" ]; then
+    echo "init-data: extracting DotClk resources to /data..."
+    mkdir -p "${DATA}/zeclock/resources"
+    # Use bundled zip from the image
+    ZIP="/overlay/lower/home/zeclock/.zeclock/resources/.dotclk-resources.zip"
+    [ ! -f "${ZIP}" ] && ZIP="/home/zeclock/.zeclock/resources/.dotclk-resources.zip"
+    if [ -f "${ZIP}" ]; then
+        unzip -q "${ZIP}" -d /tmp/dotclk 2>/dev/null || true
+        if [ -d /tmp/dotclk/DotClk-Resources-master ]; then
+            cp -r /tmp/dotclk/DotClk-Resources-master/Fonts "${DATA}/zeclock/resources/Fonts" 2>/dev/null || true
+            cp -r /tmp/dotclk/DotClk-Resources-master/Scenes "${DATA}/zeclock/resources/animations" 2>/dev/null || true
+            echo "init-data: resources extracted"
+        fi
+        rm -rf /tmp/dotclk
+    else
+        echo "init-data: WARNING - bundled zip not found, copying package fonts as fallback"
+        if [ -d /overlay/lower/home/zeclock/app/zeclock/resources/Fonts ]; then
+            cp -r /overlay/lower/home/zeclock/app/zeclock/resources/Fonts "${DATA}/zeclock/resources/Fonts"
+        fi
+    fi
 fi
 
 # Copy SSH host keys
