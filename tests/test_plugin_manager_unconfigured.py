@@ -190,9 +190,7 @@ class TestRenderConfigureMessage:
 
     def test_truncates_long_names(self, plugin_manager):
         """Plugin names longer than 12 chars are truncated."""
-        frame = plugin_manager._render_configure_message(
-            "very-long-plugin-name-here"
-        )
+        frame = plugin_manager._render_configure_message("very-long-plugin-name-here")
 
         assert isinstance(frame, Image.Image)
         assert frame.mode == "RGB"

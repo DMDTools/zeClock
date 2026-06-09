@@ -26,7 +26,7 @@ from ..overlay import upscale_nx
 logger = logging.getLogger(__name__)
 
 # Default GIF directory relative to user plugins path
-from ..paths import get_plugins_dir
+from ..paths import get_plugins_dir  # noqa: E402
 
 DEFAULT_GIF_DIR = get_plugins_dir() / "gif"
 

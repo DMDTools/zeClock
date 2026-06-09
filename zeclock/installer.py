@@ -18,7 +18,13 @@ GITHUB_REPO_DMD = "vpinball/libdmdutil"
 GITHUB_REPO_ZEDMD = "PPUC/libzedmd"
 GITHUB_REPO_RESOURCES = "sigmafx/DotClk-Resources"
 
-from .paths import get_data_dir, get_config_dir, get_install_dir, get_lib_dir, get_resources_dir
+from .paths import (  # noqa: E402
+    get_data_dir,
+    get_config_dir,
+    get_install_dir,
+    get_lib_dir,
+    get_resources_dir,
+)
 
 ZECLOCK_DIR = get_data_dir()
 INSTALL_DIR = get_install_dir()

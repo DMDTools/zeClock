@@ -249,9 +249,7 @@ class TestConfigReading:
             "city": "NonexistentCity12345",
         }
 
-        with patch(
-            "zeclock.plugins.weather_plugin.geocode", return_value=None
-        ):
+        with patch("zeclock.plugins.weather_plugin.geocode", return_value=None):
             with pytest.raises(PluginNotConfiguredError):
                 await weather_plugin.initialize(config)
 
@@ -284,9 +282,7 @@ class TestConfigReading:
         with patch.object(
             weather_plugin, "_refresh_cache_if_needed", new_callable=AsyncMock
         ):
-            with patch(
-                "zeclock.plugins.weather_plugin.geocode"
-            ) as mock_geocode:
+            with patch("zeclock.plugins.weather_plugin.geocode") as mock_geocode:
                 await weather_plugin.initialize(config)
                 mock_geocode.assert_not_called()
 

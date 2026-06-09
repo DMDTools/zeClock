@@ -233,9 +233,14 @@ class ZeClock:
         # Initial connection attempt (USB or configured WiFi)
         if not self.dmd_client.connect():
             # If no WiFi addr configured, try auto-discovery
-            if hasattr(self.dmd_client, "_wifi_addr") and not self.dmd_client._wifi_addr:
+            if (
+                hasattr(self.dmd_client, "_wifi_addr")
+                and not self.dmd_client._wifi_addr
+            ):
                 print("⚠️ ZeDMD not found via USB — starting network discovery...")
-                self._discovery_state.update("scanning", "ZeDMD not found via USB, starting network discovery...")
+                self._discovery_state.update(
+                    "scanning", "ZeDMD not found via USB, starting network discovery..."
+                )
 
                 # Run discovery in a thread to not block the event loop
                 result = await asyncio.get_event_loop().run_in_executor(
@@ -244,12 +249,16 @@ class ZeClock:
 
                 if result:
                     # Found via discovery — reconfigure the backend with the discovered IP
-                    print(f"✅ ZeDMD discovered at {result.ip}:{result.port} (v{result.version})")
+                    print(
+                        f"✅ ZeDMD discovered at {result.ip}:{result.port} (v{result.version})"
+                    )
                     self.dmd_client._wifi_addr = result.ip
                     if self.dmd_client.connect():
                         print("✅ ZeDMD connected via WiFi")
                     else:
-                        print("⚠️ Discovery found ZeDMD but connection failed — retrying...")
+                        print(
+                            "⚠️ Discovery found ZeDMD but connection failed — retrying..."
+                        )
                 else:
                     print("⚠️ ZeDMD not found on network — waiting for device...")
 
@@ -267,16 +276,22 @@ class ZeClock:
                         self._discovery_state.update("found", "ZeDMD connected")
                         break
                     # Periodically retry discovery (every 30s)
-                    if delay >= 30.0 and not self.dmd_client._wifi_addr:
-                        self._discovery_state.update("scanning", "Retrying network discovery...")
+                    if delay >= 30.0 and not self.dmd_client._wifi_addr:  # type: ignore[attr-defined]
+                        self._discovery_state.update(
+                            "scanning", "Retrying network discovery..."
+                        )
                         result = await asyncio.get_event_loop().run_in_executor(
                             None, discover_zedmd, self._discovery_state
                         )
                         if result:
-                            self.dmd_client._wifi_addr = result.ip
+                            self.dmd_client._wifi_addr = result.ip  # type: ignore[attr-defined]
                             if self.dmd_client.connect():
-                                print(f"✅ ZeDMD discovered and connected at {result.ip}")
-                                self._discovery_state.update("found", f"ZeDMD connected at {result.ip}")
+                                print(
+                                    f"✅ ZeDMD discovered and connected at {result.ip}"
+                                )
+                                self._discovery_state.update(
+                                    "found", f"ZeDMD connected at {result.ip}"
+                                )
                                 break
                     delay = min(delay * 1.5, 30.0)
                     logger.info("DMD still unavailable — next retry in %.0fs", delay)

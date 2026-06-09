@@ -230,9 +230,7 @@ class CommandHandler:
         # deactivation/activation safely (no race with render loop).
         self._forced_plugin = plugin_name
         logger.info(f"Remote: forced plugin '{plugin_name}'")
-        return CommandResult(
-            success=True, message=f"Displaying plugin '{plugin_name}'"
-        )
+        return CommandResult(success=True, message=f"Displaying plugin '{plugin_name}'")
 
     def _handle_display_text(self, params: Dict[str, Any]) -> CommandResult:
         """Display free text on the screen for a given duration."""
@@ -310,7 +308,9 @@ class CommandHandler:
 
         # Backend connection status
         backend = self._clock.dmd_client
-        backend_connected = backend.connected if hasattr(backend, "connected") else False
+        backend_connected = (
+            backend.connected if hasattr(backend, "connected") else False
+        )
         backend_type = type(backend).__name__
 
         data = {

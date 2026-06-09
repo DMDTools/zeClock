@@ -197,6 +197,7 @@ method=auto
 """
     try:
         import os
+
         with open(conn_file, "w") as f:
             f.write(conn_content)
         os.chmod(conn_file, 0o600)
@@ -211,8 +212,7 @@ method=auto
 
     # Activate the connection
     result = subprocess.run(
-        ["nmcli", "connection", "up", ssid],
-        capture_output=True, text=True, timeout=30
+        ["nmcli", "connection", "up", ssid], capture_output=True, text=True, timeout=30
     )
 
     if result.returncode == 0:
@@ -226,7 +226,8 @@ method=auto
         # Cleanup and re-create hotspot
         subprocess.run(
             ["nmcli", "connection", "delete", ssid],
-            capture_output=True, timeout=10,
+            capture_output=True,
+            timeout=10,
         )
         create_hotspot()
         return False, error
@@ -234,6 +235,7 @@ method=auto
 
 def _persist_connection(ssid: str) -> None:
     """Copy the NM connection profile to /data for persistence across reboots."""
+    import os
     import shutil
     from pathlib import Path
 
@@ -261,10 +263,6 @@ def _persist_connection(ssid: str) -> None:
             logger.info(f"Persisted connection to {dst_file}")
         except OSError as e:
             logger.warning(f"Failed to persist connection: {e}")
-        logger.warning(f"Failed to connect to '{ssid}': {error}")
-        # Re-create hotspot so user can retry
-        create_hotspot()
-        return False, error
 
 
 # --- Web server ---
@@ -405,13 +403,13 @@ class WifiSetupServer:
 
     # URLs used by devices to detect captive portals
     CAPTIVE_PORTAL_CHECKS = [
-        "/hotspot-detect.html",        # Apple iOS/macOS
-        "/library/test/success.html",   # Apple
-        "/generate_204",               # Android
-        "/gen_204",                    # Android
-        "/connecttest.txt",            # Windows
-        "/ncsi.txt",                   # Windows
-        "/redirect",                   # Windows 11
+        "/hotspot-detect.html",  # Apple iOS/macOS
+        "/library/test/success.html",  # Apple
+        "/generate_204",  # Android
+        "/gen_204",  # Android
+        "/connecttest.txt",  # Windows
+        "/ncsi.txt",  # Windows
+        "/redirect",  # Windows 11
     ]
 
     def __init__(self) -> None:

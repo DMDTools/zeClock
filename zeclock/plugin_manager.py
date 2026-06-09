@@ -425,9 +425,7 @@ class PluginManager:
             self.registry.mark_failed(plugin_name)
             return False
         except PluginNotConfiguredError:
-            logger.info(
-                f"Plugin '{plugin_name}' not configured after reconfigure"
-            )
+            logger.info(f"Plugin '{plugin_name}' not configured after reconfigure")
             entry.plugin._unconfigured = True
             return True
         except Exception as e:
@@ -455,7 +453,7 @@ class PluginManager:
         if self.active_plugin is None:
             return None
 
-        if getattr(self.active_plugin, '_unconfigured', False):
+        if getattr(self.active_plugin, "_unconfigured", False):
             return self._render_configure_message(self.active_plugin.name)
 
         try:

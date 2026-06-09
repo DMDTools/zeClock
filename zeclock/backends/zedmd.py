@@ -21,7 +21,7 @@ from .base import DMDBackend
 logger = logging.getLogger(__name__)
 
 # Library search path
-from ..paths import get_lib_dir
+from ..paths import get_lib_dir  # noqa: E402
 
 LIB_DIR = get_lib_dir()
 

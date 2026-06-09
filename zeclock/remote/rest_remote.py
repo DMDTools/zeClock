@@ -173,14 +173,24 @@ class RestRemote:
         """GET /api/discovery — Return live discovery state."""
         clock = self._handler._clock
         if hasattr(clock, "_discovery_state"):
-            return web.json_response({
+            return web.json_response(
+                {
+                    "success": True,
+                    "data": clock._discovery_state.to_dict(),
+                }
+            )
+        return web.json_response(
+            {
                 "success": True,
-                "data": clock._discovery_state.to_dict(),
-            })
-        return web.json_response({
-            "success": True,
-            "data": {"status": "idle", "message": "", "steps": [], "candidates": [], "result": None},
-        })
+                "data": {
+                    "status": "idle",
+                    "message": "",
+                    "steps": [],
+                    "candidates": [],
+                    "result": None,
+                },
+            }
+        )
 
     async def _handle_screen_on(self, request: web.Request) -> web.Response:
         """POST /api/screen/on — Turn screen on."""
@@ -404,9 +414,7 @@ class RestRemote:
 
     # --- Plugin Config Schema and Geocode handlers ---
 
-    async def _handle_plugins_config_schema(
-        self, request: web.Request
-    ) -> web.Response:
+    async def _handle_plugins_config_schema(self, request: web.Request) -> web.Response:
         """GET /api/plugins/config-schema — Return aggregated config schemas."""
         pm = self._handler._clock._plugin_manager
         if pm is None:
@@ -415,21 +423,23 @@ class RestRemote:
         plugins = []
         for entry in pm.registry.get_all_plugins():
             schema = entry.plugin.config_schema
-            plugins.append({
-                "name": entry.name,
-                "description": entry.plugin.description,
-                "schema": [
-                    {
-                        "name": field.name,
-                        "label": field.label,
-                        "field_type": field.field_type,
-                        "required": field.required,
-                        "description": field.description,
-                        "default": field.default,
-                    }
-                    for field in schema
-                ],
-            })
+            plugins.append(
+                {
+                    "name": entry.name,
+                    "description": entry.plugin.description,
+                    "schema": [
+                        {
+                            "name": field.name,
+                            "label": field.label,
+                            "field_type": field.field_type,
+                            "required": field.required,
+                            "description": field.description,
+                            "default": field.default,
+                        }
+                        for field in schema
+                    ],
+                }
+            )
 
         return web.json_response({"plugins": plugins})
 
@@ -445,17 +455,19 @@ class RestRemote:
             )
 
         results = search_cities(query)
-        return web.json_response({
-            "results": [
-                {
-                    "display_name": r.display_name,
-                    "country": r.country,
-                    "latitude": r.latitude,
-                    "longitude": r.longitude,
-                }
-                for r in results
-            ]
-        })
+        return web.json_response(
+            {
+                "results": [
+                    {
+                        "display_name": r.display_name,
+                        "country": r.country,
+                        "latitude": r.latitude,
+                        "longitude": r.longitude,
+                    }
+                    for r in results
+                ]
+            }
+        )
 
     # --- Speaker Timer handlers ---
 

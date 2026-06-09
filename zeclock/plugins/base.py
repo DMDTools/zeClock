@@ -102,6 +102,8 @@ class ClockPlugin(ABC):
     and properties. See docs/plugin_authoring.md for a complete guide.
     """
 
+    _unconfigured: bool = False
+
     @property
     @abstractmethod
     def name(self) -> str:

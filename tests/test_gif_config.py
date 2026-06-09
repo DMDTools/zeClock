@@ -78,11 +78,16 @@ class TestPluginNotConfiguredError:
             await gif_plugin.initialize(config)
 
     @pytest.mark.asyncio
-    async def test_raises_when_default_dir_does_not_exist(self, gif_plugin, monkeypatch):
+    async def test_raises_when_default_dir_does_not_exist(
+        self, gif_plugin, monkeypatch
+    ):
         """Should raise PluginNotConfiguredError when no gif_dir and default doesn't exist."""
         # Monkeypatch DEFAULT_GIF_DIR to a non-existent path
         import zeclock.plugins.gif_plugin as gif_module
-        monkeypatch.setattr(gif_module, "DEFAULT_GIF_DIR", Path("/tmp/nonexistent_zeclock_gif_test"))
+
+        monkeypatch.setattr(
+            gif_module, "DEFAULT_GIF_DIR", Path("/tmp/nonexistent_zeclock_gif_test")
+        )
         config = {}
         with pytest.raises(PluginNotConfiguredError):
             await gif_plugin.initialize(config)

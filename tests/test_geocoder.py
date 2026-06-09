@@ -61,13 +61,15 @@ def test_geocode_tabs_and_newlines_returns_none():
 def test_geocode_success(mock_urlopen):
     mock_response = MagicMock()
     mock_response.status = 200
-    mock_response.read.return_value = json.dumps([
-        {
-            "lat": "48.8566",
-            "lon": "2.3522",
-            "display_name": "Paris, Île-de-France, France",
-        }
-    ]).encode("utf-8")
+    mock_response.read.return_value = json.dumps(
+        [
+            {
+                "lat": "48.8566",
+                "lon": "2.3522",
+                "display_name": "Paris, Île-de-France, France",
+            }
+        ]
+    ).encode("utf-8")
     mock_response.__enter__ = lambda s: s
     mock_response.__exit__ = MagicMock(return_value=False)
     mock_urlopen.return_value = mock_response
@@ -84,13 +86,15 @@ def test_geocode_success(mock_urlopen):
 def test_geocode_trims_input(mock_urlopen):
     mock_response = MagicMock()
     mock_response.status = 200
-    mock_response.read.return_value = json.dumps([
-        {
-            "lat": "51.5074",
-            "lon": "-0.1278",
-            "display_name": "London, England, United Kingdom",
-        }
-    ]).encode("utf-8")
+    mock_response.read.return_value = json.dumps(
+        [
+            {
+                "lat": "51.5074",
+                "lon": "-0.1278",
+                "display_name": "London, England, United Kingdom",
+            }
+        ]
+    ).encode("utf-8")
     mock_response.__enter__ = lambda s: s
     mock_response.__exit__ = MagicMock(return_value=False)
     mock_urlopen.return_value = mock_response
@@ -134,13 +138,15 @@ def test_geocode_timeout_returns_none(mock_urlopen):
 def test_geocode_caches_result(mock_urlopen):
     mock_response = MagicMock()
     mock_response.status = 200
-    mock_response.read.return_value = json.dumps([
-        {
-            "lat": "48.8566",
-            "lon": "2.3522",
-            "display_name": "Paris, Île-de-France, France",
-        }
-    ]).encode("utf-8")
+    mock_response.read.return_value = json.dumps(
+        [
+            {
+                "lat": "48.8566",
+                "lon": "2.3522",
+                "display_name": "Paris, Île-de-France, France",
+            }
+        ]
+    ).encode("utf-8")
     mock_response.__enter__ = lambda s: s
     mock_response.__exit__ = MagicMock(return_value=False)
     mock_urlopen.return_value = mock_response
@@ -157,13 +163,15 @@ def test_geocode_caches_result(mock_urlopen):
 def test_geocode_cache_case_insensitive(mock_urlopen):
     mock_response = MagicMock()
     mock_response.status = 200
-    mock_response.read.return_value = json.dumps([
-        {
-            "lat": "48.8566",
-            "lon": "2.3522",
-            "display_name": "Paris, France",
-        }
-    ]).encode("utf-8")
+    mock_response.read.return_value = json.dumps(
+        [
+            {
+                "lat": "48.8566",
+                "lon": "2.3522",
+                "display_name": "Paris, France",
+            }
+        ]
+    ).encode("utf-8")
     mock_response.__enter__ = lambda s: s
     mock_response.__exit__ = MagicMock(return_value=False)
     mock_urlopen.return_value = mock_response
@@ -194,13 +202,15 @@ def test_search_cities_exactly_3_chars_after_trim():
     with patch("zeclock.geocoder.urllib.request.urlopen") as mock_urlopen:
         mock_response = MagicMock()
         mock_response.status = 200
-        mock_response.read.return_value = json.dumps([
-            {
-                "lat": "48.8566",
-                "lon": "2.3522",
-                "display_name": "Paris, France",
-            }
-        ]).encode("utf-8")
+        mock_response.read.return_value = json.dumps(
+            [
+                {
+                    "lat": "48.8566",
+                    "lon": "2.3522",
+                    "display_name": "Paris, France",
+                }
+            ]
+        ).encode("utf-8")
         mock_response.__enter__ = lambda s: s
         mock_response.__exit__ = MagicMock(return_value=False)
         mock_urlopen.return_value = mock_response
@@ -233,10 +243,12 @@ def test_search_cities_returns_up_to_5(mock_urlopen):
 def test_search_cities_success(mock_urlopen):
     mock_response = MagicMock()
     mock_response.status = 200
-    mock_response.read.return_value = json.dumps([
-        {"lat": "48.8566", "lon": "2.3522", "display_name": "Paris, France"},
-        {"lat": "48.8530", "lon": "2.3499", "display_name": "Paris 5e, France"},
-    ]).encode("utf-8")
+    mock_response.read.return_value = json.dumps(
+        [
+            {"lat": "48.8566", "lon": "2.3522", "display_name": "Paris, France"},
+            {"lat": "48.8530", "lon": "2.3499", "display_name": "Paris 5e, France"},
+        ]
+    ).encode("utf-8")
     mock_response.__enter__ = lambda s: s
     mock_response.__exit__ = MagicMock(return_value=False)
     mock_urlopen.return_value = mock_response
@@ -275,9 +287,11 @@ def test_search_cities_empty_results_returns_empty(mock_urlopen):
 def test_search_cities_caches_results(mock_urlopen):
     mock_response = MagicMock()
     mock_response.status = 200
-    mock_response.read.return_value = json.dumps([
-        {"lat": "48.8566", "lon": "2.3522", "display_name": "Paris, France"},
-    ]).encode("utf-8")
+    mock_response.read.return_value = json.dumps(
+        [
+            {"lat": "48.8566", "lon": "2.3522", "display_name": "Paris, France"},
+        ]
+    ).encode("utf-8")
     mock_response.__enter__ = lambda s: s
     mock_response.__exit__ = MagicMock(return_value=False)
     mock_urlopen.return_value = mock_response

@@ -50,11 +50,13 @@ def geocode(city_name: str) -> Optional[GeoResult]:
         return _cache[cache_key]
 
     # Build request
-    params = urllib.parse.urlencode({
-        "q": query,
-        "format": "json",
-        "limit": "1",
-    })
+    params = urllib.parse.urlencode(
+        {
+            "q": query,
+            "format": "json",
+            "limit": "1",
+        }
+    )
     url = f"{_NOMINATIM_URL}?{params}"
 
     try:
@@ -99,11 +101,13 @@ def search_cities(query: str) -> List[GeoResult]:
         return _cache[cache_key]
 
     # Build request
-    params = urllib.parse.urlencode({
-        "q": trimmed,
-        "format": "json",
-        "limit": "5",
-    })
+    params = urllib.parse.urlencode(
+        {
+            "q": trimmed,
+            "format": "json",
+            "limit": "5",
+        }
+    )
     url = f"{_NOMINATIM_URL}?{params}"
 
     try:
@@ -137,9 +141,11 @@ def _parse_result(item: dict) -> Optional[GeoResult]:
             latitude=float(item["lat"]),
             longitude=float(item["lon"]),
             display_name=item.get("display_name", ""),
-            country=item.get("address", {}).get("country", "")
-            if "address" in item
-            else _extract_country(item.get("display_name", "")),
+            country=(
+                item.get("address", {}).get("country", "")
+                if "address" in item
+                else _extract_country(item.get("display_name", ""))
+            ),
         )
     except (KeyError, ValueError, TypeError):
         return None

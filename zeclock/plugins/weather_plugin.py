@@ -235,7 +235,9 @@ class WeatherPlugin(PagedPlugin):
             # City selected via autocomplete with embedded coordinates
             self._latitude = city_coords[0]
             self._longitude = city_coords[1]
-            self._city_name = city_str or display_name or f"{self._latitude},{self._longitude}"
+            self._city_name = (
+                city_str or display_name or f"{self._latitude},{self._longitude}"
+            )
         elif city_str:
             # City name provided as string — geocode it
             result = geocode(city_str)
@@ -250,6 +252,7 @@ class WeatherPlugin(PagedPlugin):
             self._city_name = city_str
         elif has_coords:
             # Fallback to explicit coordinates only if no city configured
+            assert lat is not None and lon is not None  # guaranteed by has_coords
             self._latitude = float(lat)
             self._longitude = float(lon)
             self._city_name = display_name or f"{self._latitude},{self._longitude}"
@@ -320,7 +323,11 @@ class WeatherPlugin(PagedPlugin):
         frame = self._helpers.create_frame()
         text = self._city_name or "Weather"
         text_frame = self._helpers.render_text_centered_at(
-            text, cx=width // 2, y=height // 2 - 4, color=(255, 128, 0), font_name="MENU"
+            text,
+            cx=width // 2,
+            y=height // 2 - 4,
+            color=(255, 128, 0),
+            font_name="MENU",
         )
         return self._helpers.composite_frames(frame, text_frame)
 
