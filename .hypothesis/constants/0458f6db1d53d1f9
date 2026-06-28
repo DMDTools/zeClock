@@ -1,0 +1,4 @@
+# file: /tmp/pytest-of-root/pytest-0/test_multiple_plugins_loaded0/.zeclock/plugins/plugin_2.py
+# hypothesis_version: 6.141.1
+
+[255, 'RGB', 'plugin-2']

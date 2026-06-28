@@ -1,0 +1,4 @@
+# file: /projects/sandbox/zeClock/zeclock/plugins/stock_plugin.py
+# hypothesis_version: 6.141.1
+
+[0.0, 1.0, 100, 128, 150, 200, 255, 390, 1000, 10000, '+', ',', '-', '1d', '1m', 'AH ', 'CLOSED', 'MENU', 'NO DATA', 'OPEN', 'PM ', 'POST', 'PRE', 'RGB', 'SYSTEM', 'Stock Symbols', 'StockData', 'USD', 'User-Agent', '_helpers', 'chart', 'chartPreviousClose', 'close', 'currency', 'currentTradingPeriod', 'end', 'includePrePost', 'indicators', 'interval', 'meta', 'post', 'pre', 'previousClose', 'quote', 'range', 'refresh_minutes', 'regular', 'regularMarketPrice', 'result', 'start', 'stock', 'symbols', 'text', 'timestamp', 'true']

@@ -1,0 +1,4 @@
+# file: /projects/sandbox/zeClock/zeclock/paths.py
+# hypothesis_version: 6.141.1
+
+['.zeclock', 'ZECLOCK_CONFIG_DIR', 'ZECLOCK_DATA_DIR', 'ZECLOCK_LIB_DIR', 'bin', 'config', 'lib', 'plugins', 'resources']

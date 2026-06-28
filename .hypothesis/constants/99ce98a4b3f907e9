@@ -1,0 +1,4 @@
+# file: /projects/sandbox/zeClock/zeclock/plugins/__init__.py
+# hypothesis_version: 6.141.1
+
+['CONFETTI_COLORS_COOL', 'CONFETTI_COLORS_WARM', 'ClockPlugin', 'ConfettiAnimation', 'PagedPlugin', 'epx_upscale_2x', 'hq2x', 'nearest_upscale_2x', 'scale3x', 'upscale_2x', 'upscale_nx', 'validate_plugin_name']

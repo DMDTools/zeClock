@@ -1,0 +1,4 @@
+# file: /tmp/pytest-of-root/pytest-0/test_continues_loading_after_e0/.zeclock/plugins/zzz_good.py
+# hypothesis_version: 6.141.1
+
+[255, 'RGB', 'good-plugin']

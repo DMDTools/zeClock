@@ -15,6 +15,7 @@ import asyncio
 import logging
 import random
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
@@ -29,6 +30,15 @@ logger = logging.getLogger(__name__)
 from ..paths import get_plugins_dir  # noqa: E402
 
 DEFAULT_GIF_DIR = get_plugins_dir() / "gif"
+
+
+@dataclass
+class DirectoryEntry:
+    """A single GIF source directory with selection weight and traversal mode."""
+
+    path: Path
+    weight: int = 50
+    recursive: bool = True
 
 
 class GifPlugin(ClockPlugin):
@@ -50,6 +60,75 @@ class GifPlugin(ClockPlugin):
     def name(self) -> str:
         return "gif"
 
+    def _resolve_directories(self, raw_dirs: list) -> List[DirectoryEntry]:
+        """Parse raw directory config dicts into validated DirectoryEntry objects.
+
+        Skips entries with missing/empty path, non-dict entries, or non-existent
+        directories, logging warnings for each. Defaults weight to 50 if invalid,
+        defaults recursive to True.
+        """
+        entries: List[DirectoryEntry] = []
+        for item in raw_dirs:
+            if not isinstance(item, dict):
+                logger.warning("[gif] Skipping non-dict entry in gif_dirs")
+                continue
+            path_str = item.get("path", "")
+            if not path_str:
+                logger.warning("[gif] Skipping entry with missing/empty path")
+                continue
+            resolved = Path(path_str).expanduser()
+            if not resolved.is_dir():
+                logger.warning(
+                    "[gif] Directory does not exist: %s, skipping", resolved
+                )
+                continue
+            weight = item.get("weight", 50)
+            if not isinstance(weight, int) or weight < 1:
+                weight = 50
+            recursive = item.get("recursive", True)
+            entries.append(
+                DirectoryEntry(path=resolved, weight=weight, recursive=bool(recursive))
+            )
+        return entries
+
+    def _select_gif(self, entries: List[DirectoryEntry]) -> Path:
+        """Select a random GIF file using weighted random directory choice.
+
+        For each entry, discovers GIF files (recursively or not based on entry config).
+        Filters to directories with at least one GIF. Selects a directory with probability
+        proportional to its weight, then picks a random GIF from that directory.
+
+        Args:
+            entries: List of validated DirectoryEntry objects.
+
+        Returns:
+            Path to the selected GIF file.
+
+        Raises:
+            PluginNotConfiguredError: If no GIF files are found in any directory.
+        """
+        # Build pool: (entry, list_of_gifs)
+        pool = []
+        for entry in entries:
+            if entry.recursive:
+                gifs = list(entry.path.rglob("*.gif")) + list(entry.path.rglob("*.GIF"))
+            else:
+                gifs = list(entry.path.glob("*.gif")) + list(entry.path.glob("*.GIF"))
+            if gifs:
+                pool.append((entry, gifs))
+
+        if not pool:
+            raise PluginNotConfiguredError(
+                "Gif plugin: no .gif files found in any configured directory"
+            )
+
+        # Weighted random directory selection
+        weights = [p[0].weight for p in pool]
+        chosen_idx = random.choices(range(len(pool)), weights=weights, k=1)[0]
+        chosen_gifs = pool[chosen_idx][1]
+
+        return random.choice(chosen_gifs)
+
     @property
     def description(self) -> str:
         return "Displays animated GIFs on the DMD"
@@ -59,11 +138,11 @@ class GifPlugin(ClockPlugin):
         """Declare configuration fields for the gif plugin."""
         return [
             ConfigField(
-                "gif_dir",
-                "GIF Directory",
-                "text",
+                "gif_dirs",
+                "GIF Directories",
+                "list",
                 required=True,
-                description="Path to directory containing .gif files",
+                description="List of directory entries. Each entry: path (string), weight (integer, default 50), recursive (boolean, default true)",
             )
         ]
 
@@ -78,12 +157,13 @@ class GifPlugin(ClockPlugin):
         """Load a random GIF in background.
 
         Config keys:
-            gif_dir (str): Path to directory containing .gif files.
-                           Default: ~/.zeclock/plugins/gif/
+            gif_dirs (list): List of directory entry dicts, each with 'path',
+                             'weight' (default 50), and 'recursive' (default True).
+                             Falls back to DEFAULT_GIF_DIR if absent or empty.
 
         Raises:
-            PluginNotConfiguredError: If gif_dir is missing, does not exist,
-                or contains zero .gif files.
+            PluginNotConfiguredError: If no valid directories are configured or
+                no .gif files are found in any configured directory.
         """
         self._helpers = config.get("_helpers")
         self._upscale_mode = config.get("_upscale_mode", "epx")
@@ -97,27 +177,17 @@ class GifPlugin(ClockPlugin):
         self._frame_index = 0
         self._load_done = False
 
-        # Resolve GIF directory
-        gif_dir_str = config.get("gif_dir")
-        if gif_dir_str:
-            gif_dir = Path(gif_dir_str).expanduser()
-        else:
-            gif_dir = DEFAULT_GIF_DIR
+        # Parse gif_dirs from config, fall back to default
+        raw_dirs = config.get("gif_dirs")
+        if not raw_dirs:
+            raw_dirs = [{"path": str(DEFAULT_GIF_DIR), "weight": 50, "recursive": True}]
 
-        if not gif_dir.is_dir():
-            raise PluginNotConfiguredError(
-                f"Gif plugin: directory does not exist: {gif_dir}"
-            )
+        entries = self._resolve_directories(raw_dirs)
+        if not entries:
+            raise PluginNotConfiguredError("Gif plugin: no valid directories configured")
 
-        # Find all .gif files recursively
-        gif_files = list(gif_dir.rglob("*.gif"))
-        if not gif_files:
-            raise PluginNotConfiguredError(
-                f"Gif plugin: no .gif files found in {gif_dir}"
-            )
-
-        # Pick one at random
-        gif_path = random.choice(gif_files)
+        # Select a GIF using weighted random
+        gif_path = self._select_gif(entries)
         logger.info("[gif] Loading GIF: %s (in background)", gif_path.name)
 
         # Load in background thread

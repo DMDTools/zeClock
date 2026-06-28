@@ -1,0 +1,4 @@
+# file: /projects/sandbox/zeClock/zeclock/plugins/pinball_plugin.py
+# hypothesis_version: 6.141.1
+
+[0.01, 1.0, 1000.0, 128, 256, '%H:%M', '**/*.scn', 'L', 'STANDARD', '_font', '_upscale_mode', 'animation_color', 'animations', 'animations_dir', 'color', 'epx', 'font_path', 'height', 'mask_data', 'none', 'orange', 'pinball', 'width']

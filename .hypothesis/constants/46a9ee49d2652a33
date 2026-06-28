@@ -1,0 +1,4 @@
+# file: /projects/sandbox/zeClock/zeclock/brightness_scheduler.py
+# hypothesis_version: 6.141.1
+
+[0.0, 1.0, 100.0, 100, 200, 256, '%', '+00:00', ',', '-', ':', 'Image.Image', 'OK', 'RGB', 'Z', 'default', 'friday', 'monday', 'results', 'saturday', 'status', 'sunday', 'sunrise', 'sunset', 'thursday', 'tuesday', 'wednesday']

@@ -1,0 +1,4 @@
+# file: /projects/sandbox/zeClock/zeclock/readers/fnt_reader.py
+# hypothesis_version: 6.141.1
+
+[128, ':', '<B', '<H', 'L', '_HD', 'ascii', 'epx', 'hq2x', 'ignore', 'kerning', 'mask_data', 'mask_x_offset', 'nearest', 'rb', 'width']
