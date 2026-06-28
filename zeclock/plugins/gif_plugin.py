@@ -78,9 +78,7 @@ class GifPlugin(ClockPlugin):
                 continue
             resolved = Path(path_str).expanduser()
             if not resolved.is_dir():
-                logger.warning(
-                    "[gif] Directory does not exist: %s, skipping", resolved
-                )
+                logger.warning("[gif] Directory does not exist: %s, skipping", resolved)
                 continue
             weight = item.get("weight", 50)
             if not isinstance(weight, int) or weight < 1:
@@ -184,7 +182,9 @@ class GifPlugin(ClockPlugin):
 
         entries = self._resolve_directories(raw_dirs)
         if not entries:
-            raise PluginNotConfiguredError("Gif plugin: no valid directories configured")
+            raise PluginNotConfiguredError(
+                "Gif plugin: no valid directories configured"
+            )
 
         # Select a GIF using weighted random
         gif_path = self._select_gif(entries)

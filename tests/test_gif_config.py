@@ -52,7 +52,9 @@ class TestPluginNotConfiguredError:
     """Tests for PluginNotConfiguredError in initialize()."""
 
     @pytest.mark.asyncio
-    async def test_raises_when_gif_dirs_points_to_nonexistent(self, gif_plugin, tmp_path):
+    async def test_raises_when_gif_dirs_points_to_nonexistent(
+        self, gif_plugin, tmp_path
+    ):
         """Should raise PluginNotConfiguredError when gif_dirs has only non-existent paths."""
         non_existent = str(tmp_path / "nonexistent_dir")
         config = {"gif_dirs": [{"path": non_existent, "weight": 50, "recursive": True}]}
@@ -64,7 +66,9 @@ class TestPluginNotConfiguredError:
         """Should raise PluginNotConfiguredError when gif_dirs directory has no .gif files."""
         empty_dir = tmp_path / "empty_gifs"
         empty_dir.mkdir()
-        config = {"gif_dirs": [{"path": str(empty_dir), "weight": 50, "recursive": True}]}
+        config = {
+            "gif_dirs": [{"path": str(empty_dir), "weight": 50, "recursive": True}]
+        }
         with pytest.raises(PluginNotConfiguredError):
             await gif_plugin.initialize(config)
 
@@ -75,7 +79,9 @@ class TestPluginNotConfiguredError:
         dir_with_files.mkdir()
         (dir_with_files / "image.png").write_bytes(b"fake png")
         (dir_with_files / "readme.txt").write_text("hello")
-        config = {"gif_dirs": [{"path": str(dir_with_files), "weight": 50, "recursive": True}]}
+        config = {
+            "gif_dirs": [{"path": str(dir_with_files), "weight": 50, "recursive": True}]
+        }
         with pytest.raises(PluginNotConfiguredError):
             await gif_plugin.initialize(config)
 
