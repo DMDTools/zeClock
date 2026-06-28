@@ -17,6 +17,7 @@ from .plugin_config import PluginConfig
 from .plugin_registry import PluginRegistry
 from .plugins.base import (
     ClockPlugin,
+    PluginContext,
     PluginNotConfiguredError,
     validate_frame_delay_ms,
     validate_plugin_name,
@@ -299,12 +300,21 @@ class PluginManager:
             plugin_name: The plugin name to get config for.
 
         Returns:
-            Config dict with "_helpers" and "_upscale_mode" keys.
+            Config dict with "_helpers", "_upscale_mode", "_context" keys.
         """
+        # Get a snapshot of pure user settings before adding infrastructure keys
+        user_settings = dict(self.config.get_plugin_config(plugin_name))
+
         config = self.config.get_plugin_config(plugin_name)
         config["_helpers"] = self._helpers
         config["_upscale_mode"] = self.upscale_mode
         config["_font"] = self.font_name
+        config["_context"] = PluginContext(
+            helpers=self._helpers,
+            upscale_mode=self.upscale_mode,
+            font=self.font_name,
+            settings=user_settings,
+        )
         return config
 
     def select_next_plugin(self) -> Optional[ClockPlugin]:
@@ -363,6 +373,24 @@ class PluginManager:
             True if activation succeeded, False otherwise.
         """
         config = self.get_plugin_config_with_helpers(plugin.name)
+
+        # Validate required config fields from schema before calling initialize
+        schema = plugin.config_schema
+        if schema:
+            user_settings = self.config.get_plugin_config(plugin.name)
+            for field in schema:
+                if field.required and field.default is None:
+                    if field.name not in user_settings:
+                        logger.info(
+                            f"Plugin '{plugin.name}' missing required field "
+                            f"'{field.name}', marking as unconfigured"
+                        )
+                        plugin._unconfigured = True
+                        self.active_plugin = plugin
+                        self.consecutive_errors = 0
+                        self.plugin_start_time = time.time()
+                        self.last_good_frame = None
+                        return True
 
         try:
             await asyncio.wait_for(plugin.initialize(config), timeout=self.init_timeout)

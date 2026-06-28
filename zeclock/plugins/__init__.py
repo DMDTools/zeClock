@@ -2,7 +2,10 @@
 
 from .base import (
     ClockPlugin,
+    ConfigField,
     PagedPlugin,
+    PLUGIN_API_VERSION,
+    PluginContext,
     validate_plugin_name,
     validate_plugin_description,
     validate_frame_delay_ms,
@@ -24,7 +27,10 @@ from ..overlay import (
 
 __all__ = [
     "ClockPlugin",
+    "ConfigField",
     "PagedPlugin",
+    "PLUGIN_API_VERSION",
+    "PluginContext",
     "validate_plugin_name",
     "validate_plugin_description",
     "validate_frame_delay_ms",

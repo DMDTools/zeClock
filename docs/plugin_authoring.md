@@ -9,8 +9,11 @@ This guide walks you through creating custom plugins for zeClock. Plugins render
 - [Using PluginHelpers](#using-pluginhelpers)
 - [Using ConfettiAnimation](#using-confettianimation)
 - [Configuration](#configuration)
+  - [Using PluginContext (typed config)](#using-plugincontext-typed-config)
+  - [Automatic Config Validation](#automatic-config-validation)
   - [Using the Upscaling API](#using-the-upscaling-api)
 - [Lifecycle](#lifecycle)
+- [Reconfiguring Plugins](#reconfiguring-plugins)
 - [Signaling Completion](#signaling-completion)
 - [Using PagedPlugin](#using-pagedplugin)
 - [Error Handling Best Practices](#error-handling-best-practices)
@@ -77,6 +80,21 @@ Save this file to `~/.zeclock/plugins/hello_world_plugin.py` and it will be auto
 ## Plugin Interface Reference
 
 All plugins must subclass `ClockPlugin` from `zeclock.plugins.base`. The abstract base class enforces the contract at class definition time — missing methods will raise `TypeError` when you try to instantiate your plugin.
+
+### PLUGIN_API_VERSION
+
+The `PLUGIN_API_VERSION` constant (currently `"1.0"`) identifies the version of the plugin interface. It is available as a module-level string in `zeclock.plugins.base` and re-exported from `zeclock.plugins`.
+
+```python
+from zeclock.plugins import PLUGIN_API_VERSION
+
+# Check the API version if your plugin depends on specific features
+if PLUGIN_API_VERSION < "2.0":
+    # Use v1 compatible approach
+    pass
+```
+
+Plugin authors can use this constant to gate features or emit warnings when running against an unexpected API version. The version follows semantic versioning principles: minor bumps add features in a backward-compatible way, major bumps may remove or change existing behavior.
 
 ### Properties
 
@@ -416,12 +434,14 @@ plugins:
 
 ### Accessing Configuration in Your Plugin
 
-The `config` dict passed to `initialize()` contains everything from the `settings` map in the YAML, plus two special injected keys:
+The `config` dict passed to `initialize()` contains everything from the `settings` map in the YAML, plus special injected keys:
 
 | Key | Type | Description |
 |-----|------|-------------|
 | `_helpers` | `PluginHelpers` | Rendering utilities (text, icons, frames) |
 | `_upscale_mode` | `str` | Upscaling algorithm in use: `"epx"`, `"hq2x"`, or `"nearest"` |
+| `_font` | `str` | Global font name (e.g. `"STANDARD"`) |
+| `_context` | `PluginContext` | Typed context object (see below) |
 
 ```python
 async def initialize(self, config: dict) -> None:
@@ -434,6 +454,60 @@ async def initialize(self, config: dict) -> None:
 ```
 
 Use `_upscale_mode` if your plugin generates imagery that should adapt to the active scaling algorithm — for example, choosing between pixel-art-friendly EPX upscaling and simple nearest-neighbour scaling when compositing custom graphics.
+
+### Using PluginContext (typed config)
+
+As an alternative to accessing raw dict keys, you can use `config["_context"]` which is a `PluginContext` dataclass instance. This provides typed, IDE-friendly access to infrastructure objects and separates them from user settings.
+
+```python
+from zeclock.plugins.base import PluginContext
+
+async def initialize(self, config: dict) -> None:
+    ctx: PluginContext = config["_context"]
+
+    # Infrastructure (typed attributes)
+    self._helpers = ctx.helpers         # Same as config["_helpers"]
+    self._upscale_mode = ctx.upscale_mode  # Same as config["_upscale_mode"]
+    self._font = ctx.font               # Same as config["_font"]
+
+    # User settings from plugins.yaml (dict)
+    self._city = ctx.settings.get("city_name", "")
+    self._api_key = ctx.settings.get("api_key")
+```
+
+The `PluginContext` fields are:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `helpers` | `PluginHelpers` | (required) | The PluginHelpers rendering instance |
+| `upscale_mode` | `str` | `"epx"` | Active upscaling algorithm |
+| `font` | `str` | `"STANDARD"` | Global font name |
+| `settings` | `Dict[str, Any]` | `{}` | User YAML settings for this plugin |
+
+The raw dict keys (`config["_helpers"]`, `config["_upscale_mode"]`, `config["_font"]`) remain available for backward compatibility with existing plugins.
+
+### Automatic Config Validation
+
+If your plugin declares a `config_schema` with required fields, the PluginManager validates the user settings *before* calling `initialize()`. Specifically, for each field where `required=True` and `default` is `None`, the manager checks that the field name is present in the user YAML settings. If it is missing, the plugin is automatically marked as "unconfigured" (not "failed") and a "configure me" message is displayed on the DMD.
+
+This means you no longer need to manually check for missing required fields inside `initialize()` and raise `PluginNotConfiguredError` yourself. The validation happens transparently:
+
+```python
+@property
+def config_schema(self) -> List[ConfigField]:
+    return [
+        ConfigField(name="api_key", label="API Key", field_type="text",
+                    required=True, description="Your API key"),
+        ConfigField(name="refresh_interval", label="Refresh", field_type="number",
+                    required=True, default=60, description="Seconds between refreshes"),
+    ]
+```
+
+In this example:
+- If `api_key` is missing from the YAML settings, the plugin is automatically marked unconfigured (because `required=True` and `default=None`).
+- If `refresh_interval` is missing, the plugin still initializes because it has a non-None `default` value of `60`.
+
+Fields with `required=False` are never validated regardless of their default value.
 
 ### Using the Upscaling API
 
@@ -508,6 +582,55 @@ Discovery → Loading → Initialization → Activation (Rendering) → Deactiva
 | `initialize()` | 10 seconds | Plugin marked as failed, excluded from session |
 | `render_frame()` | 2 seconds per call | Last good frame held, error counter incremented |
 | Total activation | 30 seconds max | Normal completion, transition to clock |
+
+---
+
+## Reconfiguring Plugins
+
+The `reconfigure(config)` method is called when plugin settings are changed via the Web UI without restarting the application. The default implementation simply calls `initialize(config)` again, which works for stateless plugins.
+
+### When to Override reconfigure()
+
+Override `reconfigure()` if your plugin:
+- Holds open network connections (HTTP sessions, WebSocket connections)
+- Runs background tasks or timers
+- Caches data that should be invalidated on config change
+- Manages resources that need explicit teardown
+
+### Important: No Automatic cleanup()
+
+**The PluginManager does NOT call `cleanup()` before `reconfigure()`.** This is a deliberate design choice: reconfiguration should be lighter than a full deactivate/reactivate cycle. However, it means your plugin must handle resource cleanup internally:
+
+```python
+async def reconfigure(self, config: dict) -> None:
+    # Close existing resources BEFORE re-initializing
+    if self._session:
+        await self._session.close()
+    if self._background_task:
+        self._background_task.cancel()
+
+    # Now re-initialize with new config
+    await self.initialize(config)
+```
+
+If you do not close resources in `reconfigure()`, you may leak connections or create duplicate background tasks.
+
+### Default Behavior
+
+If you do not override `reconfigure()`, the default implementation calls `initialize(config)`. This is safe for plugins that:
+- Store only simple configuration values
+- Do not hold persistent connections
+- Re-fetch data on each activation anyway
+
+```python
+# Default implementation (inherited from ClockPlugin):
+async def reconfigure(self, config: dict) -> None:
+    await self.initialize(config)
+```
+
+### Error Handling
+
+If `reconfigure()` raises `PluginNotConfiguredError`, the plugin is marked as unconfigured (same as during initial activation). If it raises any other exception, the reconfiguration is considered failed but the plugin is not removed from rotation.
 
 ---
 

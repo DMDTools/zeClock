@@ -3,12 +3,15 @@
 import logging
 import re
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Any, List, Optional
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
 from PIL import Image
 
 logger = logging.getLogger(__name__)
+
+# Plugin API version - bump on breaking interface changes
+PLUGIN_API_VERSION: str = "1.0"
 
 # Validation constants
 PLUGIN_NAME_PATTERN = re.compile(r"^[a-z0-9_-]{1,64}$")
@@ -82,6 +85,21 @@ class ConfigField:
     required: bool = True
     description: str = ""  # max 200 chars
     default: Any = None
+
+
+@dataclass
+class PluginContext:
+    """Typed plugin context separating infrastructure from user settings.
+
+    Available as config["_context"] in the dict passed to initialize().
+    Provides typed access to infrastructure objects and user settings
+    as an alternative to the raw dict keys.
+    """
+
+    helpers: Any  # PluginHelpers instance
+    upscale_mode: str = "epx"
+    font: str = "STANDARD"
+    settings: Dict[str, Any] = field(default_factory=dict)
 
 
 class PluginNotConfiguredError(Exception):
