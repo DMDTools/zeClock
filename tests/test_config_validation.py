@@ -334,7 +334,9 @@ class TestAutoConfigValidation:
             async def initialize(self, config: dict) -> None:
                 await asyncio.sleep(100)
 
-            async def render_frame(self, width: int, height: int) -> Optional[Image.Image]:
+            async def render_frame(
+                self, width: int, height: int
+            ) -> Optional[Image.Image]:
                 return Image.new("RGB", (width, height), (0, 0, 0))
 
             async def cleanup(self) -> None:
@@ -358,7 +360,9 @@ class TestReconfigureValidation:
     """Tests for config schema validation during reconfigure."""
 
     @pytest.mark.asyncio
-    async def test_reconfigure_missing_required_field_marks_unconfigured(self, tmp_path):
+    async def test_reconfigure_missing_required_field_marks_unconfigured(
+        self, tmp_path
+    ):
         """Reconfiguring with missing required field marks plugin unconfigured."""
         # First activate with valid config
         config_path = tmp_path / "plugins.yaml"

@@ -71,6 +71,7 @@ class TestPluginAPIVersion:
     def test_plugin_api_version_importable_from_package(self):
         """PLUGIN_API_VERSION can be imported from zeclock.plugins."""
         from zeclock.plugins import PLUGIN_API_VERSION as version
+
         assert version == "1.0"
 
 
@@ -80,11 +81,13 @@ class TestPluginContext:
     def test_plugin_context_importable(self):
         """PluginContext can be imported from zeclock.plugins.base."""
         from zeclock.plugins.base import PluginContext as PC
+
         assert PC is not None
 
     def test_plugin_context_importable_from_package(self):
         """PluginContext can be imported from zeclock.plugins."""
         from zeclock.plugins import PluginContext as PC
+
         assert PC is not None
 
     def test_plugin_context_instantiation(self):

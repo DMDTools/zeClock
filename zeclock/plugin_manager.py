@@ -367,8 +367,8 @@ class PluginManager:
             idx = plugins.index(self._last_selected_plugin)
             if weights[idx] < 100.0:
                 # Remove last plugin and re-select from the rest
-                remaining_plugins = plugins[:idx] + plugins[idx + 1:]
-                remaining_weights = weights[:idx] + weights[idx + 1:]
+                remaining_plugins = plugins[:idx] + plugins[idx + 1 :]
+                remaining_weights = weights[:idx] + weights[idx + 1 :]
                 # Guard against all-zero remaining weights
                 if sum(remaining_weights) > 0:
                     selected = random.choices(
