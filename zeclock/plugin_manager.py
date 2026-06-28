@@ -493,7 +493,6 @@ class PluginManager:
         logger.info(f"Plugin '{plugin_name}' reconfigured successfully")
         return True
 
-
     async def get_frame(self) -> Optional[Image.Image]:
         """Get next frame from active plugin with timeout and error handling.
 
