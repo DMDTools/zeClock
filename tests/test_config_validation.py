@@ -352,3 +352,75 @@ class TestAutoConfigValidation:
         result = await pm.activate_plugin(plugin)
 
         assert result is False
+
+
+class TestReconfigureValidation:
+    """Tests for config schema validation during reconfigure."""
+
+    @pytest.mark.asyncio
+    async def test_reconfigure_missing_required_field_marks_unconfigured(self, tmp_path):
+        """Reconfiguring with missing required field marks plugin unconfigured."""
+        # First activate with valid config
+        config_path = tmp_path / "plugins.yaml"
+        config_path.write_text(
+            "plugins:\n"
+            "  - name: required-field\n"
+            "    frequency: 100\n"
+            "    settings:\n"
+            "      api_key: secret\n"
+        )
+        pm = PluginManager(128, 32, config_path=config_path)
+        pm.config.load()
+
+        plugin = RequiredFieldPlugin()
+        pm.registry.register(plugin, "builtin")
+
+        result = await pm.activate_plugin(plugin)
+        assert result is True
+        assert plugin._unconfigured is False
+
+        # Now remove the required field and reconfigure
+        config_path.write_text(
+            "plugins:\n"
+            "  - name: required-field\n"
+            "    frequency: 100\n"
+            "    settings: {}\n"
+        )
+
+        result = await pm.reconfigure_plugin("required-field")
+        assert result is True
+        assert plugin._unconfigured is True
+
+    @pytest.mark.asyncio
+    async def test_reconfigure_with_required_field_clears_unconfigured(self, tmp_path):
+        """Reconfiguring with all required fields present clears unconfigured flag."""
+        # Start with missing field
+        config_path = tmp_path / "plugins.yaml"
+        config_path.write_text(
+            "plugins:\n"
+            "  - name: required-field\n"
+            "    frequency: 100\n"
+            "    settings: {}\n"
+        )
+        pm = PluginManager(128, 32, config_path=config_path)
+        pm.config.load()
+
+        plugin = RequiredFieldPlugin()
+        pm.registry.register(plugin, "builtin")
+
+        result = await pm.activate_plugin(plugin)
+        assert result is True
+        assert plugin._unconfigured is True
+
+        # Now add the required field and reconfigure
+        config_path.write_text(
+            "plugins:\n"
+            "  - name: required-field\n"
+            "    frequency: 100\n"
+            "    settings:\n"
+            "      api_key: new-key\n"
+        )
+
+        result = await pm.reconfigure_plugin("required-field")
+        assert result is True
+        assert plugin._unconfigured is False
