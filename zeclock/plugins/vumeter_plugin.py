@@ -6,7 +6,7 @@ frequency-band level meters. Does not capture real audio.
 """
 
 import random
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple, Type
 
 from PIL import Image, ImageDraw
 
@@ -21,7 +21,7 @@ class VUMeterPlugin(ClockPlugin):
     """
 
     # Instance state (set during initialize)
-    _helpers: object
+    _helpers: Any
     _num_bars: int
     _duration_seconds: int
     _bar_color: Tuple[int, int, int]
@@ -49,7 +49,9 @@ class VUMeterPlugin(ClockPlugin):
         return 50
 
     @staticmethod
-    def _clamp_config(value, default, min_val, max_val, numeric_type):
+    def _clamp_config(
+        value: Any, default: Any, min_val: Any, max_val: Any, numeric_type: Type
+    ) -> Any:
         """Check type, clamp to valid range, fall back to default for non-numeric.
 
         Args:

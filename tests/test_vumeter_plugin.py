@@ -10,7 +10,6 @@ Tests cover:
 """
 
 import random
-from pathlib import Path
 from typing import Tuple
 
 import pytest
@@ -396,7 +395,11 @@ class TestPeakIndicatorRendering:
         # Check a pixel in the peak indicator line
         pixel = frame.getpixel((0, peak_y))
         # Peak color is "red" = (255, 0, 0)
-        assert pixel == (255, 0, 0), f"Expected peak color (255,0,0) at (0, {peak_y}), got {pixel}"
+        assert pixel == (
+            255,
+            0,
+            0,
+        ), f"Expected peak color (255,0,0) at (0, {peak_y}), got {pixel}"
 
     @pytest.mark.asyncio
     async def test_peak_indicator_at_bottom_has_red_pixel(self):
@@ -434,7 +437,11 @@ class TestPeakIndicatorRendering:
             # amplitude exceeded old peak, peak = amplitude
             peak_y = 32 - 1 - int(actual_peak * (32 - 1))
             pixel = frame.getpixel((0, peak_y))
-            assert pixel == (255, 0, 0), f"Expected peak color at y={peak_y}, got {pixel}"
+            assert pixel == (
+                255,
+                0,
+                0,
+            ), f"Expected peak color at y={peak_y}, got {pixel}"
 
 
 class TestAmplitudeBoundedChanges:
@@ -475,9 +482,9 @@ class TestAmplitudeBoundedChanges:
 
             for i in range(len(plugin._amplitudes)):
                 delta = plugin._amplitudes[i] - old_amplitudes[i]
-                assert abs(delta) <= 0.15 + 1e-10, (
-                    f"Frame {frame_num}, Bar {i}: delta {delta} exceeds bounds"
-                )
+                assert (
+                    abs(delta) <= 0.15 + 1e-10
+                ), f"Frame {frame_num}, Bar {i}: delta {delta} exceeds bounds"
 
     @pytest.mark.asyncio
     async def test_amplitude_delta_bounded_at_boundaries(self):
@@ -516,9 +523,9 @@ class TestAmplitudeClamping:
         for _ in range(20):
             await plugin.render_frame(128, 32)
             for i, amp in enumerate(plugin._amplitudes):
-                assert 0.0 <= amp <= 1.0, (
-                    f"Amplitude[{i}] = {amp} is out of range [0.0, 1.0]"
-                )
+                assert (
+                    0.0 <= amp <= 1.0
+                ), f"Amplitude[{i}] = {amp} is out of range [0.0, 1.0]"
 
     @pytest.mark.asyncio
     async def test_amplitude_clamped_when_near_maximum(self):
@@ -571,8 +578,6 @@ class TestAmplitudeClamping:
                 assert amp <= 1.0
 
 
-
-
 class TestIntegration:
     """Integration tests for VUMeterPlugin full lifecycle and edge cases.
 
@@ -620,7 +625,9 @@ class TestIntegration:
 
         # Should be able to render again
         frame = await p.render_frame(128, 32)
-        assert frame is not None, "After cleanup and re-init, plugin should render again"
+        assert (
+            frame is not None
+        ), "After cleanup and re-init, plugin should render again"
         assert isinstance(frame, Image.Image)
         assert frame.mode == "RGB"
         assert frame.size == (128, 32)
@@ -782,4 +789,6 @@ class TestIntegration:
                     break
             if has_non_black:
                 break
-        assert has_non_black, "Frame should have non-black pixels from rendered bars/peaks"
+        assert (
+            has_non_black
+        ), "Frame should have non-black pixels from rendered bars/peaks"
