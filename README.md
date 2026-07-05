@@ -330,23 +330,6 @@ When `ha_discovery = true`, zeClock automatically registers itself in Home Assis
 
 No manual HA configuration needed — just point both at the same MQTT broker.
 
-### Docker Deployment
-
-zeClock runs as a single container with libzedmd embedded — no separate dmdserver container needed:
-
-```bash
-cd deploy/nas
-docker compose up -d
-```
-
-Configure the ZeDMD WiFi address in `deploy/nas/zeclock-config/zeclock.ini`:
-
-```ini
-[zedmd]
-wifi_addr = 192.168.0.35
-brightness = 10
-```
-
 ## Plugins
 
 zeClock includes built-in plugins that alternate with the clock display. Each plugin renders animated content on the DMD.
