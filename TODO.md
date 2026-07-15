@@ -64,14 +64,14 @@
 
 #### 🪂 Paragliding Plugin (Paraglidable / Spotair)
 
-- [ ] Integration with [Paraglidable](https://paraglidable.com/) API (AI-based paragliding forecast)
+- [X] Integration with [Paraglidable](https://paraglidable.com/) API (AI-based paragliding forecast)
   - API endpoint: `https://api.paraglidable.com/?key=YOUR_KEY&format=json`
   - Requires a free API key (email registration, limited to 10 spots per key)
-- [ ] Display **flyability percentage** for today (probability a flight will be reported)
-- [ ] Display **cross-country (XC) percentage** for today (probability of a 60+ point flight, PWC scoring)
-- [ ] Display forecast for tomorrow and the upcoming week (day-by-day)
-- [ ] Configurable spot(s) selection (latitude/longitude based)
-- [ ] Color-coded display (e.g. green = good flyability, yellow = marginal, red = no-go)
+- [X] Display **flyability percentage** for today (probability a flight will be reported)
+- [X] Display **cross-country (XC) percentage** for today (probability of a 60+ point flight, PWC scoring)
+- [X] Display forecast for tomorrow and the upcoming week (day-by-day)
+- [X] Configurable spot(s) selection (latitude/longitude based)
+- [X] Color-coded display (e.g. green = good flyability, yellow = marginal, red = no-go)
 - [ ] Optional: show wind and humidity safety indicators (API provides separate wind/humidity probabilities)
 
 #### 🕹️ Recalbox Plugin
