@@ -61,10 +61,12 @@ zeClock/
 │       ├── weather_plugin.py   # Built-in plugin: weather conditions and forecast from Open-Meteo API
 │       └── weather_icons.py    # Weather condition code to pixel-art icon mapping
 ├── deploy/                     # Deployment configurations
-│   └── nas/                    # NAS Docker deployment (single container with libzedmd)
-│       ├── Dockerfile          # Single unified Dockerfile (libzedmd embedded)
-│       ├── docker-compose.yml  # Single zeclock service
-│       └── zeclock-config/     # Mounted config (zeclock.ini, plugins.yaml)
+│   └── rpi/                    # Raspberry Pi autonomous deployment (Packer image build)
+│       ├── rpi-zeclock.pkr.hcl # Packer template for headless RPi OS image
+│       ├── build.sh            # Build helper script
+│       ├── variables.auto.pkrvars.hcl # Build variables
+│       ├── scripts/            # Provisioning scripts (system, zeclock install, overlay)
+│       └── files/systemd/      # Systemd units (zeclock, wifi-connect, etc.)
 ├── scripts/                    # Development and utility scripts
 │   ├── dev-start.sh            # Start zeclock locally (real or virtual mode)
 │   ├── dev-stop.sh             # Stop local zeclock
@@ -84,10 +86,9 @@ zeClock/
 ├── DotClk/                     # Git submodule - Original C++ DotClk project (Teensy)
 ├── dmd-simulator/              # Git submodule - Graphical DMD simulator (Python/SDL2)
 ├── libdmdutil.src/             # Git submodule - C++ source for libdmdutil/dmdserver
-├── Makefile                    # Dev workflow: make test, make dev-start, make nas-deploy, etc.
+├── Makefile                    # Dev workflow: make test, make dev-start, etc.
 ├── mypy.ini                    # mypy type checker configuration
 ├── pyproject.toml              # Modern packaging configuration (PEP 621, setuptools)
-├── .dockerignore               # Files excluded from Docker builds
 ├── README.md                   # User documentation and quickstart guide
 └── .gitignore                  # Files excluded from version control
 ```
@@ -162,9 +163,8 @@ Scripts for quickly testing the installation or understanding the API:
 | File | Role |
 |------|------|
 | `pyproject.toml` | Single packaging configuration (PEP 621). Defines metadata, dependencies (`pillow>=9.0`, `aiohttp>=3.8`, `pyyaml>=6.0`, `colorama>=0.4.6`), extras (`zedmd`, `dev`), package-data (bundled `.fnt` fonts), and the CLI entry point `zeclock`. Backend: setuptools. |
-| `Makefile` | Development workflow: `make test` (pytest+flake8+mypy+black), `make dev-start`/`dev-stop`, `make nas-deploy`/`nas-stop`, `make format` |
+| `Makefile` | Development workflow: `make test` (pytest+flake8+mypy+black), `make dev-start`/`dev-stop` |
 | `mypy.ini` | mypy type checker configuration |
-| `.dockerignore` | Files excluded from Docker image builds |
 | `config/zeclock.ini` | Reference configuration file for backend selection, ZeDMD (WiFi/USB/brightness), and dmdserver (host/port) |
 
 ---

@@ -20,10 +20,63 @@ Transform your desk into an arcade room with a DMD clock that displays time over
 - **MQTT remote control**: Bidirectional pub/sub with Home Assistant MQTT Discovery
 - **Simple installation**: Single `--bootstrap` command installs everything
 
+## Two Operating Modes
+
+zeClock is designed to work in two distinct modes:
+
+### 🖥️ Mode 1: Local Development (PC / Mac)
+
+Use this mode on your computer for **developing, testing, and trying out** zeClock. ZeDMD hardware is **optional** — without it, the display is emulated directly in your web browser with a WebGL dot-matrix shader for authentic DMD look.
+
+| Setup | What you need |
+|-------|--------------|
+| **With ZeDMD** | ZeDMD connected via USB or WiFi + Python 3.9+ |
+| **Without ZeDMD** | Python 3.9+ only — output rendered in browser at `http://localhost:3000` |
+
+This is the fastest way to try zeClock: install, bootstrap, and run in virtual mode — the clock appears in your browser in seconds.
+
+### 🍓 Mode 2: Autonomous (Raspberry Pi)
+
+Use this mode to run zeClock **24/7 unattended** on a dedicated Raspberry Pi (or equivalent SBC). The Pi boots directly into zeClock with:
+
+- Read-only filesystem (power-loss safe)
+- WiFi auto-connect with captive portal fallback
+- Automatic systemd service startup
+- Persistent configuration on a separate partition
+
+See [`deploy/rpi/`](deploy/rpi/) for the full Packer-based image build process.
+
+---
+
+## Quick Start (Local Development)
+
+The simplest way to try zeClock — **no hardware required**:
+
+```bash
+# 1. Clone and install
+git clone https://github.com/DMDTools/zeClock.git
+cd zeClock
+pip install -e ".[dev]"
+
+# 2. Bootstrap resources (downloads fonts + animations)
+zeclock --bootstrap
+
+# 3. Start with virtual DMD in your browser
+make dev-start-virtual
+```
+
+Open **http://localhost:3000** — the clock is running with a WebGL DMD shader in your browser!
+
+For HD mode (256x64): `make dev-start-virtual-hd`
+
+To stop: `make dev-stop` or `Ctrl+C`
+
+---
+
 ## Prerequisites
 
 - **Python 3.9+**
-- **ZeDMD** (128x32 standard or 256x64 HD) connected via USB or WiFi
+- **ZeDMD** (128x32 standard or 256x64 HD) connected via USB or WiFi — *optional for development, browser emulation available*
 - **Linux** (Raspberry Pi, Ubuntu, WSL), **macOS**, or **Windows** (Git Bash/WSL)
 
 ## Installation
@@ -67,29 +120,9 @@ This process automatically installs the following in your `~/.zeclock/` director
 *   **libzedmd**: The native shared library for direct ZeDMD communication, installed to `~/.zeclock/lib/`.
 *   **Fonts & Animations** (from [sigmafx/DotClk-Resources](https://github.com/sigmafx/DotClk-Resources)): Over **2300 retro animations** (`.scn`) and the original bitmap fonts (`.fnt`).
 
-## Getting Started
+## Getting Started (with ZeDMD hardware)
 
 zeClock communicates directly with ZeDMD hardware via libzedmd — no separate dmdserver process is needed.
-
-### Try without hardware (Virtual DMD)
-
-Don't have a ZeDMD yet? You can try zeClock in your browser with the virtual DMD:
-
-```bash
-# Install and bootstrap
-pip install -e ".[dev]"
-zeclock --bootstrap
-
-# Start the virtual DMD (opens a browser preview at http://localhost:3000)
-make dev-start-virtual
-
-# Or in HD mode (256x64)
-make dev-start-virtual-hd
-```
-
-The virtual DMD renders the exact same output as a real ZeDMD, with a WebGL dot-matrix shader for authentic DMD look.
-
-### With ZeDMD hardware
 
 **Launch zeClock**
 
@@ -249,7 +282,7 @@ time_only = 22:00-08:00
 
 ### Development Mode (Virtual DMD)
 
-For development without physical hardware, see [CONTRIBUTING.md](CONTRIBUTING.md#development-mode-virtual-dmd).
+For development without physical hardware, see the [Quick Start](#quick-start-local-development) section above or [CONTRIBUTING.md](CONTRIBUTING.md#development-mode-virtual-dmd).
 
 ### Remote Control (MQTT & REST API)
 
@@ -329,23 +362,6 @@ When `ha_discovery = true`, zeClock automatically registers itself in Home Assis
 - **Sensors** for active plugin and display mode
 
 No manual HA configuration needed — just point both at the same MQTT broker.
-
-### Docker Deployment
-
-zeClock runs as a single container with libzedmd embedded — no separate dmdserver container needed:
-
-```bash
-cd deploy/nas
-docker compose up -d
-```
-
-Configure the ZeDMD WiFi address in `deploy/nas/zeclock-config/zeclock.ini`:
-
-```ini
-[zedmd]
-wifi_addr = 192.168.0.35
-brightness = 10
-```
 
 ## Plugins
 

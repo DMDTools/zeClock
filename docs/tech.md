@@ -20,7 +20,7 @@ This document details the technologies, libraries, protocols, and tools that mak
 
 ### 3. Numerical Computing & Pixel Manipulation
 
-- **Pure Python + Pillow**: All pixel operations are implemented without NumPy for maximum portability (runs on NAS CPUs without AVX support).
+- **Pure Python + Pillow**: All pixel operations are implemented without NumPy for maximum portability (runs on Raspberry Pi and low-power ARM boards without AVX support).
   - **Grayscale colorization**: Per-pixel intensity × RGB color tuple via `bytearray` operations.
   - **RGB565 conversion** (DMDServerBackend only): Per-pixel bit packing using `struct.pack_into` for big-endian TCP output.
   - **RGB888 passthrough** (ZeDMDBackend): Raw PIL Image bytes sent directly to libzedmd — no Python-level pixel conversion needed.

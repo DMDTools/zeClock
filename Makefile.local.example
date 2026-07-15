@@ -3,7 +3,7 @@
 # Copy this file to Makefile.local and adjust to your setup.
 # Makefile.local is gitignored and automatically included by the main Makefile.
 #
-# This lets you add custom deployment targets (NAS, Raspberry Pi, remote server...)
+# This lets you add custom deployment targets (Raspberry Pi, remote server...)
 # without polluting the shared Makefile.
 #
 # All targets defined here will appear in `make help`.
