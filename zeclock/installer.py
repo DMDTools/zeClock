@@ -152,16 +152,14 @@ def create_default_config() -> None:
     config_file = CONFIG_DIR / "dmdserver.ini"
 
     if not config_file.exists():
-        config_file.write_text(
-            """[DMDServer]
+        config_file.write_text("""[DMDServer]
 Addr = 0.0.0.0
 Port = 6789
 
 [ZeDMD]
 Enabled = 1
 Brightness = 10
-"""
-        )
+""")
         print_color(GREEN, f"✅ Default configuration created: {config_file}")
 
 
