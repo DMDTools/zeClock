@@ -8,7 +8,7 @@ It comes with a **web interface** for easy configuration, and a **browser-based 
 
 For an autonomous setup, install zeClock on a **Raspberry Pi** connected to ZeDMD via USB — just power the Pi and get going with a 24/7 clock.
 
-<video src="docs/zeclock-demo.webm" autoplay loop muted playsinline width="600"></video>
+![Demo](docs/zeclock-demo.gif)
 
 ## Quick Start
 
@@ -34,31 +34,31 @@ zeClock alternates between a clock display and animated plugins. Each plugin ren
 
 Retro pinball DMD animations with clock overlay. Plays randomly from 2300+ `.scn` animation files with DotBlt composition. Powered by [DotClk-Resources](https://github.com/sigmafx/DotClk-Resources), kindly shared by [SigmaFX](https://github.com/sigmafx) with authorization to use the proprietary `.scn` animations.
 
-<video src="docs/zeclock-pinball.webm" autoplay loop muted playsinline width="600"></video>
+![Demo](docs/zeclock-pinball.gif)
 
 ### Pong
 
 Two AI players compete in a real Pong match. The score persists across activations — the clock only takes over between points. First to 5 wins with confetti celebration.
 
-<video src="docs/zeclock-pong.webm" autoplay loop muted playsinline width="600"></video>
+![Demo](docs/zeclock-pong.gif)
 
 ### Weather
 
 Current conditions, tomorrow's forecast, 3-day outlook, and 7-day overview. Data from Open-Meteo API (no key required), cached 15 minutes.
 
-<video src="docs/zeclock-weather.webm" autoplay loop muted playsinline width="600"></video>
+![Demo](docs/zeclock-weather.gif)
 
 ### Eyes
 
 Animated robot eyes tracking a buzzing fly. The eyes react with expressions (surprised, annoyed, sleepy) based on the fly's behavior.
 
-<video src="docs/zeclock-eyes.webm" autoplay loop muted playsinline width="600"></video>
+![Demo](docs/zeclock-eyes.gif)
 
 ### Stock
 
 Real-time stock prices from Yahoo Finance with intraday sparkline graphs. Supports multiple symbols, pre/post market data.
 
-<video src="docs/zeclock-stocks.webm" autoplay loop muted playsinline width="600"></video>
+![Demo](docs/zeclock-stocks.gif)
 
 ### GIF
 
@@ -66,7 +66,7 @@ Plays animated GIFs with support for multiple source directories and weighted ra
 
 A great source: [11,000+ DMD GIF pack](https://www.neo-arcadia.com/forum/viewtopic.php?t=67065) (donationware, with a free 600 GIF pack available at the same link).
 
-<video src="docs/zeclock-gif.webm" autoplay loop muted playsinline width="600"></video>
+![Demo](docs/zeclock-gif.gif)
 
 ### Speaker Timer
 
@@ -74,7 +74,7 @@ Conference countdown timer visible from stage. Control via Web UI or REST API: s
 
 You can also send messages to the display at any time through the Web UI or API (e.g. "WRAP UP!", "5 min remaining!").
 
-<video src="docs/zeclock-speaker-timer.webm" autoplay loop muted playsinline width="600"></video>
+![Demo](docs/zeclock-speaker-timer.gif)
 
 ## Plugin Configuration
 
