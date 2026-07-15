@@ -1,4 +1,0 @@
-# file: /projects/sandbox/zeClock/zeclock/remote/command_handler.py
-# hypothesis_version: 6.141.1
-
-[0.0, 100, 300, 'Invalid plugin name', 'Remote: screen OFF', 'Remote: screen ON', 'Screen turned off', 'Screen turned on', 'ZeClock', '_instance', '_lib', 'active_plugin', 'auto', 'available_plugins', 'backend', 'brightness', 'command', 'connected', 'display_mode', 'display_text', 'duration', 'force_plugin', 'forced_plugin', 'get_status', 'height', 'off', 'ok', 'on', 'override', 'plugin', 'resolution', 'screen', 'screen_off', 'screen_on', 'set_brightness', 'sw_dimming', 'text', 'text_overlay', 'time_only', 'type', 'width']

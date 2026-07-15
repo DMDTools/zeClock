@@ -1,4 +1,0 @@
-# file: /projects/sandbox/zeClock/zeclock/backends/dmdserver.py
-# hypothesis_version: 6.141.1
-
-[b'\x00', 128, 255, 256, 6789, 'DMDStream', 'RGB', 'big', 'localhost', 'utf-8']

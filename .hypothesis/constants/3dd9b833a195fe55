@@ -1,4 +1,0 @@
-# file: /projects/sandbox/zeClock/zeclock/readers/scn_reader.py
-# hypothesis_version: 6.141.1
-
-[128, '<B', '<H', 'L', 'rb']

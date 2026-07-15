@@ -1,4 +1,0 @@
-# file: /projects/sandbox/zeClock/zeclock/plugins/gif_plugin.py
-# hypothesis_version: 6.155.7
-
-[0.01, 1.0, 2.0, 100, 128, '*.GIF', '*.gif', 'GIF Directories', 'RGB', '_helpers', '_upscale_mode', 'duration', 'epx', 'gif', 'gif_dirs', 'lanczos', 'list', 'nearest', 'path', 'recursive', 'weight']

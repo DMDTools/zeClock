@@ -1,4 +1,0 @@
-# file: /projects/sandbox/zeClock/zeclock/colors.py
-# hypothesis_version: 6.141.1
-
-[128, 255, 'blue', 'cyan', 'green', 'orange', 'pink', 'purple', 'red', 'yellow']

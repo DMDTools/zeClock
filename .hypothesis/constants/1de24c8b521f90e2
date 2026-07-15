@@ -1,4 +1,0 @@
-# file: /projects/sandbox/zeClock/zeclock/plugin_manager.py
-# hypothesis_version: 6.141.1
-
-[0.0, 2.0, 10.0, 100.0, '*.py', 'MENU', 'STANDARD', '_', '_font', '_helpers', '_unconfigured', '_upscale_mode', 'base.py', 'builtin', 'epx', 'frequency', 'helpers.py', 'name', 'plugins', 'user']

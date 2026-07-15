@@ -1,4 +1,0 @@
-# file: /tmp/pytest-of-root/pytest-0/test_loads_valid_user_plugin0/.zeclock/plugins/my_test_plugin.py
-# hypothesis_version: 6.141.1
-
-[255, 'RGB', 'my-test-plugin']

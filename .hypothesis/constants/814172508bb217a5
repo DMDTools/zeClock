@@ -1,4 +1,0 @@
-# file: /projects/sandbox/zeClock/zeclock/plugins/speaker_timer_plugin.py
-# hypothesis_version: 6.141.1
-
-[0.0, 1.0, 128, 200, 255, 300, 1200, 2700, 3600, '/api/speaker-timer', 'Lightning', 'Pause', 'Reset', 'Short', 'Speaker Timer', 'Standard', 'Start', '_helpers', 'action', 'api_prefix', 'button', 'controls', 'danger', 'duration', 'elapsed', 'finished', 'formatted', 'has_custom_ui', 'idle', 'label', 'name', 'pause', 'paused', 'plugin', 'presets', 'red_threshold', 'remaining', 'reset', 'running', 'speaker-timer', 'start', 'state', 'style', 'success', 'type', 'warning', 'yellow_threshold']

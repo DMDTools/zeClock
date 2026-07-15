@@ -1,4 +1,0 @@
-# file: /projects/sandbox/zeClock/zeclock/remote/__init__.py
-# hypothesis_version: 6.141.1
-
-['CommandHandler', 'MqttRemote', 'RemoteCommand', 'RestRemote']

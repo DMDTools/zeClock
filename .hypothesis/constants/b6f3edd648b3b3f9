@@ -1,4 +1,0 @@
-# file: /tmp/pytest-of-root/pytest-0/test_skips_invalid_plugin_name0/.zeclock/plugins/bad_name_plugin.py
-# hypothesis_version: 6.141.1
-
-['INVALID_UPPERCASE', 'Plugin with bad name']

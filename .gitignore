@@ -48,6 +48,7 @@ config/*.ini
 
 # Test
 .pytest_cache/
+.hypothesis/
 .coverage
 htmlcov/
 

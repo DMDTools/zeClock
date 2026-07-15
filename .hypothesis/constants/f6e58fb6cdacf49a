@@ -1,4 +1,0 @@
-# file: /projects/sandbox/zeClock/zeclock/plugins/weather_icons.py
-# hypothesis_version: 6.141.1
-
-['RGB', 'cloud', 'fog', 'light_rain', 'partial_cloud', 'rain', 'snow', 'sun', 'thunderstorm']

@@ -1,4 +1,0 @@
-# file: /projects/sandbox/zeClock/zeclock/remote/mqtt_remote.py
-# hypothesis_version: 6.141.1
-
-[1.5, 2.0, 30.0, 60.0, 1883, '0.1.0', 'Active Plugin', 'DMDTools', 'Display Mode', 'MQTT task cancelled', 'Screen', 'availability', 'command', 'command_topic', 'device', 'homeassistant', 'icon', 'identifiers', 'localhost', 'manufacturer', 'mdi:monitor', 'mdi:puzzle', 'mdi:television', 'model', 'name', 'off', 'offline', 'on', 'online', 'payload_available', 'payload_off', 'payload_on', 'screen_off', 'screen_on', 'state_off', 'state_on', 'state_topic', 'sw_version', 'topic', 'unique_id', 'utf-8', 'value_template', 'zeClock', 'zeclock']
