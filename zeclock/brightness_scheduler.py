@@ -359,6 +359,10 @@ class BrightnessScheduler:
                 sunset_minute=sunset_local.minute,
                 fetched_at=time.time(),
             )
+            # Invalidate brightness cache so next get_brightness() recomputes
+            # using the fresh sun data
+            self._last_check_minute = -1
+            self._cached_result = None
             logger.info(
                 "Sunrise/sunset updated: sunrise=%02d:%02d, sunset=%02d:%02d",
                 self._sun_data.sunrise_hour,
