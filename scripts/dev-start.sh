@@ -15,9 +15,9 @@ scripts/dev-stop.sh 2>/dev/null || true
 
 if [ "$MODE" = "virtual" ] || [ "$MODE" = "virtual-hd" ]; then
     if [ "$MODE" = "virtual-hd" ]; then
-        echo "▶️  Starting virtual HD mode (256x64, DMD in browser at http://localhost:8080)..."
+        echo "▶️  Starting virtual HD mode (256x64, DMD in browser at http://localhost:3000)..."
     else
-        echo "▶️  Starting virtual mode (128x32, DMD in browser at http://localhost:8080)..."
+        echo "▶️  Starting virtual mode (128x32, DMD in browser at http://localhost:3000)..."
     fi
     uv run python scripts/virtual-dmd.py 6789 &
     echo $! > "$PIDFILE"
