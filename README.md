@@ -383,7 +383,29 @@ Real-time stock prices from Yahoo Finance with intraday sparkline graphs. Suppor
 
 ### GIF
 
-Plays animated GIFs from `~/.zeclock/plugins/gif/`. Drop any `.gif` file in the directory and it will be randomly selected.
+Plays animated GIFs on the DMD with support for multiple source directories and weighted random rotation. Each directory can have a probability weight (higher weight = more likely to be selected) and an optional recursive flag to include subdirectories.
+
+Default directory: `~/.zeclock/plugins/gif/`
+
+Configure multiple directories in `plugins.yaml`:
+
+```yaml
+plugins:
+  - name: gif
+    frequency: 15
+    settings:
+      gif_dirs:
+        - path: "~/.zeclock/plugins/gif/retro"
+          weight: 80
+          recursive: true
+        - path: "~/.zeclock/plugins/gif/holidays"
+          weight: 20
+          recursive: false
+```
+
+- **path**: Directory containing `.gif` files (required)
+- **weight**: Selection probability relative to other directories (default: 50)
+- **recursive**: Whether to search subdirectories (default: true)
 
 ### Plugin configuration
 
@@ -403,6 +425,13 @@ plugins:
       longitude: 5.72
       city_name: Grenoble
       language: fr
+  - name: gif
+    frequency: 15
+    settings:
+      gif_dirs:
+        - path: "~/.zeclock/plugins/gif"
+          weight: 50
+          recursive: true
   - name: eyes
     frequency: 10
   - name: stock
