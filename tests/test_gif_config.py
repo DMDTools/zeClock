@@ -2,10 +2,10 @@
 
 Validates Requirement 6: Gif Plugin Configuration Guidance.
 Tests cover:
-- config_schema declares "gif_dir" field correctly
-- PluginNotConfiguredError raised when gif_dir does not exist
-- PluginNotConfiguredError raised when gif_dir contains zero .gif files
-- Valid gif_dir with .gif files proceeds without error
+- config_schema declares "gif_dirs" list field correctly
+- PluginNotConfiguredError raised when gif_dirs points to non-existent directories
+- PluginNotConfiguredError raised when gif_dirs directories contain zero .gif files
+- Valid gif_dirs with .gif files proceeds without error
 """
 
 import pytest
@@ -29,51 +29,59 @@ class TestConfigSchema:
         schema = gif_plugin.config_schema
         assert isinstance(schema, list)
 
-    def test_config_schema_has_gif_dir_field(self, gif_plugin):
-        """config_schema should declare a 'gif_dir' field."""
+    def test_config_schema_has_gif_dirs_field(self, gif_plugin):
+        """config_schema should declare a 'gif_dirs' field."""
         schema = gif_plugin.config_schema
         assert len(schema) == 1
         field = schema[0]
         assert isinstance(field, ConfigField)
-        assert field.name == "gif_dir"
+        assert field.name == "gif_dirs"
 
-    def test_gif_dir_field_properties(self, gif_plugin):
-        """The gif_dir field should have correct type and required flag."""
+    def test_gif_dirs_field_properties(self, gif_plugin):
+        """The gif_dirs field should have correct type and required flag."""
         field = gif_plugin.config_schema[0]
-        assert field.field_type == "text"
+        assert field.field_type == "list"
         assert field.required is True
-        assert field.label == "GIF Directory"
-        assert len(field.description) > 0
+        assert field.label == "GIF Directories"
+        assert "path" in field.description
+        assert "weight" in field.description
+        assert "recursive" in field.description
 
 
 class TestPluginNotConfiguredError:
     """Tests for PluginNotConfiguredError in initialize()."""
 
     @pytest.mark.asyncio
-    async def test_raises_when_gif_dir_does_not_exist(self, gif_plugin, tmp_path):
-        """Should raise PluginNotConfiguredError when gif_dir doesn't exist."""
+    async def test_raises_when_gif_dirs_points_to_nonexistent(
+        self, gif_plugin, tmp_path
+    ):
+        """Should raise PluginNotConfiguredError when gif_dirs has only non-existent paths."""
         non_existent = str(tmp_path / "nonexistent_dir")
-        config = {"gif_dir": non_existent}
+        config = {"gif_dirs": [{"path": non_existent, "weight": 50, "recursive": True}]}
         with pytest.raises(PluginNotConfiguredError):
             await gif_plugin.initialize(config)
 
     @pytest.mark.asyncio
-    async def test_raises_when_gif_dir_is_empty(self, gif_plugin, tmp_path):
-        """Should raise PluginNotConfiguredError when gif_dir has no .gif files."""
+    async def test_raises_when_gif_dirs_is_empty_dir(self, gif_plugin, tmp_path):
+        """Should raise PluginNotConfiguredError when gif_dirs directory has no .gif files."""
         empty_dir = tmp_path / "empty_gifs"
         empty_dir.mkdir()
-        config = {"gif_dir": str(empty_dir)}
+        config = {
+            "gif_dirs": [{"path": str(empty_dir), "weight": 50, "recursive": True}]
+        }
         with pytest.raises(PluginNotConfiguredError):
             await gif_plugin.initialize(config)
 
     @pytest.mark.asyncio
-    async def test_raises_when_gif_dir_has_non_gif_files(self, gif_plugin, tmp_path):
+    async def test_raises_when_gif_dirs_has_non_gif_files(self, gif_plugin, tmp_path):
         """Should raise PluginNotConfiguredError when dir has files but no .gif."""
         dir_with_files = tmp_path / "no_gifs"
         dir_with_files.mkdir()
         (dir_with_files / "image.png").write_bytes(b"fake png")
         (dir_with_files / "readme.txt").write_text("hello")
-        config = {"gif_dir": str(dir_with_files)}
+        config = {
+            "gif_dirs": [{"path": str(dir_with_files), "weight": 50, "recursive": True}]
+        }
         with pytest.raises(PluginNotConfiguredError):
             await gif_plugin.initialize(config)
 
@@ -81,7 +89,7 @@ class TestPluginNotConfiguredError:
     async def test_raises_when_default_dir_does_not_exist(
         self, gif_plugin, monkeypatch
     ):
-        """Should raise PluginNotConfiguredError when no gif_dir and default doesn't exist."""
+        """Should raise PluginNotConfiguredError when no gif_dirs and default doesn't exist."""
         # Monkeypatch DEFAULT_GIF_DIR to a non-existent path
         import zeclock.plugins.gif_plugin as gif_module
 
@@ -93,8 +101,8 @@ class TestPluginNotConfiguredError:
             await gif_plugin.initialize(config)
 
     @pytest.mark.asyncio
-    async def test_valid_gif_dir_does_not_raise(self, gif_plugin, tmp_path):
-        """Should not raise when gif_dir exists and contains .gif files."""
+    async def test_valid_gif_dirs_does_not_raise(self, gif_plugin, tmp_path):
+        """Should not raise when gif_dirs has valid directory with .gif files."""
         gif_dir = tmp_path / "gifs"
         gif_dir.mkdir()
         # Create a minimal valid GIF file (GIF89a header)
@@ -105,6 +113,6 @@ class TestPluginNotConfiguredError:
             b",\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;"
         )
         (gif_dir / "test.gif").write_bytes(gif_content)
-        config = {"gif_dir": str(gif_dir)}
+        config = {"gif_dirs": [{"path": str(gif_dir), "weight": 50, "recursive": True}]}
         # Should not raise - gif loading proceeds in background
         await gif_plugin.initialize(config)

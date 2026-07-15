@@ -1,0 +1,4 @@
+# file: /projects/sandbox/zeClock/zeclock/overlay.py
+# hypothesis_version: 6.141.1
+
+[128, 255, 256, 'L', 'RGB', 'epx', 'hq2x', 'mask_data']

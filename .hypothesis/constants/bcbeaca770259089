@@ -1,0 +1,4 @@
+# file: /projects/sandbox/zeClock/zeclock/backend_config.py
+# hypothesis_version: 6.141.1
+
+[5.0, 30.0, 100, 128, 1883, 6789, 8080, '%', '0.0.0.0', '1', 'STANDARD', 'auto', 'brightness', 'brightness_schedule', 'city_name', 'default', 'device', 'device_id', 'display', 'dmdserver', 'dmdserver_host', 'dmdserver_port', 'enabled', 'epx', 'font', 'friday', 'ha_discovery', 'ha_discovery_prefix', 'height', 'homeassistant', 'host', 'hq2x', 'latitude', 'localhost', 'location', 'longitude', 'max_brightness', 'monday', 'mqtt', 'nearest', 'password', 'port', 'rest_api', 'saturday', 'state_interval', 'sunday', 'sunrise_brightness', 'sunset_brightness', 'thursday', 'time_only', 'topic_prefix', 'true', 'tuesday', 'upscale', 'upscale_mode', 'username', 'wednesday', 'width', 'wifi_addr', 'yes', 'zeclock', 'zeclock.ini', 'zedmd']

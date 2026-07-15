@@ -1,0 +1,4 @@
+# file: /projects/sandbox/zeClock/zeclock/backends/factory.py
+# hypothesis_version: 6.141.1
+
+[128, 6789, ', ', 'auto', 'dmdserver', 'localhost', 'zedmd']

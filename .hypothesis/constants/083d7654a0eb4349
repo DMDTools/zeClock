@@ -1,0 +1,4 @@
+# file: /projects/sandbox/zeClock/zeclock/backends/zedmd.py
+# hypothesis_version: 6.141.1
+
+[128, 255, 256, 'Darwin', 'Linux', 'RGB', 'StreamBytes failed', 'TCP stream error', 'UDP stream error', 'Windows', 'libserialport error', 'libzedmd.dylib', 'libzedmd.so', 'replace', 'utf-8', 'zedmd.dll', '🔧 libzedmd: %s']

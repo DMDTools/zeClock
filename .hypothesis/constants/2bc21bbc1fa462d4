@@ -1,0 +1,4 @@
+# file: /projects/sandbox/zeClock/zeclock/plugins/pong_plugin.py
+# hypothesis_version: 6.141.1
+
+[0.0, 0.01, 0.05, 0.2, 0.4, 0.45, 0.55, 0.8, 1.0, 1.03, 1.2, 1.5, 1.6, 1.8, 2.0, 3.0, 3.5, 7.0, 11.0, 16.0, 64.0, 100, 128, 255, 1000, 'ConfettiAnimation', 'MENU', 'P1 WINS', 'P2 WINS', 'RGB', '_helpers', 'ball_speed', 'big', 'color', 'duration_seconds', 'left', 'pong', 'right', 'small']

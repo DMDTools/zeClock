@@ -1,0 +1,152 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "1.1 Define `DirectoryEntry` dataclass and implement `_resolve_directories` method": [
+      {
+        "executionId": "9e2d2c28-ce38-4399-ac45-6e3db44d27d0",
+        "chatSessionId": "653ebe10-d5a4-4352-ab9c-6aa4a48df14f",
+        "timestamp": 1782633791276
+      },
+      {
+        "executionId": "9e2d2c28-ce38-4399-ac45-6e3db44d27d0",
+        "chatSessionId": "653ebe10-d5a4-4352-ab9c-6aa4a48df14f",
+        "timestamp": 1782633796237
+      },
+      {
+        "executionId": "9e2d2c28-ce38-4399-ac45-6e3db44d27d0",
+        "chatSessionId": "653ebe10-d5a4-4352-ab9c-6aa4a48df14f",
+        "timestamp": 1782633905186
+      }
+    ],
+    "2.1 Implement `_select_gif` method with weighted random directory choice": [
+      {
+        "executionId": "9e2d2c28-ce38-4399-ac45-6e3db44d27d0",
+        "chatSessionId": "653ebe10-d5a4-4352-ab9c-6aa4a48df14f",
+        "timestamp": 1782633791279
+      },
+      {
+        "executionId": "9e2d2c28-ce38-4399-ac45-6e3db44d27d0",
+        "chatSessionId": "653ebe10-d5a4-4352-ab9c-6aa4a48df14f",
+        "timestamp": 1782633911613
+      },
+      {
+        "executionId": "9e2d2c28-ce38-4399-ac45-6e3db44d27d0",
+        "chatSessionId": "653ebe10-d5a4-4352-ab9c-6aa4a48df14f",
+        "timestamp": 1782634004493
+      }
+    ],
+    "3.1 Rewrite `initialize()` to use `gif_dirs` with fallback to default": [
+      {
+        "executionId": "9e2d2c28-ce38-4399-ac45-6e3db44d27d0",
+        "chatSessionId": "653ebe10-d5a4-4352-ab9c-6aa4a48df14f",
+        "timestamp": 1782633791282
+      },
+      {
+        "executionId": "9e2d2c28-ce38-4399-ac45-6e3db44d27d0",
+        "chatSessionId": "653ebe10-d5a4-4352-ab9c-6aa4a48df14f",
+        "timestamp": 1782634019574
+      },
+      {
+        "executionId": "9e2d2c28-ce38-4399-ac45-6e3db44d27d0",
+        "chatSessionId": "653ebe10-d5a4-4352-ab9c-6aa4a48df14f",
+        "timestamp": 1782634155415
+      }
+    ],
+    "3.2 Update `config_schema` property to declare `gif_dirs` list field": [
+      {
+        "executionId": "9e2d2c28-ce38-4399-ac45-6e3db44d27d0",
+        "chatSessionId": "653ebe10-d5a4-4352-ab9c-6aa4a48df14f",
+        "timestamp": 1782633791284
+      },
+      {
+        "executionId": "9e2d2c28-ce38-4399-ac45-6e3db44d27d0",
+        "chatSessionId": "653ebe10-d5a4-4352-ab9c-6aa4a48df14f",
+        "timestamp": 1782634020313
+      },
+      {
+        "executionId": "9e2d2c28-ce38-4399-ac45-6e3db44d27d0",
+        "chatSessionId": "653ebe10-d5a4-4352-ab9c-6aa4a48df14f",
+        "timestamp": 1782634156173
+      }
+    ],
+    "4. Checkpoint - Verify core implementation": [
+      {
+        "executionId": "9e2d2c28-ce38-4399-ac45-6e3db44d27d0",
+        "chatSessionId": "653ebe10-d5a4-4352-ab9c-6aa4a48df14f",
+        "timestamp": 1782633791288
+      },
+      {
+        "executionId": "9e2d2c28-ce38-4399-ac45-6e3db44d27d0",
+        "chatSessionId": "653ebe10-d5a4-4352-ab9c-6aa4a48df14f",
+        "timestamp": 1782634160078
+      },
+      {
+        "executionId": "9e2d2c28-ce38-4399-ac45-6e3db44d27d0",
+        "chatSessionId": "653ebe10-d5a4-4352-ab9c-6aa4a48df14f",
+        "timestamp": 1782634223987
+      }
+    ],
+    "5.1 Update existing `test_gif_config.py` tests for new config schema": [
+      {
+        "executionId": "9e2d2c28-ce38-4399-ac45-6e3db44d27d0",
+        "chatSessionId": "653ebe10-d5a4-4352-ab9c-6aa4a48df14f",
+        "timestamp": 1782633791290
+      },
+      {
+        "executionId": "9e2d2c28-ce38-4399-ac45-6e3db44d27d0",
+        "chatSessionId": "653ebe10-d5a4-4352-ab9c-6aa4a48df14f",
+        "timestamp": 1782634227432
+      },
+      {
+        "executionId": "9e2d2c28-ce38-4399-ac45-6e3db44d27d0",
+        "chatSessionId": "653ebe10-d5a4-4352-ab9c-6aa4a48df14f",
+        "timestamp": 1782634263255
+      }
+    ],
+    "6. Final checkpoint - Ensure all tests pass": [
+      {
+        "executionId": "9e2d2c28-ce38-4399-ac45-6e3db44d27d0",
+        "chatSessionId": "653ebe10-d5a4-4352-ab9c-6aa4a48df14f",
+        "timestamp": 1782633791292
+      },
+      {
+        "executionId": "9e2d2c28-ce38-4399-ac45-6e3db44d27d0",
+        "chatSessionId": "653ebe10-d5a4-4352-ab9c-6aa4a48df14f",
+        "timestamp": 1782634266487
+      },
+      {
+        "executionId": "9e2d2c28-ce38-4399-ac45-6e3db44d27d0",
+        "chatSessionId": "653ebe10-d5a4-4352-ab9c-6aa4a48df14f",
+        "timestamp": 1782634328079
+      }
+    ],
+    "1. Add DirectoryEntry dataclass and parsing logic": [
+      {
+        "executionId": "9e2d2c28-ce38-4399-ac45-6e3db44d27d0",
+        "chatSessionId": "653ebe10-d5a4-4352-ab9c-6aa4a48df14f",
+        "timestamp": 1782633905189
+      }
+    ],
+    "2. Implement weighted GIF selection logic": [
+      {
+        "executionId": "9e2d2c28-ce38-4399-ac45-6e3db44d27d0",
+        "chatSessionId": "653ebe10-d5a4-4352-ab9c-6aa4a48df14f",
+        "timestamp": 1782634004495
+      }
+    ],
+    "3. Update `initialize()` and `config_schema` in GifPlugin": [
+      {
+        "executionId": "9e2d2c28-ce38-4399-ac45-6e3db44d27d0",
+        "chatSessionId": "653ebe10-d5a4-4352-ab9c-6aa4a48df14f",
+        "timestamp": 1782634156179
+      }
+    ],
+    "5. Update and add unit tests": [
+      {
+        "executionId": "9e2d2c28-ce38-4399-ac45-6e3db44d27d0",
+        "chatSessionId": "653ebe10-d5a4-4352-ab9c-6aa4a48df14f",
+        "timestamp": 1782634263257
+      }
+    ]
+  }
+}

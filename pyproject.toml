@@ -45,6 +45,7 @@ dev = [
     "black>=22.0",
     "flake8>=4.0",
     "mypy>=0.950",
+    "types-PyYAML>=6.0",
     "pyyaml>=6.0",
     "aiomqtt>=2.0",
 ]

@@ -149,9 +149,7 @@ def discover_zedmd(
     result = probe_zedmd(ip)
     if result:
         state.result = result
-        state.update(
-            "found", f"ZeDMD v{result.version} found at {ip}:{result.port}"
-        )
+        state.update("found", f"ZeDMD v{result.version} found at {ip}:{result.port}")
         return result
 
     state.update("not_found", f"Host {ip} did not respond as ZeDMD")
