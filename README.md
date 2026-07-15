@@ -76,6 +76,12 @@ You can also send messages to the display at any time through the Web UI or API 
 
 ![Demo](docs/zeclock-speaker-timer.gif)
 
+### Paragliding
+
+AI-based paragliding flyability forecast from [Paraglidable](https://paraglidable.com/). Cycles through configured spots showing today's FLY/XC/Takeoff percentages (color-coded: green ≥80%, orange ≥60%, red <60%), plus a 3-day forecast page per spot. Data cached 30 minutes. Requires a free API key.
+
+![Demo](docs/zeclock-paraglidable.gif)
+
 ## Plugin Configuration
 
 Plugins are configured in `~/.zeclock/config/plugins.yaml`:
@@ -116,6 +122,14 @@ plugins:
     settings:
       yellow_threshold: 20
       red_threshold: 10
+  - name: paragliding
+    frequency: 15
+    settings:
+      api_key: YOUR_PARAGLIDABLE_API_KEY
+      language: fr
+      # Optional: filter to specific spots (comma-separated substrings)
+      # spots: "St Hilaire,Chamrousse"
+      page_duration_seconds: 5
 ```
 
 - **clock_display_seconds**: How long the clock is shown between plugins (default: 5)
@@ -143,6 +157,10 @@ Override from CLI: `zeclock --plugins pinball,pong`
 | **pinball** | — | No settings (uses clock color automatically) |
 | **pong** | — | No settings |
 | **eyes** | — | No settings |
+| **paragliding** | `api_key` | Paraglidable API key (required, free from paraglidable.com) |
+| | `language` | `en` or `fr` (default: `en`) |
+| | `spots` | Comma-separated spot name filters (optional) |
+| | `page_duration_seconds` | Duration per page (default: 5) |
 
 
 ## Installation
