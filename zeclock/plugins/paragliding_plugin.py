@@ -471,9 +471,15 @@ class ParaglidingPlugin(PagedPlugin):
         frame = self._helpers.composite_frames(frame, fly_frame)
 
         # "FLY" label next to the percentage
-        fly_label_x = text_x + self._helpers.get_text_width(fly_str, "MENU") + int(3 * sx)
+        fly_label_x = (
+            text_x + self._helpers.get_text_width(fly_str, "MENU") + int(3 * sx)
+        )
         label_frame = self._helpers.render_text(
-            "FLY", x=fly_label_x, y=fly_y + int(2 * sy), color=COLOR_WHITE, font_name="SYSTEM"
+            "FLY",
+            x=fly_label_x,
+            y=fly_y + int(2 * sy),
+            color=COLOR_WHITE,
+            font_name="SYSTEM",
         )
         frame = self._helpers.composite_frames(frame, label_frame)
 
@@ -601,7 +607,11 @@ class ParaglidingPlugin(PagedPlugin):
             fly_str = f"{int(spot_data.fly * 100)}%"
             fw = self._helpers.get_text_width(fly_str, font_name="SYSTEM")
             fly_frame = self._helpers.render_text(
-                fly_str, x=center_x - fw // 2, y=8, color=flyability_color(spot_data.fly), font_name="SYSTEM"
+                fly_str,
+                x=center_x - fw // 2,
+                y=8,
+                color=flyability_color(spot_data.fly),
+                font_name="SYSTEM",
             )
             frame = self._helpers.composite_frames(frame, fly_frame)
 
@@ -609,7 +619,11 @@ class ParaglidingPlugin(PagedPlugin):
             xc_str = f"{int(spot_data.xc * 100)}%"
             xw = self._helpers.get_text_width(xc_str, font_name="SYSTEM")
             xc_frame = self._helpers.render_text(
-                xc_str, x=center_x - xw // 2, y=16, color=flyability_color(spot_data.xc), font_name="SYSTEM"
+                xc_str,
+                x=center_x - xw // 2,
+                y=16,
+                color=flyability_color(spot_data.xc),
+                font_name="SYSTEM",
             )
             frame = self._helpers.composite_frames(frame, xc_frame)
 
@@ -617,7 +631,11 @@ class ParaglidingPlugin(PagedPlugin):
             to_str = f"{int(spot_data.takeoff * 100)}%"
             tw = self._helpers.get_text_width(to_str, font_name="SYSTEM")
             to_frame = self._helpers.render_text(
-                to_str, x=center_x - tw // 2, y=24, color=flyability_color(spot_data.takeoff), font_name="SYSTEM"
+                to_str,
+                x=center_x - tw // 2,
+                y=24,
+                color=flyability_color(spot_data.takeoff),
+                font_name="SYSTEM",
             )
             frame = self._helpers.composite_frames(frame, to_frame)
 
