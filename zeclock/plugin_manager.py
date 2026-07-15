@@ -17,6 +17,7 @@ from .plugin_config import PluginConfig
 from .plugin_registry import PluginRegistry
 from .plugins.base import (
     ClockPlugin,
+    PluginContext,
     PluginNotConfiguredError,
     validate_frame_delay_ms,
     validate_plugin_name,
@@ -299,13 +300,44 @@ class PluginManager:
             plugin_name: The plugin name to get config for.
 
         Returns:
-            Config dict with "_helpers" and "_upscale_mode" keys.
+            Config dict with "_helpers", "_upscale_mode", "_context" keys.
         """
         config = self.config.get_plugin_config(plugin_name)
+        # Snapshot user settings before adding infrastructure keys
+        user_settings = dict(config)
+
         config["_helpers"] = self._helpers
         config["_upscale_mode"] = self.upscale_mode
         config["_font"] = self.font_name
+        config["_context"] = PluginContext(
+            helpers=self._helpers,
+            upscale_mode=self.upscale_mode,
+            font=self.font_name,
+            settings=user_settings,
+        )
         return config
+
+    def _validate_config_schema(self, plugin: ClockPlugin) -> "Optional[str]":
+        """Validate plugin config against its schema.
+
+        Checks that all required fields (with no default) are present
+        in the user settings.
+
+        Args:
+            plugin: The plugin to validate config for.
+
+        Returns:
+            The name of the first missing required field, or None if valid.
+        """
+        schema = plugin.config_schema
+        if not schema:
+            return None
+        user_settings = self.config.get_plugin_config(plugin.name)
+        for field in schema:
+            if field.required and field.default is None:
+                if field.name not in user_settings:
+                    return field.name
+        return None
 
     def select_next_plugin(self) -> Optional[ClockPlugin]:
         """Select next plugin using weighted random based on frequencies.
@@ -364,6 +396,20 @@ class PluginManager:
         """
         config = self.get_plugin_config_with_helpers(plugin.name)
 
+        # Validate required config fields from schema before calling initialize
+        missing_field = self._validate_config_schema(plugin)
+        if missing_field:
+            logger.info(
+                f"Plugin '{plugin.name}' missing required field "
+                f"'{missing_field}', marking as unconfigured"
+            )
+            plugin._unconfigured = True
+            self.active_plugin = plugin
+            self.consecutive_errors = 0
+            self.plugin_start_time = time.time()
+            self.last_good_frame = None
+            return True
+
         try:
             await asyncio.wait_for(plugin.initialize(config), timeout=self.init_timeout)
         except asyncio.TimeoutError:
@@ -413,6 +459,16 @@ class PluginManager:
         # Reload config from disk
         self.config.reload()
         config = self.get_plugin_config_with_helpers(plugin_name)
+
+        # Validate required config fields from schema before reconfiguring
+        missing_field = self._validate_config_schema(entry.plugin)
+        if missing_field:
+            logger.info(
+                f"Plugin '{plugin_name}' missing required field "
+                f"'{missing_field}' after config reload, marking as unconfigured"
+            )
+            entry.plugin._unconfigured = True
+            return True
 
         try:
             await asyncio.wait_for(
