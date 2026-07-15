@@ -2,7 +2,7 @@
 """Virtual DMD server with browser preview.
 
 Accepts DMDStream protocol on port 6789 (like real dmdserver).
-Serves a live DMD preview at http://localhost:8080 via WebSocket.
+Serves a live DMD preview at http://localhost:3000 via WebSocket.
 """
 import asyncio
 import base64
@@ -24,8 +24,8 @@ except ImportError:
 from PIL import Image
 
 DMD_PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 6789
-WEB_PORT = 8080
-WS_PORT = 8081
+WEB_PORT = 3000
+WS_PORT = 3001
 
 # Shared state: latest frame as PNG base64
 latest_frame_b64 = ""

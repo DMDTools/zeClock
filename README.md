@@ -80,7 +80,7 @@ Don't have a ZeDMD yet? You can try zeClock in your browser with the virtual DMD
 pip install -e ".[dev]"
 zeclock --bootstrap
 
-# Start the virtual DMD (opens a browser preview at http://localhost:8080)
+# Start the virtual DMD (opens a browser preview at http://localhost:3000)
 make dev-start-virtual
 
 # Or in HD mode (256x64)
