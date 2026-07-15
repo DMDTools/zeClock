@@ -25,9 +25,9 @@ STATE_RUNNING = "running"
 STATE_PAUSED = "paused"
 STATE_FINISHED = "finished"  # countdown reached zero, now counting up
 
-# Color thresholds (in seconds)
-DEFAULT_YELLOW_THRESHOLD = 300  # 5 minutes
-DEFAULT_RED_THRESHOLD = 60  # 1 minute
+# Color thresholds (as percentage of total duration)
+DEFAULT_YELLOW_THRESHOLD_PCT = 20  # below 20% remaining → orange
+DEFAULT_RED_THRESHOLD_PCT = 10  # below 10% remaining → red
 
 # Default presets (in seconds)
 DEFAULT_PRESETS: List[Dict[str, Any]] = [
@@ -57,8 +57,8 @@ class SpeakerTimerPlugin(ClockPlugin):
     _start_time: float = 0.0
     _elapsed_at_pause: float = 0.0
     _presets: List[Dict[str, Any]] = DEFAULT_PRESETS.copy()
-    _yellow_threshold: int = DEFAULT_YELLOW_THRESHOLD
-    _red_threshold: int = DEFAULT_RED_THRESHOLD
+    _yellow_threshold_pct: int = DEFAULT_YELLOW_THRESHOLD_PCT
+    _red_threshold_pct: int = DEFAULT_RED_THRESHOLD_PCT
 
     @property
     def name(self) -> str:
@@ -88,9 +88,9 @@ class SpeakerTimerPlugin(ClockPlugin):
 
         # Apply config (only on first init or if explicitly provided)
         if "yellow_threshold" in config:
-            SpeakerTimerPlugin._yellow_threshold = int(config["yellow_threshold"])
+            SpeakerTimerPlugin._yellow_threshold_pct = int(config["yellow_threshold"])
         if "red_threshold" in config:
-            SpeakerTimerPlugin._red_threshold = int(config["red_threshold"])
+            SpeakerTimerPlugin._red_threshold_pct = int(config["red_threshold"])
         if "presets" in config:
             SpeakerTimerPlugin._presets = config["presets"]
 
@@ -101,7 +101,16 @@ class SpeakerTimerPlugin(ClockPlugin):
         """
         remaining = self._get_remaining_seconds()
         color = self._get_color(remaining)
-        time_str = self._format_time(remaining)
+
+        # When finished, freeze display at 00:00 and blink
+        if SpeakerTimerPlugin._timer_state == STATE_FINISHED:
+            time_str = "00:00"
+            color = COLOR_RED
+            blink = int(time.time() * 2) % 2
+            if blink == 0:
+                return self._helpers.create_frame()  # blank frame for blink
+        else:
+            time_str = self._format_time(remaining)
 
         frame = self._helpers.create_frame()
 
@@ -147,16 +156,11 @@ class SpeakerTimerPlugin(ClockPlugin):
             ratio = max(0.0, min(1.0, ratio))
 
         # Calculate zone boundaries as fractions of the full bar
-        # Red zone: 0 to red_threshold/duration
-        # Orange zone: red_threshold/duration to yellow_threshold/duration
-        # Green zone: yellow_threshold/duration to 1.0
-        duration = SpeakerTimerPlugin._duration_seconds
-        if duration > 0:
-            red_frac = min(1.0, SpeakerTimerPlugin._red_threshold / duration)
-            yellow_frac = min(1.0, SpeakerTimerPlugin._yellow_threshold / duration)
-        else:
-            red_frac = 0.0
-            yellow_frac = 0.0
+        # Red zone: 0% to red_threshold_pct% of the bar
+        # Orange zone: red_threshold_pct% to yellow_threshold_pct% of the bar
+        # Green zone: yellow_threshold_pct% to 100% of the bar
+        red_frac = SpeakerTimerPlugin._red_threshold_pct / 100.0
+        yellow_frac = SpeakerTimerPlugin._yellow_threshold_pct / 100.0
 
         # Pixel boundaries for each zone
         red_end = int(width * red_frac)
@@ -237,8 +241,8 @@ class SpeakerTimerPlugin(ClockPlugin):
             "elapsed": cls._get_elapsed_seconds(),
             "formatted": cls._format_time_class(remaining),
             "presets": cls._presets,
-            "yellow_threshold": cls._yellow_threshold,
-            "red_threshold": cls._red_threshold,
+            "yellow_threshold": cls._yellow_threshold_pct,
+            "red_threshold": cls._red_threshold_pct,
         }
 
     @classmethod
@@ -268,15 +272,21 @@ class SpeakerTimerPlugin(ClockPlugin):
         return SpeakerTimerPlugin._get_remaining_seconds_class()
 
     def _get_color(self, remaining: float) -> Tuple[int, int, int]:
-        """Determine display color based on remaining time."""
+        """Determine display color based on remaining time percentage."""
         if SpeakerTimerPlugin._timer_state == STATE_IDLE:
             return COLOR_IDLE
 
         if remaining <= 0:
             return COLOR_RED
-        elif remaining <= SpeakerTimerPlugin._red_threshold:
+
+        duration = SpeakerTimerPlugin._duration_seconds
+        if duration <= 0:
+            return COLOR_GREEN
+
+        pct_remaining = (remaining / duration) * 100.0
+        if pct_remaining <= SpeakerTimerPlugin._red_threshold_pct:
             return COLOR_RED
-        elif remaining <= SpeakerTimerPlugin._yellow_threshold:
+        elif pct_remaining <= SpeakerTimerPlugin._yellow_threshold_pct:
             return COLOR_YELLOW
         else:
             return COLOR_GREEN
