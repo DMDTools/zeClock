@@ -157,7 +157,7 @@ Override from CLI: `zeclock --plugins pinball,pong`
 | **pinball** | `color` | Animation color name (default: `orange`) |
 | | `animation_color` | Separate animation color (default: same as `color`) |
 | **pong** | `color` | Game color name (default: `orange`) |
-| **eyes** | `color` | Eyes color name (default: `orange`) |
+| **eyes** | `color` | Eyes color name (default: `cyan`) |
 | **paragliding** | `api_key` | Paraglidable API key (required, free from paraglidable.com) |
 | | `language` | `en` or `fr` (default: `en`) |
 | | `spots` | Comma-separated spot name filters (optional) |
