@@ -10,33 +10,33 @@ This document describes the overall architecture, rendering data flow, and hardw
 
 ```mermaid
 graph TD
-    subgraph "Application Layer (Python)"
-        A["zeclock (clock.py)"] -->|Initializes| B["BitmapFont (fnt_reader.py)"]
-        A -->|Initializes| C["Scene (scn_reader.py)"]
-        A -->|Pre-computes frames| D["Overlay (overlay.py)"]
-        A -->|Sends frames via| E["DMDBackend (backends/)"]
-        A -->|Auto bootstrap| F2["Installer (installer.py)"]
-        A -->|Brightness control| BS["BrightnessScheduler (brightness_scheduler.py)"]
-        A -->|Remote control| RC["Remote Control (remote/)"]
+    subgraph "Application Layer #40;Python#41;"
+        A["zeclock #40;clock.py#41;"] -->|Initializes| B["BitmapFont #40;fnt_reader.py#41;"]
+        A -->|Initializes| C["Scene #40;scn_reader.py#41;"]
+        A -->|Pre-computes frames| D["Overlay #40;overlay.py#41;"]
+        A -->|Sends frames via| E["DMDBackend #40;backends/#41;"]
+        A -->|Auto bootstrap| F2["Installer #40;installer.py#41;"]
+        A -->|Brightness control| BS["BrightnessScheduler #40;brightness_scheduler.py#41;"]
+        A -->|Remote control| RC["Remote Control #40;remote/#41;"]
     end
 
     subgraph "Remote Control Layer"
-        RC -->|MQTT pub/sub| MQTT["MqttRemote (aiomqtt)"]
-        RC -->|HTTP server| REST["RestRemote (aiohttp)"]
+        RC -->|MQTT pub/sub| MQTT["MqttRemote #40;aiomqtt#41;"]
+        RC -->|HTTP server| REST["RestRemote #40;aiohttp#41;"]
         RC -->|Shared logic| CMD["CommandHandler"]
         MQTT -->|HA Discovery| HA["Home Assistant"]
     end
 
     subgraph "Backend Layer"
-        E -->|"--backend zedmd (default)"| E1["ZeDMDBackend (ctypes/libzedmd)"]
-        E -->|"--backend dmdserver"| E2["DMDServerBackend (TCP socket)"]
+        E -->|"#45;#45;backend zedmd #40;default#41;"| E1["ZeDMDBackend #40;ctypes/libzedmd#41;"]
+        E -->|"#45;#45;backend dmdserver"| E2["DMDServerBackend #40;TCP socket#41;"]
     end
 
-    subgraph "Hardware & Rendering Layer"
-        G["ZeDMD (ESP32 / Teensy Hardware)"]
-        H["RGB LED Panels (128x32 / 256x64)"]
-        I["dmd-simulator (SDL2 Graphical Simulation)"]
-        F["dmdserver (TCP Daemon)"]
+    subgraph "Hardware and Rendering Layer"
+        G["ZeDMD #40;ESP32 / Teensy Hardware#41;"]
+        H["RGB LED Panels #40;128x32 / 256x64#41;"]
+        I["dmd-simulator #40;SDL2 Graphical Simulation#41;"]
+        F["dmdserver #40;TCP Daemon#41;"]
         J["Pixelcade"]
         K["PIN2DMD"]
     end
@@ -216,7 +216,7 @@ graph LR
         CH["CommandHandler"]
         MQTT["MqttRemote"]
         REST["RestRemote"]
-        WEBUI["Web UI (static)"]
+        WEBUI["Web UI #40;static#41;"]
     end
     
     MQTT -->|commands| CH
@@ -248,30 +248,30 @@ Logical steps executed each frame to build the final image sent to the display:
 
 ```mermaid
 sequenceDiagram
-    participant C as clock.py (ZeClock)
-    participant F as fnt_reader.py (BitmapFont)
-    participant O as overlay.py (Overlay)
-    participant B as DMDBackend (backends/)
+    participant C as clock.py #40;ZeClock#41;
+    participant F as fnt_reader.py #40;BitmapFont#41;
+    participant O as overlay.py #40;Overlay#41;
+    participant B as DMDBackend #40;backends/#41;
 
-    C->>C: Event loop tick (dynamic timing)
-    C->>F: Render current time text ("12:34" or "12 34")
-    F->>F: Assemble .fnt font glyphs (centered or custom)
-    F->>F: Pack text mask (bytearray bitwise ops)
-    F-->>C: Return PIL Image (L-mode + mask_data attribute)
+    C->>C: Event loop tick #40;dynamic timing#41;
+    C->>F: Render current time text #40;"12:34" or "12 34"#41;
+    F->>F: Assemble .fnt font glyphs #40;centered or custom#41;
+    F->>F: Pack text mask #40;bytearray bitwise ops#41;
+    F-->>C: Return PIL Image #40;L-mode + mask_data attribute#41;
     
     alt Retro pinball animation is active
-        C->>O: Merge time and animation frame (overlay_or_rgb)
+        C->>O: Merge time and animation frame #40;overlay_or_rgb#41;
         O->>O: Extract and apply DotBlt binary mask
-        O->>O: Apply RGB tints (Clock Color vs Animation Color)
-        O-->>C: Return merged frame (PIL RGB-mode)
+        O->>O: Apply RGB tints #40;Clock Color vs Animation Color#41;
+        O-->>C: Return merged frame #40;PIL RGB-mode#41;
     else No animation
-        C->>C: Colorize time image to RGB (per-pixel bytearray)
+        C->>C: Colorize time image to RGB #40;per-pixel bytearray#41;
     end
     
-    C->>B: Send final RGB image via send_frame()
-    B->>B: ZeDMDBackend: send RGB888 directly (no conversion needed)
-    B->>B: DMDServerBackend: convert RGB888 → RGB565 big-endian for TCP
-    B->>B: Transmit to hardware (libzedmd ctypes) or TCP socket
+    C->>B: Send final RGB image via send_frame#40;#41;
+    B->>B: ZeDMDBackend: send RGB888 directly #40;no conversion needed#41;
+    B->>B: DMDServerBackend: convert RGB888 to RGB565 big-endian for TCP
+    B->>B: Transmit to hardware #40;libzedmd ctypes#41; or TCP socket
 ```
 
 ---
@@ -282,10 +282,10 @@ sequenceDiagram
 stateDiagram-v2
     [*] --> ClockOnly: Startup
     ClockOnly --> PluginSelect: clock_display_seconds elapsed
-    PluginSelect --> PluginActive: Plugin selected (weighted random)
+    PluginSelect --> PluginActive: Plugin selected #40;weighted random#41;
     PluginActive --> ClockOnly: Plugin signals completion or 30s max
-    PluginActive --> ClockOnly: 5 consecutive errors (deactivate plugin)
-    ClockOnly --> ClockOnly: Refresh every 500ms (colon blink)
+    PluginActive --> ClockOnly: 5 consecutive errors #40;deactivate plugin#41;
+    ClockOnly --> ClockOnly: Refresh every 500ms #40;colon blink#41;
     note right of PluginSelect: PluginManager selects via\nnormalized frequency weights
 ```
 

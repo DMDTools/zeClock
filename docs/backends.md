@@ -22,9 +22,9 @@ When `--backend auto` is used (the default), zeClock applies the following fallb
 
 ```mermaid
 flowchart TD
-    START["zeClock starts with --backend auto"] --> TRY_ZEDMD["Try to import ZeDMDBackend"]
-    TRY_ZEDMD -->|"libzedmd found (ctypes load succeeds)"| USE_ZEDMD["Use ZeDMDBackend"]
-    TRY_ZEDMD -->|"ImportError (libzedmd not found)"| TRY_DMDSERVER["Try to import DMDServerBackend"]
+    START["zeClock starts with #45;#45;backend auto"] --> TRY_ZEDMD["Try to import ZeDMDBackend"]
+    TRY_ZEDMD -->|"libzedmd found #40;ctypes load succeeds#41;"| USE_ZEDMD["Use ZeDMDBackend"]
+    TRY_ZEDMD -->|"ImportError #40;libzedmd not found#41;"| TRY_DMDSERVER["Try to import DMDServerBackend"]
     TRY_DMDSERVER -->|"Success"| USE_DMDSERVER["Use DMDServerBackend"]
     TRY_DMDSERVER -->|"Both failed"| EXIT["Exit with error"]
 ```
@@ -247,6 +247,52 @@ All backend-related configuration keys with their CLI overrides:
 | Debugging connection issues | `zedmd` | Forces the hardware path so errors are explicit (no silent fallback) |
 | CI / automated testing | `dmdserver` | No hardware dependency, deterministic TCP connection |
 | Multiple display consumers | `dmdserver` | dmdserver daemon can forward frames to multiple targets |
+
+---
+
+## 🔬 Why not use libdmdutil directly?
+
+A natural question when looking at the backend architecture: why not bypass `dmdserver` entirely and call [libdmdutil](https://github.com/vpinball/libdmdutil) directly from Python? This section explains why zeClock uses `dmdserver` as an intermediary rather than integrating libdmdutil as a third backend.
+
+### libdmdutil is a C++ library with no C API
+
+libdmdutil is written in C++ and exposes its functionality through C++ classes, namespaces (`DMDUtil::`), virtual methods, and STL containers. There is no `extern "C"` wrapper or flat C API. You can verify this by looking at the public headers ([DMD.h](https://github.com/vpinball/libdmdutil/blob/main/include/DMDUtil/DMD.h), [Config.h](https://github.com/vpinball/libdmdutil/blob/main/include/DMDUtil/Config.h)) -- every entry point is a C++ class method.
+
+### Python ctypes cannot call C++ methods
+
+Python's `ctypes` module is designed to call C functions with well-defined calling conventions. C++ class methods cannot be called through ctypes because of:
+
+- **Name mangling**: C++ compilers mangle method names (e.g., `DMDUtil::DMD::FindDisplays` becomes a compiler-specific symbol like `_ZN7DMDUtil3DMD12FindDisplaysEv`), and the mangling scheme varies between compilers and platforms.
+- **vtables**: Virtual method dispatch relies on internal vtable pointers that ctypes has no mechanism to navigate.
+- **ABI incompatibilities**: Object layout, exception handling, and memory allocation differ between C++ runtimes, making it unsafe to interact with C++ objects from Python without a proper binding layer.
+
+### dmdserver IS the intended external interface
+
+The `dmdserver` process exists precisely to solve this problem. It wraps libdmdutil behind a simple TCP protocol (DMDStream) that any language can speak -- no C++ bindings required. This is its design purpose: provide IPC access to libdmdutil's device routing for external programs.
+
+### For ZeDMD, the direct path already exists
+
+libdmdutil internally uses [libzedmd](https://github.com/PPUC/libzedmd) to communicate with ZeDMD hardware. zeClock's existing `zedmd` backend already calls libzedmd directly (which does have a clean C API suitable for ctypes). So for ZeDMD-only deployments, the current architecture is already the optimal path -- there is no additional layer that libdmdutil would eliminate.
+
+### The cost-benefit does not justify a custom C wrapper
+
+The only theoretical benefit of direct libdmdutil integration would be reaching Pixelcade or PIN2DMD hardware without running a separate `dmdserver` process. However, achieving this would require:
+
+1. Writing and maintaining a custom C wrapper (`.so`/`.dll`) that exposes libdmdutil's C++ classes through flat C functions.
+2. Keeping that wrapper in sync with libdmdutil's evolving API across releases.
+3. Building and distributing platform-specific binaries (Linux x64/aarch64, macOS arm64/x64, Windows x64).
+
+This is a significant ongoing maintenance burden for marginal gain -- eliminating one background process (`dmdserver`) that is already lightweight and purpose-built for this role.
+
+### Summary
+
+| Path | Use Case | How it works |
+|------|----------|--------------|
+| `zedmd` backend | ZeDMD hardware only | Calls libzedmd directly via ctypes (C API) |
+| `dmdserver` backend | Any device (ZeDMD, Pixelcade, PIN2DMD, simulator) | Streams frames over TCP to dmdserver, which uses libdmdutil internally |
+| Direct libdmdutil | Not implemented | Would require a custom C wrapper around C++ classes -- not practical |
+
+The current two-backend architecture covers all use cases without requiring custom native code wrappers or duplicating functionality that `dmdserver` already provides.
 
 ---
 
