@@ -1,4 +1,14 @@
-"""Backend factory for selecting and instantiating the appropriate DMD backend."""
+"""Backend factory for selecting and instantiating the appropriate DMD backend.
+
+Design note -- lazy imports:
+    ZeDMDBackend is imported inside each function that needs it rather than at
+    module level.  This is intentional: importing ``zeclock.backends.zedmd``
+    triggers ctypes to load the libzedmd shared library.  If that library is not
+    installed (common during development or on CI), the import raises
+    ``ImportError``.  By deferring the import to the point of use, the factory
+    can catch the error and gracefully fall back to DMDServerBackend without
+    crashing the entire application at startup.
+"""
 
 import logging
 import sys

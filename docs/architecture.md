@@ -80,6 +80,8 @@ Text is rendered centered on screen using the clock color.
 
 Pluggable backend system for DMD communication. All backends implement the `DMDBackend` abstract base class, ensuring the clock and plugins remain backend-agnostic.
 
+> For user-facing backend documentation (selection guide, configuration), see [backends.md](backends.md).
+
 - **`DMDBackend` ABC (`backends/base.py`)**: Defines the common interface:
   - `connect() -> bool`: Establish connection to the display.
   - `send_frame(image, buffered, color) -> bool`: Send a frame to the display.

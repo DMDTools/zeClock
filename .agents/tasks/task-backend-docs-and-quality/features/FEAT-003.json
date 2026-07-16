@@ -1,0 +1,27 @@
+{
+  "id": "FEAT-003",
+  "type": "fix",
+  "description": "Address the 3 issues raised in the semantic review: (1) Fix hardcoded 128x32 disconnect frame size in DMDServerBackend.disconnect(), (2) Correct the LUT optimization overstatement in docs/backends.md, (3) Fix the id() reuse hazard in the frame identity cache and add a test for the edge case.",
+  "status": "in_progress",
+  "steps": [
+    "Fix DMDServerBackend.disconnect() to use tracked frame dimensions instead of hardcoded (128, 32). Store last frame dimensions from send_frame() and use them in disconnect().",
+    "Update docs/backends.md 'Optimizations' section to accurately describe what the LUT eliminates (bit-shifting per pixel) vs what remains (per-pixel iteration and bitwise OR).",
+    "Fix the id() reuse hazard in the frame identity cache by also comparing a content hash or storing a reference to the last image, and add a test covering the recycled-id edge case."
+  ],
+  "acceptance_criteria": [
+    "disconnect() creates the black frame using the last known frame dimensions rather than hardcoded 128x32",
+    "docs/backends.md LUT description is technically accurate and does not overstate the optimization",
+    "The frame cache is robust against id() reuse (e.g., by keeping a reference to the last Image object)",
+    "A new test verifies that a new Image object with a recycled id() is not incorrectly served from cache",
+    "All existing tests continue to pass",
+    "flake8, mypy, and black pass on modified files"
+  ],
+  "verification": [
+    "Run 'uv run --extra dev pytest tests/ -v --tb=short' to verify all tests pass",
+    "Run 'uv run --extra dev flake8 zeclock/ --max-line-length=120 --ignore=E501,W503,E203,F841'",
+    "Run 'uv run --extra dev mypy zeclock/'",
+    "Run 'uv run --extra dev black zeclock/ tests/ --check'"
+  ],
+  "blocked_reason": null,
+  "findings": null
+}
