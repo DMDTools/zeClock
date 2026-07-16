@@ -37,9 +37,14 @@ class DMDServerBackend(DMDBackend):
         self.port = port
         self._sock: Optional[socket.socket] = None
         self._connected = False
-        # Frame cache: avoid re-encoding identical frames
-        self._last_frame_id: Optional[int] = None
+        # Frame cache: avoid re-encoding identical frames.
+        # We store a reference to the last Image object (not just its id) to
+        # prevent CPython from garbage-collecting it and recycling its id().
+        self._last_frame: Optional[Image.Image] = None
         self._last_msg: Optional[bytes] = None
+        # Track last frame dimensions for disconnect() black frame
+        self._last_width: int = 128
+        self._last_height: int = 32
 
     @property
     def connected(self) -> bool:
@@ -65,11 +70,14 @@ class DMDServerBackend(DMDBackend):
 
         Sends a non-buffered black frame before closing so that dmdserver
         clears the display instead of keeping the last frame visible.
+        Uses the last known frame dimensions to match the panel size.
         """
         if self._sock and self._connected:
             # Send a black frame with buffered=False so dmdserver clears the screen
             try:
-                black = Image.new("RGB", (128, 32), (0, 0, 0))
+                black = Image.new(
+                    "RGB", (self._last_width, self._last_height), (0, 0, 0)
+                )
                 self.send_frame(black, buffered=False)
             except Exception:
                 pass  # Best effort
@@ -98,9 +106,11 @@ class DMDServerBackend(DMDBackend):
             if not self.connect():
                 return False
 
-        # Check if this is the exact same frame object (identity check)
-        frame_id = id(image)
-        if frame_id == self._last_frame_id and self._last_msg is not None:
+        # Check if this is the exact same frame object (identity check).
+        # We compare via `is` against the stored reference rather than using
+        # id(), because id() values can be recycled by CPython once the
+        # previous object is garbage-collected.
+        if image is self._last_frame and self._last_msg is not None:
             msg = self._last_msg
         else:
             if image.mode != "RGB":
@@ -108,6 +118,9 @@ class DMDServerBackend(DMDBackend):
                 image = colorize_grayscale(image, color)
 
             width, height = image.size
+            # Track dimensions for disconnect() black frame
+            self._last_width = width
+            self._last_height = height
 
             # Convert to RGB565
             rgb565_data = self._rgb_to_rgb565(image)
@@ -123,7 +136,7 @@ class DMDServerBackend(DMDBackend):
             header += len(rgb565_data).to_bytes(4, "big")  # length
 
             msg = bytes(header + rgb565_data)
-            self._last_frame_id = frame_id
+            self._last_frame = image
             self._last_msg = msg
 
         try:
@@ -139,8 +152,9 @@ class DMDServerBackend(DMDBackend):
     def _rgb_to_rgb565(self, image: Image.Image) -> bytes:
         """Convert RGB image to RGB565 format (big-endian).
 
-        Optimized: uses pre-computed LUTs to avoid per-pixel bit shifting,
-        and struct.pack in a single call instead of per-pixel pack_into.
+        Uses pre-computed LUTs to replace per-pixel bit-shifting with table
+        lookups, reducing arithmetic operations per pixel. The conversion still
+        iterates per-pixel in Python with bitwise OR for channel combination.
         """
         rgb_data = image.tobytes()
         pixel_count = len(rgb_data) // 3

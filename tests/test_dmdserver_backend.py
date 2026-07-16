@@ -130,6 +130,35 @@ class TestDMDServerBackendDisconnect:
         backend.disconnect()  # Should not raise
         assert not backend.connected
 
+    def test_disconnect_uses_last_frame_dimensions(
+        self, connected_backend, mock_socket
+    ):
+        """disconnect() uses the last sent frame dimensions for the black frame."""
+        # Send a 256x64 frame to establish dimensions
+        img = Image.new("RGB", (256, 64), (255, 0, 0))
+        connected_backend.send_frame(img)
+        mock_socket.sendall.reset_mock()
+
+        # Now disconnect - the black frame should be 256x64, not 128x32
+        connected_backend.disconnect()
+        data = mock_socket.sendall.call_args[0][0]
+        # Parse header to check dimensions
+        width = int.from_bytes(data[15:17], "big")
+        height = int.from_bytes(data[17:19], "big")
+        assert width == 256
+        assert height == 64
+
+    def test_disconnect_default_dimensions_without_prior_send(
+        self, connected_backend, mock_socket
+    ):
+        """disconnect() uses default 128x32 if no frame was ever sent."""
+        connected_backend.disconnect()
+        data = mock_socket.sendall.call_args[0][0]
+        width = int.from_bytes(data[15:17], "big")
+        height = int.from_bytes(data[17:19], "big")
+        assert width == 128
+        assert height == 32
+
 
 class TestDMDServerBackendSendFrame:
     """Test send_frame() behavior."""
@@ -232,6 +261,32 @@ class TestDMDServerBackendFrameCaching:
         ) as mock_convert:
             connected_backend.send_frame(img1)
             mock_convert.assert_called_once()
+
+    def test_cache_not_fooled_by_recycled_id(self, connected_backend, mock_socket):
+        """A new Image object is re-encoded even if it could have the same id().
+
+        CPython may recycle id() values for deallocated objects. The cache must
+        use identity comparison (is) rather than id() to avoid serving stale data
+        when a new Image happens to occupy the same memory address.
+        """
+        img1 = Image.new("RGB", (128, 32), (255, 0, 0))
+        connected_backend.send_frame(img1)
+        first_data = mock_socket.sendall.call_args[0][0]
+
+        # Simulate the scenario: delete img1 so its memory can be reused,
+        # then create a new image with different content.
+        del img1
+        img2 = Image.new("RGB", (128, 32), (0, 0, 255))
+
+        # Even if img2 happened to get the same id() as img1 (which we can't
+        # guarantee), the backend should re-encode because it's not the same
+        # object reference.
+        mock_socket.sendall.reset_mock()
+        connected_backend.send_frame(img2)
+        second_data = mock_socket.sendall.call_args[0][0]
+
+        # The data must differ because the pixel content is different
+        assert first_data != second_data
 
 
 class TestDMDServerBackendRGB565Conversion:

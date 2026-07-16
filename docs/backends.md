@@ -108,7 +108,7 @@ The DMDServer backend is a TCP client that connects to a `dmdserver` process (de
 ### Optimizations
 
 - **Frame identity caching**: If the current frame is identical to the previous one, the send is skipped entirely (reduces TCP traffic for static displays).
-- **Pre-computed RGB565 LUT**: Per-channel lookup tables convert RGB888 to RGB565 without per-pixel arithmetic at runtime.
+- **Pre-computed RGB565 LUT**: Per-channel lookup tables replace per-pixel bit-shifting with table lookups during RGB888-to-RGB565 conversion. The conversion still iterates per-pixel in Python (combining channels with bitwise OR), but eliminates the 5 shift operations per pixel, reducing them to 3 table lookups and 2 OR operations.
 
 ### Configuration
 
