@@ -64,6 +64,9 @@ include = ["zeclock*"]
 zeclock = ["resources/Fonts/*.fnt", "remote/web/*.html", "remote/web/*.css", "remote/web/*.js"]
 
 
+[tool.black]
+target-version = ["py312"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
