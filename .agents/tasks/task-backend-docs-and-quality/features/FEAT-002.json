@@ -2,7 +2,7 @@
   "id": "FEAT-002",
   "type": "refactor",
   "description": "Improve backend code quality: add missing DMDServerBackend tests (no test file exists), fix the inconsistent __init__.py exports (exports DMDServerBackend but not ZeDMDBackend - both should be consistent), and add module-level docstrings to __init__.py and factory.py clarifying the lazy-import pattern.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Create tests/test_dmdserver_backend.py with comprehensive tests for DMDServerBackend following the pattern in tests/test_zedmd_backend.py. Cover: (1) connect() success/failure (mock socket), (2) send_frame() with RGB image, grayscale colorization, frame identity caching behavior (same object sent twice skips re-encoding), (3) send_frame() reconnection on socket error, (4) disconnect() sends black frame then closes socket, (5) _rgb_to_rgb565() conversion correctness (verify known pixel values), (6) DMDStream header structure verification (magic word, version, mode, dimensions, flags, data size)",
     "Update zeclock/backends/__init__.py to add a comment explaining why ZeDMDBackend is NOT exported at package level (lazy import pattern - it would fail at import time if libzedmd is not installed, so it is imported on-demand in factory.py). This makes the intentional asymmetry clear to contributors.",
@@ -24,5 +24,5 @@
     "Run 'uv run --extra dev black zeclock/ tests/ --check' for formatting"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "47 tests created covering all DMDServerBackend functionality. All 607 project tests pass. flake8, mypy, and black pass on modified files. Note: zeclock/installer.py has a pre-existing black formatting issue unrelated to this change."
 }
