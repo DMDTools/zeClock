@@ -217,7 +217,7 @@ zeclock --plugins pinball,weather
 
 | Option | Values | Default | Description |
 |--------|--------|---------|-------------|
-| `--backend` | `auto`, `zedmd`, `dmdserver` | `auto` | Backend selection |
+| `--backend` | `auto`, `zedmd`, `dmdserver` | `auto` | Backend selection ([details](docs/backends.md)) |
 | `--wifi-addr` | IP address | from config | ZeDMD WiFi address |
 | `--device` | path | auto-detect | USB serial device |
 | `--brightness` | 0-15 | 10 | Display brightness |
