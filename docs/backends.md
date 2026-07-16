@@ -10,7 +10,7 @@ zeClock uses a **backend abstraction layer** to decouple the rendering engine fr
 
 1. **Production** -- The `zedmd` backend communicates directly with ZeDMD hardware via `libzedmd` (C shared library loaded through Python ctypes). This is the fastest path: RGB888 frames are sent directly to the panel without any Python-level pixel conversion.
 
-2. **Development** -- The `dmdserver` backend streams frames over TCP to a separate daemon (`dmdserver`) or to the browser-based `virtual-dmd.py` renderer. No hardware is required; you can develop and test on any machine.
+2. **Development & Multi-device** -- The `dmdserver` backend streams frames over TCP to a separate daemon (`dmdserver`) or to the browser-based `virtual-dmd.py` renderer. No hardware is required for development. In production, `dmdserver` (from [libdmdutil](https://github.com/vpinball/libdmdutil)) can route frames to multiple devices simultaneously -- ZeDMD, Pixelcade, PIN2DMD, and an SDL2 simulator.
 
 Both backends implement the same `DMDBackend` abstract base class, so the clock, plugins, and rendering pipeline remain completely backend-agnostic.
 
@@ -85,6 +85,8 @@ Use `--backend dmdserver` (or rely on `auto` fallback) when:
 
 - You are **developing** on a PC/Mac without ZeDMD hardware
 - You want to use the **browser-based virtual DMD** (`make dev-start-virtual`)
+- You want to output to **multiple devices simultaneously** (ZeDMD, Pixelcade, PIN2DMD) via the `dmdserver` daemon from [libdmdutil](https://github.com/vpinball/libdmdutil)
+- You want to output to **Pixelcade** or **PIN2DMD** hardware (these devices are only reachable through `dmdserver`, not via the direct `zedmd` backend)
 - You are running a `dmdserver` daemon that forwards frames to other consumers (SDL2 simulator, recording tools, etc.)
 
 ### How it works
@@ -122,6 +124,95 @@ port = 6789         # dmdserver TCP port (default: 6789)
 
 ---
 
+## 🎛️ Multi-Device Output via dmdserver
+
+When using `--backend dmdserver`, zeClock sends frames to a running `dmdserver` daemon (part of [libdmdutil](https://github.com/vpinball/libdmdutil)). The daemon handles routing frames to one or more physical display devices. This means zeClock can drive **any combination** of supported hardware without any code changes -- just configure `dmdserver`.
+
+### Supported devices
+
+| Device | Config Section | Connection |
+|--------|---------------|------------|
+| ZeDMD (USB) | `[ZeDMD]` | USB serial (auto-detect or fixed `Device` path) |
+| ZeDMD (WiFi) | `[ZeDMD-WiFi]` | WiFi via `WiFiAddr` |
+| ZeDMD (SPI) | `[ZeDMD-SPI]` | SPI bus (Raspberry Pi) |
+| Pixelcade | `[Pixelcade]` | USB serial (auto-detect or fixed `Device` path) |
+| PIN2DMD | `[PIN2DMD]` | USB |
+
+### dmdserver configuration
+
+The `dmdserver` daemon reads an optional configuration file passed via `-c` (there is no default config file; without `-c`, built-in defaults are used). Each device type has a section that can be independently enabled:
+
+```ini
+[DMDServer]
+Addr = 127.0.0.1
+Port = 6789
+
+[ZeDMD]
+Enabled = 1
+# Device = /dev/ttyUSB0  # Optional: auto-detects if omitted
+Debug = 0
+# Overwrite ZeDMD internal brightness setting. Valid values are 0-15.
+# -1 disables the setting (uses the value stored in ZeDMD hardware).
+Brightness = -1
+
+[ZeDMD-WiFi]
+Enabled = 1
+WiFiAddr = 192.168.0.35
+
+[Pixelcade]
+Enabled = 1
+# Device = /dev/ttyACM0  # Optional: auto-detects if omitted
+
+[PIN2DMD]
+Enabled = 1
+```
+
+**Multiple devices can be active at the same time.** When several sections have `Enabled = 1`, `dmdserver` sends each received frame to all enabled devices. For example, you could have a ZeDMD on your desk and a Pixelcade in your arcade cabinet both showing the same clock.
+
+### Running dmdserver
+
+```bash
+# Start dmdserver (listens on localhost:6789 by default)
+dmdserver
+
+# With a custom config file
+dmdserver -c /path/to/config.ini
+
+# With verbose logging
+dmdserver -v
+```
+
+Then start zeClock pointing at it:
+
+```bash
+zeclock --backend dmdserver
+```
+
+> **Note:** zeClock sets the `disconnectOthers` flag when connecting to `dmdserver`. This means that when a second zeClock instance connects, the first is forcibly disconnected by the server. There is no pause/resume behavior -- the earlier client's connection is terminated. Only one zeClock instance should target a given `dmdserver` at a time.
+
+zeClock connects to `localhost:6789` by default. To use a remote `dmdserver` instance, configure the host and port in `~/.zeclock/config/zeclock.ini`:
+
+```ini
+[dmdserver]
+host = 192.168.1.50
+port = 6789
+```
+
+### Command-line options for dmdserver
+
+| Option | Description |
+|--------|-------------|
+| `-a`, `--addr` | IP address or host name (default: `localhost`) |
+| `-p`, `--port` | Port (default: `6789`) |
+| `-w`, `--wait-for-displays` | Don't terminate if no displays are connected |
+| `-l`, `--logging` | Enable logging to stderr |
+| `-v`, `--verbose-logging` | Enable verbose logging (includes normal logging) |
+| `-c`, `--config` | Path to configuration file (optional, no default) |
+
+For full dmdserver documentation and installation instructions, see the [libdmdutil README](https://github.com/vpinball/libdmdutil#dmdserver).
+
+---
+
 ## 📋 Configuration Reference
 
 All backend-related configuration keys with their CLI overrides:
@@ -150,6 +241,8 @@ All backend-related configuration keys with their CLI overrides:
 | Scenario | Recommended Backend | Why |
 |----------|-------------------|-----|
 | Production with ZeDMD hardware | `auto` or `zedmd` | Direct hardware path, lowest latency, RGB888 passthrough |
+| Production with Pixelcade or PIN2DMD | `dmdserver` | These devices are only reachable through dmdserver (libdmdutil) |
+| Multi-device output (e.g. ZeDMD + Pixelcade) | `dmdserver` | dmdserver routes frames to all enabled devices simultaneously |
 | Development without hardware | `auto` or `dmdserver` | Falls back to TCP streaming with virtual-dmd.py in browser |
 | Debugging connection issues | `zedmd` | Forces the hardware path so errors are explicit (no silent fallback) |
 | CI / automated testing | `dmdserver` | No hardware dependency, deterministic TCP connection |

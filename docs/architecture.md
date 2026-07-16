@@ -6,7 +6,7 @@ This document describes the overall architecture, rendering data flow, and hardw
 
 ## 🗺️ Global Architecture (Data Flow)
 
-**zeClock** is an asynchronous Python client application that communicates with ZeDMD hardware through a pluggable backend system. The default backend (`ZeDMDBackend`) drives the display directly via `libzedmd` (C shared library called through Python ctypes). An alternative backend (`DMDServerBackend`) communicates over TCP with a separate `dmdserver` process, useful for development with `virtual-dmd.py`.
+**zeClock** is an asynchronous Python client application that communicates with DMD hardware through a pluggable backend system. The default backend (`ZeDMDBackend`) drives ZeDMD displays directly via `libzedmd` (C shared library called through Python ctypes). An alternative backend (`DMDServerBackend`) communicates over TCP with a separate `dmdserver` process (from [libdmdutil](https://github.com/vpinball/libdmdutil)), which can route frames to multiple device types simultaneously -- ZeDMD, Pixelcade, PIN2DMD, and an SDL2 simulator. The `dmdserver` backend is also used for development with `virtual-dmd.py`.
 
 ```mermaid
 graph TD
@@ -37,11 +37,15 @@ graph TD
         H["RGB LED Panels (128x32 / 256x64)"]
         I["dmd-simulator (SDL2 Graphical Simulation)"]
         F["dmdserver (TCP Daemon)"]
+        J["Pixelcade"]
+        K["PIN2DMD"]
     end
 
     E1 -->|USB Serial / WiFi via libzedmd| G
     E2 -->|TCP Socket: Port 6789| F
     F -->|USB Serial / WiFi| G
+    F -->|USB Serial| J
+    F -->|USB| K
     G -->|Matrix Bus| H
     F -->|Local Simulation| I
 ```

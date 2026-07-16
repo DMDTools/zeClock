@@ -1,8 +1,10 @@
 # zeClock
 
-> 🕒 A smart DMD clock with a plugin system, for [ZeDMD](https://github.com/PPUC/ZeDMD) compatible hardware
+> 🕒 A smart DMD clock with a plugin system, for [ZeDMD](https://github.com/PPUC/ZeDMD), [Pixelcade](https://pixelcade.org/), and [PIN2DMD](https://pin2dmd.com/) displays
 
 Tired of simple DMD clocks that only show time and maybe a GIF? zeClock is a full-featured DMD clock with built-in plugins (pinball animations, weather, stocks, pong, speaker timer and more), a plugin system to create your own, and connectivity to your ecosystem via REST API, MQTT, and Home Assistant.
+
+zeClock can drive ZeDMD hardware directly via `libzedmd`, or output to **any device supported by [libdmdutil](https://github.com/vpinball/libdmdutil)'s `dmdserver`** -- including ZeDMD, Pixelcade, and PIN2DMD -- with multiple devices active simultaneously.
 
 It comes with a **web interface** for easy configuration, and a **browser-based virtual renderer** so you can try everything before buying [ZeDMD-compatible hardware](https://github.com/PPUC/ZeDMD#which-led-panels-are-lcd-screens-are-supported).
 
@@ -350,6 +352,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for full details.
 - [sigmafx/DotClk-Resources](https://github.com/sigmafx/DotClk-Resources) — 2300+ animations
 - [PPUC/libzedmd](https://github.com/PPUC/libzedmd) — ZeDMD native library
 - [PPUC/ZeDMD](https://github.com/PPUC/ZeDMD) — ZeDMD hardware
+- [vpinball/libdmdutil](https://github.com/vpinball/libdmdutil) — DMD utility library with `dmdserver` for multi-device output (ZeDMD, Pixelcade, PIN2DMD)
 
 ## License
 
