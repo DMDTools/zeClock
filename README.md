@@ -154,9 +154,10 @@ Override from CLI: `zeclock --plugins pinball,pong`
 | | `recursive` | Search subdirectories (default: true) |
 | **speaker-timer** | `yellow_threshold` | % remaining to switch to orange (default: 20) |
 | | `red_threshold` | % remaining to switch to red (default: 10) |
-| **pinball** | — | No settings (uses clock color automatically) |
-| **pong** | — | No settings |
-| **eyes** | — | No settings |
+| **pinball** | `color` | Animation color name (default: `orange`) |
+| | `animation_color` | Separate animation color (default: same as `color`) |
+| **pong** | `color` | Game color name (default: `orange`) |
+| **eyes** | `color` | Eyes color name (default: `cyan`) |
 | **paragliding** | `api_key` | Paraglidable API key (required, free from paraglidable.com) |
 | | `language` | `en` or `fr` (default: `en`) |
 | | `spots` | Comma-separated spot name filters (optional) |
@@ -206,9 +207,6 @@ zeclock
 # Fixed orange clock
 zeclock --color orange
 
-# Orange clock with blue animations
-zeclock --color orange --animation-color blue
-
 # Only specific plugins
 zeclock --plugins pinball,weather
 ```
@@ -223,7 +221,6 @@ zeclock --plugins pinball,weather
 | `--brightness` | 0-15 | 10 | Display brightness |
 | `--hd` | — | — | Force HD resolution (256x64) |
 | `--color` | color name | `auto` | Clock color (auto = rotate every minute) |
-| `--animation-color` | color name | same as clock | Animation color |
 | `--plugins` | comma-separated | all | Only activate listed plugins |
 | `--bootstrap` | — | — | Install resources |
 

@@ -42,7 +42,7 @@ dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
     "hypothesis>=6.0",
-    "black>=22.0",
+    "black>=25.0,<27.0",
     "flake8>=4.0",
     "mypy>=0.950",
     "types-PyYAML>=6.0",
@@ -63,6 +63,9 @@ include = ["zeclock*"]
 [tool.setuptools.package-data]
 zeclock = ["resources/Fonts/*.fnt", "remote/web/*.html", "remote/web/*.css", "remote/web/*.js"]
 
+
+[tool.black]
+target-version = ["py312"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

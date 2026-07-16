@@ -16,7 +16,7 @@ from .brightness_scheduler import (
     BrightnessScheduler,
     apply_sw_dimming,
 )
-from .colors import COLOR_LIST, COLOR_MAP, COLOR_NAMES
+from .colors import COLOR_LIST, COLOR_MAP
 from .overlay import colorize_grayscale
 from .plugin_manager import PluginManager
 from .readers import load_font
@@ -122,7 +122,6 @@ class ZeClock:
         dmdserver_port: int = 6789,
         test_mode: bool = False,
         color: str = "orange",
-        animation_color: Optional[str] = None,
         plugin_config_path: Optional[Path] = None,
         plugins_override: Optional[str] = None,
         upscale_mode: str = "epx",
@@ -145,14 +144,6 @@ class ZeClock:
             self.last_color_change = time.time()
         else:
             self.color = COLOR_MAP.get(color, COLOR_LIST[0])
-
-        # Animation color (defaults to same as clock if not specified)
-        self.animation_color_name = animation_color
-        self.animation_color = (
-            COLOR_MAP.get(animation_color, COLOR_LIST[0])
-            if animation_color
-            else self.color
-        )
 
         # DMD backend (dependency injection with backward compatibility)
         if backend is not None:
@@ -538,18 +529,11 @@ class ZeClock:
         logger.info(f"Plugins found: {all_names}")
         logger.info(f"Plugins activated: {active_with_freq}")
 
-        # Wire --color and --animation-color to PinballPlugin config
-        clock_color_name = COLOR_NAMES.get(self.color, "orange")
-        anim_color_name = self.animation_color_name or clock_color_name
-
-        # Inject color settings into pinball plugin config
+        # Inject display dimensions into pinball plugin config (it needs width/height)
         pinball_entry = self._plugin_manager.registry.get_plugin("pinball")
         if pinball_entry:
-            # Update the config that will be passed to pinball plugin on activation
             for entry in self._plugin_manager.config.plugin_entries:
                 if entry["name"] == "pinball":
-                    entry["settings"]["color"] = clock_color_name
-                    entry["settings"]["animation_color"] = anim_color_name
                     entry["settings"]["width"] = self.width
                     entry["settings"]["height"] = self.height
                     break
@@ -560,8 +544,6 @@ class ZeClock:
                         "name": "pinball",
                         "frequency": 100,
                         "settings": {
-                            "color": clock_color_name,
-                            "animation_color": anim_color_name,
                             "width": self.width,
                             "height": self.height,
                         },
@@ -920,11 +902,6 @@ def main() -> None:
         help="Clock color (default: auto-rotate every minute)",
     )
     parser.add_argument(
-        "--animation-color",
-        choices=["orange", "blue", "red", "purple", "green", "yellow", "cyan", "pink"],
-        help="Animation color (default: same as clock)",
-    )
-    parser.add_argument(
         "--bootstrap",
         action="store_true",
         help="Automatically install dmdserver and all resources without running the clock",
@@ -1116,7 +1093,6 @@ def main() -> None:
         height=display_height,
         backend=backend,
         color=args.color,
-        animation_color=args.animation_color,
         plugin_config_path=Path(args.plugin_config) if args.plugin_config else None,
         plugins_override=args.plugins,
         upscale_mode=backend_config.upscale_mode,
