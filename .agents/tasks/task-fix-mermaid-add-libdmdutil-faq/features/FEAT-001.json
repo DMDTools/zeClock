@@ -1,0 +1,23 @@
+{
+  "id": "FEAT-001",
+  "type": "fix",
+  "description": "Fix mermaid diagrams that fail to render on GitHub, and add a 'Why not use libdmdutil directly?' FAQ section to docs/backends.md explaining the investigation results.",
+  "status": "in_progress",
+  "steps": [
+    "Fix docs/backends.md mermaid flowchart (lines 23-29): The edge labels contain parentheses inside quotes, e.g. '\"libzedmd found (ctypes load succeeds)\"' and '\"ImportError (libzedmd not found)\"'. GitHub's mermaid renderer can choke on parentheses in edge labels. Replace parentheses with HTML entities or reword to avoid them. Also the node label '\"zeClock starts with --backend auto\"' has double dashes that may be interpreted as arrow syntax.",
+    "Fix docs/architecture.md mermaid graph TD (lines 11-52): The 'Backend Layer' subgraph has edge labels '\"--backend zedmd (default)\"' and '\"--backend dmdserver\"' where -- is problematic. Also node labels like '\"ZeDMDBackend (ctypes/libzedmd)\"' and '\"DMDServerBackend (TCP socket)\"' contain parentheses. Replace problematic characters with HTML entities (#40; for ( and #41; for ) and #45;#45; for --) or reword the labels to avoid special characters.",
+    "Add a new section to docs/backends.md titled '## Why not use libdmdutil directly?' (place it before the final Architecture section at the bottom). Content should explain: (1) libdmdutil is a C++ library with no extern C API, (2) ctypes cannot call C++ class methods due to name mangling/vtables/ABI, (3) dmdserver IS the intended interface for external programs, (4) libdmdutil internally uses libzedmd anyway so for ZeDMD-only the existing zedmd backend is already optimal, (5) the only benefit would be Pixelcade/PIN2DMD without running dmdserver but the complexity cost is prohibitive. Reference the libdmdutil GitHub header files.",
+    "Commit all changes with a descriptive commit message. Do NOT push."
+  ],
+  "acceptance_criteria": [
+    "All mermaid diagrams in docs/backends.md and docs/architecture.md use only mermaid-safe characters (no raw parentheses or double-dashes in labels that could be misinterpreted)",
+    "A new FAQ section 'Why not use libdmdutil directly?' exists in docs/backends.md with clear technical explanation",
+    "The commit is on the existing branch docs/dmdserver-multi-device-support"
+  ],
+  "verification": [
+    "Validate the mermaid syntax by checking that no unescaped parentheses remain in mermaid edge labels, and no bare -- appears inside edge/node label text",
+    "Read the new FAQ section to verify it is accurate and well-written"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

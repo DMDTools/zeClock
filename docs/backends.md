@@ -10,7 +10,7 @@ zeClock uses a **backend abstraction layer** to decouple the rendering engine fr
 
 1. **Production** -- The `zedmd` backend communicates directly with ZeDMD hardware via `libzedmd` (C shared library loaded through Python ctypes). This is the fastest path: RGB888 frames are sent directly to the panel without any Python-level pixel conversion.
 
-2. **Development** -- The `dmdserver` backend streams frames over TCP to a separate daemon (`dmdserver`) or to the browser-based `virtual-dmd.py` renderer. No hardware is required; you can develop and test on any machine.
+2. **Development & Multi-device** -- The `dmdserver` backend streams frames over TCP to a separate daemon (`dmdserver`) or to the browser-based `virtual-dmd.py` renderer. No hardware is required for development. In production, `dmdserver` (from [libdmdutil](https://github.com/vpinball/libdmdutil)) can route frames to multiple devices simultaneously -- ZeDMD, Pixelcade, PIN2DMD, and an SDL2 simulator.
 
 Both backends implement the same `DMDBackend` abstract base class, so the clock, plugins, and rendering pipeline remain completely backend-agnostic.
 
@@ -22,9 +22,9 @@ When `--backend auto` is used (the default), zeClock applies the following fallb
 
 ```mermaid
 flowchart TD
-    START["zeClock starts with --backend auto"] --> TRY_ZEDMD["Try to import ZeDMDBackend"]
-    TRY_ZEDMD -->|"libzedmd found (ctypes load succeeds)"| USE_ZEDMD["Use ZeDMDBackend"]
-    TRY_ZEDMD -->|"ImportError (libzedmd not found)"| TRY_DMDSERVER["Try to import DMDServerBackend"]
+    START["zeClock starts with #45;#45;backend auto"] --> TRY_ZEDMD["Try to import ZeDMDBackend"]
+    TRY_ZEDMD -->|"libzedmd found #40;ctypes load succeeds#41;"| USE_ZEDMD["Use ZeDMDBackend"]
+    TRY_ZEDMD -->|"ImportError #40;libzedmd not found#41;"| TRY_DMDSERVER["Try to import DMDServerBackend"]
     TRY_DMDSERVER -->|"Success"| USE_DMDSERVER["Use DMDServerBackend"]
     TRY_DMDSERVER -->|"Both failed"| EXIT["Exit with error"]
 ```
@@ -85,6 +85,8 @@ Use `--backend dmdserver` (or rely on `auto` fallback) when:
 
 - You are **developing** on a PC/Mac without ZeDMD hardware
 - You want to use the **browser-based virtual DMD** (`make dev-start-virtual`)
+- You want to output to **multiple devices simultaneously** (ZeDMD, Pixelcade, PIN2DMD) via the `dmdserver` daemon from [libdmdutil](https://github.com/vpinball/libdmdutil)
+- You want to output to **Pixelcade** or **PIN2DMD** hardware (these devices are only reachable through `dmdserver`, not via the direct `zedmd` backend)
 - You are running a `dmdserver` daemon that forwards frames to other consumers (SDL2 simulator, recording tools, etc.)
 
 ### How it works
@@ -122,6 +124,95 @@ port = 6789         # dmdserver TCP port (default: 6789)
 
 ---
 
+## 🎛️ Multi-Device Output via dmdserver
+
+When using `--backend dmdserver`, zeClock sends frames to a running `dmdserver` daemon (part of [libdmdutil](https://github.com/vpinball/libdmdutil)). The daemon handles routing frames to one or more physical display devices. This means zeClock can drive **any combination** of supported hardware without any code changes -- just configure `dmdserver`.
+
+### Supported devices
+
+| Device | Config Section | Connection |
+|--------|---------------|------------|
+| ZeDMD (USB) | `[ZeDMD]` | USB serial (auto-detect or fixed `Device` path) |
+| ZeDMD (WiFi) | `[ZeDMD-WiFi]` | WiFi via `WiFiAddr` |
+| ZeDMD (SPI) | `[ZeDMD-SPI]` | SPI bus (Raspberry Pi) |
+| Pixelcade | `[Pixelcade]` | USB serial (auto-detect or fixed `Device` path) |
+| PIN2DMD | `[PIN2DMD]` | USB |
+
+### dmdserver configuration
+
+The `dmdserver` daemon reads an optional configuration file passed via `-c` (there is no default config file; without `-c`, built-in defaults are used). Each device type has a section that can be independently enabled:
+
+```ini
+[DMDServer]
+Addr = 127.0.0.1
+Port = 6789
+
+[ZeDMD]
+Enabled = 1
+# Device = /dev/ttyUSB0  # Optional: auto-detects if omitted
+Debug = 0
+# Overwrite ZeDMD internal brightness setting. Valid values are 0-15.
+# -1 disables the setting (uses the value stored in ZeDMD hardware).
+Brightness = -1
+
+[ZeDMD-WiFi]
+Enabled = 1
+WiFiAddr = 192.168.0.35
+
+[Pixelcade]
+Enabled = 1
+# Device = /dev/ttyACM0  # Optional: auto-detects if omitted
+
+[PIN2DMD]
+Enabled = 1
+```
+
+**Multiple devices can be active at the same time.** When several sections have `Enabled = 1`, `dmdserver` sends each received frame to all enabled devices. For example, you could have a ZeDMD on your desk and a Pixelcade in your arcade cabinet both showing the same clock.
+
+### Running dmdserver
+
+```bash
+# Start dmdserver (listens on localhost:6789 by default)
+dmdserver
+
+# With a custom config file
+dmdserver -c /path/to/config.ini
+
+# With verbose logging
+dmdserver -v
+```
+
+Then start zeClock pointing at it:
+
+```bash
+zeclock --backend dmdserver
+```
+
+> **Note:** zeClock sets the `disconnectOthers` flag when connecting to `dmdserver`. This means that when a second zeClock instance connects, the first is forcibly disconnected by the server. There is no pause/resume behavior -- the earlier client's connection is terminated. Only one zeClock instance should target a given `dmdserver` at a time.
+
+zeClock connects to `localhost:6789` by default. To use a remote `dmdserver` instance, configure the host and port in `~/.zeclock/config/zeclock.ini`:
+
+```ini
+[dmdserver]
+host = 192.168.1.50
+port = 6789
+```
+
+### Command-line options for dmdserver
+
+| Option | Description |
+|--------|-------------|
+| `-a`, `--addr` | IP address or host name (default: `localhost`) |
+| `-p`, `--port` | Port (default: `6789`) |
+| `-w`, `--wait-for-displays` | Don't terminate if no displays are connected |
+| `-l`, `--logging` | Enable logging to stderr |
+| `-v`, `--verbose-logging` | Enable verbose logging (includes normal logging) |
+| `-c`, `--config` | Path to configuration file (optional, no default) |
+
+For full dmdserver documentation and installation instructions, see the [libdmdutil README](https://github.com/vpinball/libdmdutil#dmdserver).
+
+---
+
 ## 📋 Configuration Reference
 
 All backend-related configuration keys with their CLI overrides:
@@ -150,10 +241,58 @@ All backend-related configuration keys with their CLI overrides:
 | Scenario | Recommended Backend | Why |
 |----------|-------------------|-----|
 | Production with ZeDMD hardware | `auto` or `zedmd` | Direct hardware path, lowest latency, RGB888 passthrough |
+| Production with Pixelcade or PIN2DMD | `dmdserver` | These devices are only reachable through dmdserver (libdmdutil) |
+| Multi-device output (e.g. ZeDMD + Pixelcade) | `dmdserver` | dmdserver routes frames to all enabled devices simultaneously |
 | Development without hardware | `auto` or `dmdserver` | Falls back to TCP streaming with virtual-dmd.py in browser |
 | Debugging connection issues | `zedmd` | Forces the hardware path so errors are explicit (no silent fallback) |
 | CI / automated testing | `dmdserver` | No hardware dependency, deterministic TCP connection |
 | Multiple display consumers | `dmdserver` | dmdserver daemon can forward frames to multiple targets |
+
+---
+
+## 🔬 Why not use libdmdutil directly?
+
+A natural question when looking at the backend architecture: why not bypass `dmdserver` entirely and call [libdmdutil](https://github.com/vpinball/libdmdutil) directly from Python? This section explains why zeClock uses `dmdserver` as an intermediary rather than integrating libdmdutil as a third backend.
+
+### libdmdutil is a C++ library with no C API
+
+libdmdutil is written in C++ and exposes its functionality through C++ classes, namespaces (`DMDUtil::`), virtual methods, and STL containers. There is no `extern "C"` wrapper or flat C API. You can verify this by looking at the public headers ([DMD.h](https://github.com/vpinball/libdmdutil/blob/main/include/DMDUtil/DMD.h), [Config.h](https://github.com/vpinball/libdmdutil/blob/main/include/DMDUtil/Config.h)) -- every entry point is a C++ class method.
+
+### Python ctypes cannot call C++ methods
+
+Python's `ctypes` module is designed to call C functions with well-defined calling conventions. C++ class methods cannot be called through ctypes because of:
+
+- **Name mangling**: C++ compilers mangle method names (e.g., `DMDUtil::DMD::FindDisplays` becomes a compiler-specific symbol like `_ZN7DMDUtil3DMD12FindDisplaysEv`), and the mangling scheme varies between compilers and platforms.
+- **vtables**: Virtual method dispatch relies on internal vtable pointers that ctypes has no mechanism to navigate.
+- **ABI incompatibilities**: Object layout, exception handling, and memory allocation differ between C++ runtimes, making it unsafe to interact with C++ objects from Python without a proper binding layer.
+
+### dmdserver IS the intended external interface
+
+The `dmdserver` process exists precisely to solve this problem. It wraps libdmdutil behind a simple TCP protocol (DMDStream) that any language can speak -- no C++ bindings required. This is its design purpose: provide IPC access to libdmdutil's device routing for external programs.
+
+### For ZeDMD, the direct path already exists
+
+libdmdutil internally uses [libzedmd](https://github.com/PPUC/libzedmd) to communicate with ZeDMD hardware. zeClock's existing `zedmd` backend already calls libzedmd directly (which does have a clean C API suitable for ctypes). So for ZeDMD-only deployments, the current architecture is already the optimal path -- there is no additional layer that libdmdutil would eliminate.
+
+### The cost-benefit does not justify a custom C wrapper
+
+The only theoretical benefit of direct libdmdutil integration would be reaching Pixelcade or PIN2DMD hardware without running a separate `dmdserver` process. However, achieving this would require:
+
+1. Writing and maintaining a custom C wrapper (`.so`/`.dll`) that exposes libdmdutil's C++ classes through flat C functions.
+2. Keeping that wrapper in sync with libdmdutil's evolving API across releases.
+3. Building and distributing platform-specific binaries (Linux x64/aarch64, macOS arm64/x64, Windows x64).
+
+This is a significant ongoing maintenance burden for marginal gain -- eliminating one background process (`dmdserver`) that is already lightweight and purpose-built for this role.
+
+### Summary
+
+| Path | Use Case | How it works |
+|------|----------|--------------|
+| `zedmd` backend | ZeDMD hardware only | Calls libzedmd directly via ctypes (C API) |
+| `dmdserver` backend | Any device (ZeDMD, Pixelcade, PIN2DMD, simulator) | Streams frames over TCP to dmdserver, which uses libdmdutil internally |
+| Direct libdmdutil | Not implemented | Would require a custom C wrapper around C++ classes -- not practical |
+
+The current two-backend architecture covers all use cases without requiring custom native code wrappers or duplicating functionality that `dmdserver` already provides.
 
 ---
 
