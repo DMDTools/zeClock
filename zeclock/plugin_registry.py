@@ -83,7 +83,9 @@ class PluginRegistry:
         return [
             e
             for e in self._plugins.values()
-            if e.state != "failed" and e.plugin.rotatable
+            if e.state != "failed"
+            and e.plugin.rotatable
+            and not getattr(e.plugin, "_unconfigured", False)
         ]
 
     def mark_failed(self, name: str, error: str = "") -> None:

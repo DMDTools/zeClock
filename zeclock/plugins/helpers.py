@@ -333,13 +333,15 @@ class PluginHelpers:
     ) -> Image.Image:
         """Render text using the DotClk bitmap font system.
 
+        Supports newlines (\\n) for multi-line text when centered=True.
+
         Args:
-            text: The string to render.
+            text: The string to render. Use \\n for multiple lines.
             x: X position (ignored if centered=True).
             y: Y position for the text top.
             color: RGB color tuple for the text.
             font_name: Name of the .fnt font file (without extension).
-            centered: If True, center text horizontally on the frame.
+            centered: If True, center text horizontally and vertically.
 
         Returns:
             PIL Image in RGB mode containing the rendered text on black background.
@@ -351,18 +353,48 @@ class PluginHelpers:
             return frame
 
         if centered:
-            # Use the BitmapFont's render_text which returns a grayscale image
-            # centered in the given dimensions, then colorize
-            grayscale = font.render_text(text, self.width, self.height)
-            gray_data = grayscale.tobytes()
+            lines = text.split("\n")
+            char_h = font.char_height
+
+            # Only keep lines that fit vertically
+            max_lines = max(1, self.height // char_h)
+            lines = lines[:max_lines]
+
+            # Distribute vertical space evenly:
+            # total content height + gaps between lines
+            num_lines = len(lines)
+            total_content_h = char_h * num_lines
+            remaining_space = self.height - total_content_h
+            # Gap between lines: distribute remaining space evenly (at least 1px if room)
+            if num_lines > 1 and remaining_space > 0:
+                line_gap = min(remaining_space // (num_lines + 1), char_h // 2)
+            else:
+                line_gap = 0
+            total_h = total_content_h + line_gap * (num_lines - 1)
+            y_start = max(0, (self.height - total_h) // 2)
+
             rgb_data = bytearray(self.width * self.height * 3)
 
-            for i, pixel in enumerate(gray_data):
-                if pixel > 0:
-                    offset = i * 3
-                    rgb_data[offset] = (color[0] * pixel) // 255
-                    rgb_data[offset + 1] = (color[1] * pixel) // 255
-                    rgb_data[offset + 2] = (color[2] * pixel) // 255
+            for line_idx, line in enumerate(lines):
+                if not line:
+                    continue
+                grayscale = font.render_text(line, self.width, char_h)
+                gray_data = grayscale.tobytes()
+                line_y = y_start + line_idx * (char_h + line_gap)
+
+                for row in range(grayscale.height):
+                    fy = line_y + row
+                    if fy >= self.height:
+                        break
+                    if fy < 0:
+                        continue
+                    for col in range(min(grayscale.width, self.width)):
+                        pixel = gray_data[row * grayscale.width + col]
+                        if pixel > 0:
+                            offset = (fy * self.width + col) * 3
+                            rgb_data[offset] = (color[0] * pixel) // 255
+                            rgb_data[offset + 1] = (color[1] * pixel) // 255
+                            rgb_data[offset + 2] = (color[2] * pixel) // 255
 
             frame = Image.frombytes("RGB", (self.width, self.height), bytes(rgb_data))
         else:

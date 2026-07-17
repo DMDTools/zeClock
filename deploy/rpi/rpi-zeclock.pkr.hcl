@@ -21,7 +21,7 @@ variable "rpi_os_checksum" {
 variable "image_size" {
   type        = string
   description = "Final image size (will be expanded)"
-  default     = "4.5G"
+  default     = "3G"
 }
 
 variable "wifi_ssid" {

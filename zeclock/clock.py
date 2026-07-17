@@ -18,6 +18,7 @@ from .brightness_scheduler import (
 )
 from .colors import COLOR_LIST, COLOR_MAP
 from .overlay import colorize_grayscale
+from .paths import get_config_dir
 from .plugin_manager import PluginManager
 from .readers import load_font
 
@@ -107,6 +108,23 @@ class ClockState(enum.Enum):
     CLOCK_ONLY = "clock_only"
     PLUGIN_SELECT = "plugin_select"
     PLUGIN_ACTIVE = "plugin_active"
+
+
+def _persist_wifi_addr(ip: str) -> None:
+    """Save discovered WiFi address to zeclock.ini so it's used on next boot."""
+    import configparser
+
+    config_path = get_config_dir() / "zeclock.ini"
+    parser = configparser.RawConfigParser()
+    if config_path.exists():
+        parser.read(str(config_path))
+    if not parser.has_section("zedmd"):
+        parser.add_section("zedmd")
+    parser.set("zedmd", "wifi_addr", ip)
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(config_path, "w") as f:
+        parser.write(f)
+    logger.info("Persisted wifi_addr=%s to %s", ip, config_path)
 
 
 class ZeClock:
@@ -246,6 +264,7 @@ class ZeClock:
                     self.dmd_client._wifi_addr = result.ip
                     if self.dmd_client.connect():
                         print("✅ ZeDMD connected via WiFi")
+                        _persist_wifi_addr(result.ip)
                     else:
                         print(
                             "⚠️ Discovery found ZeDMD but connection failed — retrying..."
@@ -258,33 +277,49 @@ class ZeClock:
                     "👉 Check your backend configuration (--backend, --wifi-addr, --device)"
                 )
                 self._discovery_state.update("waiting", "Waiting for ZeDMD...")
-                delay = 2.0
+                delay = 3.0
+                attempt = 0
                 while self.running:
                     await asyncio.sleep(delay)
-                    # Retry USB first
-                    if self.dmd_client.connect():
-                        print("✅ DMD backend connected")
-                        self._discovery_state.update("found", "ZeDMD connected")
-                        break
-                    # Periodically retry discovery (every 30s)
-                    if delay >= 30.0 and not self.dmd_client._wifi_addr:  # type: ignore[attr-defined]
-                        self._discovery_state.update(
-                            "scanning", "Retrying network discovery..."
-                        )
-                        result = await asyncio.get_event_loop().run_in_executor(
-                            None, discover_zedmd, self._discovery_state
-                        )
-                        if result:
-                            self.dmd_client._wifi_addr = result.ip  # type: ignore[attr-defined]
+                    attempt += 1
+
+                    # Alternate: odd attempts try USB, even attempts try mDNS
+                    if attempt % 2 == 1:
+                        # Try USB
+                        if self.dmd_client.connect():
+                            print("✅ DMD backend connected (USB)")
+                            self._discovery_state.update("found", "ZeDMD connected")
+                            break
+                    else:
+                        # Try mDNS discovery
+                        if not self.dmd_client._wifi_addr:  # type: ignore[attr-defined]
+                            self._discovery_state.update(
+                                "scanning", "Retrying network discovery..."
+                            )
+                            result = await asyncio.get_event_loop().run_in_executor(
+                                None, discover_zedmd, self._discovery_state
+                            )
+                            if result:
+                                self.dmd_client._wifi_addr = result.ip  # type: ignore[attr-defined]
+                                if self.dmd_client.connect():
+                                    print(
+                                        f"✅ ZeDMD discovered and connected at {result.ip}"
+                                    )
+                                    self._discovery_state.update(
+                                        "found", f"ZeDMD connected at {result.ip}"
+                                    )
+                                    _persist_wifi_addr(result.ip)
+                                    break
+                        else:
+                            # WiFi addr known but connection failed — retry connect
                             if self.dmd_client.connect():
-                                print(
-                                    f"✅ ZeDMD discovered and connected at {result.ip}"
-                                )
+                                print("✅ DMD backend connected (WiFi)")
                                 self._discovery_state.update(
-                                    "found", f"ZeDMD connected at {result.ip}"
+                                    "found", "ZeDMD connected"
                                 )
                                 break
-                    delay = min(delay * 1.5, 30.0)
+
+                    delay = min(delay * 1.3, 10.0)
                     logger.info("DMD still unavailable — next retry in %.0fs", delay)
                 if not self.running:
                     return

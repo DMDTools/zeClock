@@ -542,10 +542,10 @@ class PluginManager:
         return frame
 
     def _render_configure_message(self, name: str) -> Image.Image:
-        """Render a 'configure me' message for an unconfigured plugin.
+        """Render a 'please configure' message for an unconfigured plugin.
 
-        Uses the MENU bitmap font, centered horizontally and vertically.
-        Plugin name is truncated to 12 characters if longer.
+        Displays 'PLEASE CONFIGURE' on line 1, '<NAME> PLUGIN' on line 2,
+        both centered using the MENU bitmap font.
 
         Args:
             name: The plugin's display name.
@@ -553,8 +553,8 @@ class PluginManager:
         Returns:
             PIL Image in RGB mode with the configure message.
         """
-        truncated_name = name[:12]
-        text = f"{truncated_name}: Configure me"
+        truncated_name = name[:12].upper()
+        text = f"PLEASE CONFIGURE\n{truncated_name} PLUGIN"
         return self._helpers.render_text(text, centered=True, font_name="MENU")
 
     def should_deactivate(self) -> bool:

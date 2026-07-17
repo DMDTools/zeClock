@@ -1,7 +1,7 @@
 [Unit]
 Description=zeClock - Smart DMD Clock
-After=network-online.target bind-persistent-dirs.service
-Wants=network-online.target bind-persistent-dirs.service
+After=network.target bind-persistent-dirs.service
+Wants=network.target bind-persistent-dirs.service
 
 [Service]
 Type=simple
