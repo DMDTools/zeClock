@@ -341,6 +341,9 @@ async function loadConfig() {
 
     // Load and render auto-generated plugin config forms
     loadPluginConfigForms(pluginsResp && pluginsResp.data);
+
+    // Initialize location autocomplete for global settings
+    initLocationAutocomplete();
 }
 
 function renderPluginEntries(plugins) {
@@ -501,6 +504,7 @@ async function loadPluginConfigForms(currentPluginsConfig) {
 
     // Initialize city autocomplete handlers after forms are rendered
     initCityAutocomplete();
+    initLocationAutocomplete();
 }
 
 function renderPluginField(pluginName, field, settings) {
@@ -524,7 +528,10 @@ function renderPluginField(pluginName, field, settings) {
             hintHtml = `<div class="field-hint">Comma-separated values</div>`;
             break;
         case 'city':
-            inputHtml = `<div class="city-input-wrapper"><input type="text" id="${fieldId}" value="${getCityDisplayValue(currentValue)}" ${requiredAttr} data-plugin="${pluginName}" data-field="${field.name}" data-field-type="city" class="city-autocomplete-input" autocomplete="off"></div>`;
+            inputHtml = `<div class="location-input-wrapper"><input type="text" id="${fieldId}" value="${getLocationDisplayValue(currentValue)}" ${requiredAttr} data-plugin="${pluginName}" data-field="${field.name}" data-field-type="city" class="location-autocomplete-input" autocomplete="off"><div class="location-coords" id="${fieldId}-coords">${getLocationCoordsText(currentValue)}</div></div>`;
+            break;
+        case 'location':
+            inputHtml = `<div class="location-input-wrapper"><input type="text" id="${fieldId}" value="${getLocationDisplayValue(currentValue)}" ${requiredAttr} data-plugin="${pluginName}" data-field="${field.name}" data-field-type="location" class="location-autocomplete-input" autocomplete="off" placeholder="Start typing a city or address..."><div class="location-coords" id="${fieldId}-coords">${getLocationCoordsText(currentValue)}</div></div>`;
             break;
         default: // text
             inputHtml = `<input type="text" id="${fieldId}" value="${currentValue}" ${requiredAttr} data-plugin="${pluginName}" data-field="${field.name}">`;
@@ -845,6 +852,21 @@ function getCityDisplayValue(value) {
     return '';
 }
 
+function getLocationDisplayValue(value) {
+    if (!value) return '';
+    if (typeof value === 'object' && value.display_name) return value.display_name;
+    if (typeof value === 'string') return value;
+    return '';
+}
+
+function getLocationCoordsText(value) {
+    if (!value) return '';
+    if (typeof value === 'object' && value.latitude != null && value.longitude != null) {
+        return `📍 ${value.latitude.toFixed(4)}, ${value.longitude.toFixed(4)}${value.country ? ' — ' + value.country : ''}`;
+    }
+    return '';
+}
+
 function capitalize(str) {
     return str.charAt(0).toUpperCase() + str.slice(1);
 }
@@ -890,9 +912,11 @@ async function savePluginConfig(pluginName) {
             pluginEntry.settings[fieldName] = collectGifDirsData();
         } else {
             let value = (input.value || '').trim();
-            if (fieldType === 'city') {
-                // For city fields, store the value (autocomplete task 9 will add lat/long handling)
-                if (input._cityData) {
+            if (fieldType === 'city' || fieldType === 'location') {
+                // For location/city fields, store the full location object with coordinates
+                if (input._locationData) {
+                    pluginEntry.settings[fieldName] = input._locationData;
+                } else if (input._cityData) {
                     pluginEntry.settings[fieldName] = input._cityData;
                 } else {
                     pluginEntry.settings[fieldName] = value;
@@ -1028,6 +1052,141 @@ function removeCityDropdown(input) {
 
 function closeCityDropdowns() {
     document.querySelectorAll('.city-autocomplete-dropdown').forEach(d => d.remove());
+}
+
+// --- Location Autocomplete (shared service for "location" field type) ---
+
+let locationAutocompleteTimeout = null;
+
+function initLocationAutocomplete() {
+    const locationInputs = document.querySelectorAll('.location-autocomplete-input');
+    locationInputs.forEach(input => {
+        input.addEventListener('input', handleLocationInput);
+        input.addEventListener('keydown', handleLocationKeydown);
+    });
+
+    // Close dropdowns when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.location-input-wrapper')) {
+            closeLocationDropdowns();
+        }
+    });
+}
+
+function handleLocationInput(e) {
+    const input = e.target;
+    const query = input.value.trim();
+
+    // Clear any pending debounce
+    if (locationAutocompleteTimeout) {
+        clearTimeout(locationAutocompleteTimeout);
+        locationAutocompleteTimeout = null;
+    }
+
+    // Clear stored location data when user types (selection invalidated)
+    input._locationData = null;
+    input._cityData = null;
+    // Clear coordinates display
+    const coordsEl = input.closest('.location-input-wrapper')?.querySelector('.location-coords');
+    if (coordsEl) coordsEl.textContent = '';
+
+    // Only search if 3+ characters
+    if (query.length < 3) {
+        removeLocationDropdown(input);
+        return;
+    }
+
+    // Debounce: wait 300ms after last keystroke
+    locationAutocompleteTimeout = setTimeout(() => {
+        searchLocations(input, query);
+    }, 300);
+}
+
+function handleLocationKeydown(e) {
+    if (e.key === 'Escape') {
+        removeLocationDropdown(e.target);
+    }
+}
+
+async function searchLocations(input, query) {
+    const data = await api(`/api/geocode/search?q=${encodeURIComponent(query)}`);
+
+    if (!data || !data.results) {
+        showLocationDropdown(input, []);
+        return;
+    }
+
+    showLocationDropdown(input, data.results);
+}
+
+function showLocationDropdown(input, results) {
+    const wrapper = input.closest('.location-input-wrapper');
+    if (!wrapper) return;
+
+    // Remove existing dropdown
+    removeLocationDropdown(input);
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'location-autocomplete-dropdown';
+
+    if (results.length === 0) {
+        dropdown.innerHTML = '<div class="location-autocomplete-no-results">No results found</div>';
+    } else {
+        const items = results.slice(0, 5);
+        dropdown.innerHTML = items.map((result, index) => `
+            <div class="location-autocomplete-item" data-index="${index}">
+                <span class="location-item-name">${escapeHtml(result.display_name)}</span>
+                <span class="location-item-coords">${result.latitude.toFixed(4)}, ${result.longitude.toFixed(4)}</span>
+            </div>
+        `).join('');
+
+        // Attach click handlers to items
+        dropdown.querySelectorAll('.location-autocomplete-item').forEach((item, index) => {
+            item.addEventListener('click', () => {
+                selectLocation(input, items[index]);
+            });
+        });
+    }
+
+    wrapper.appendChild(dropdown);
+}
+
+function selectLocation(input, result) {
+    input.value = result.display_name;
+    const locationData = {
+        display_name: result.display_name,
+        latitude: result.latitude,
+        longitude: result.longitude,
+        country: result.country
+    };
+    input._locationData = locationData;
+    input._cityData = locationData;
+
+    // Update coordinates display
+    const coordsEl = input.closest('.location-input-wrapper')?.querySelector('.location-coords');
+    if (coordsEl) {
+        coordsEl.textContent = `📍 ${result.latitude.toFixed(4)}, ${result.longitude.toFixed(4)}${result.country ? ' — ' + result.country : ''}`;
+    }
+
+    // If this is the global location field, auto-fill lat/lon/city fields
+    if (input.id === 'cfg-location-search') {
+        document.getElementById('cfg-latitude').value = result.latitude.toFixed(6);
+        document.getElementById('cfg-longitude').value = result.longitude.toFixed(6);
+        document.getElementById('cfg-city').value = result.display_name.split(',')[0].trim();
+    }
+
+    removeLocationDropdown(input);
+}
+
+function removeLocationDropdown(input) {
+    const wrapper = input.closest('.location-input-wrapper');
+    if (!wrapper) return;
+    const existing = wrapper.querySelector('.location-autocomplete-dropdown');
+    if (existing) existing.remove();
+}
+
+function closeLocationDropdowns() {
+    document.querySelectorAll('.location-autocomplete-dropdown').forEach(d => d.remove());
 }
 
 function escapeHtml(text) {
