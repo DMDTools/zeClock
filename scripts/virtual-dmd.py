@@ -4,6 +4,7 @@
 Accepts DMDStream protocol on port 6789 (like real dmdserver).
 Serves a live DMD preview at http://localhost:3000 via WebSocket.
 """
+
 import asyncio
 import base64
 import io
@@ -17,6 +18,7 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 try:
     import websockets
     import websockets.server
+
     HAS_WEBSOCKETS = True
 except ImportError:
     HAS_WEBSOCKETS = False

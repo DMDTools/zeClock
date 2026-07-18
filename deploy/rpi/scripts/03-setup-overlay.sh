@@ -251,6 +251,7 @@ fi
 mkdir -p "${DATA}/zeclock/config"
 mkdir -p "${DATA}/zeclock/logs"
 mkdir -p "${DATA}/zeclock/state"
+mkdir -p "${DATA}/zeclock/plugins/gif"
 mkdir -p "${DATA}/networkmanager/system-connections"
 mkdir -p "${DATA}/ssh"
 

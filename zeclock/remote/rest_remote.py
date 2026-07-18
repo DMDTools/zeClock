@@ -484,10 +484,16 @@ class RestRemote:
     # --- GIF Directory Management handlers ---
 
     def _get_gif_base_dir(self) -> Path:
-        """Get the base GIF directory (plugins/gif/)."""
+        """Get the base GIF directory (plugins/gif/).
+
+        Creates the directory if it doesn't exist (safe for first-time use
+        and for persistent /data partition on read-only RPi deployments).
+        """
         from ..paths import get_plugins_dir
 
-        return get_plugins_dir() / "gif"
+        gif_dir = get_plugins_dir() / "gif"
+        gif_dir.mkdir(parents=True, exist_ok=True)
+        return gif_dir
 
     async def _handle_list_gif_directories(self, request: web.Request) -> web.Response:
         """GET /api/gif/directories — List GIF directories with file counts."""
@@ -561,6 +567,12 @@ class RestRemote:
             if part is None:
                 break
 
+            # Skip nested multipart readers (only handle body parts)
+            from aiohttp.multipart import BodyPartReader
+
+            if not isinstance(part, BodyPartReader):
+                continue
+
             if part.name == "directory":
                 directory_name = (await part.text()).strip()
             elif part.name == "files" or part.name == "file":
@@ -584,9 +596,7 @@ class RestRemote:
                 if directory_name:
                     # Sanitize directory name
                     safe_dir = "".join(
-                        c
-                        for c in directory_name
-                        if c.isalnum() or c in "-_ "
+                        c for c in directory_name if c.isalnum() or c in "-_ "
                     ).strip()
                     if not safe_dir:
                         safe_dir = "uploads"
@@ -602,9 +612,7 @@ class RestRemote:
                     data = await part.read()
                     # Basic GIF validation: check magic bytes
                     if not data[:6] in (b"GIF87a", b"GIF89a"):
-                        errors.append(
-                            f"Skipped '{filename}': not a valid GIF file"
-                        )
+                        errors.append(f"Skipped '{filename}': not a valid GIF file")
                         continue
 
                     with open(target_path, "wb") as f:

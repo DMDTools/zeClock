@@ -1,12 +1,15 @@
 """Profile zeClock to identify plugin hotspots."""
+
 import sys
 import signal
 import cProfile
 import pstats
 import io
 
+
 def handler(signum, frame):
     raise KeyboardInterrupt()
+
 
 signal.signal(signal.SIGALRM, handler)
 signal.alarm(15)
@@ -17,6 +20,7 @@ pr = cProfile.Profile()
 pr.enable()
 try:
     from zeclock.clock import main
+
     main()
 except (KeyboardInterrupt, SystemExit):
     pass
