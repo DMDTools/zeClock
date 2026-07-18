@@ -78,6 +78,7 @@ def image_to_hex(img: Image.Image) -> str:
 def print_ascii_preview(img: Image.Image):
     """Print a small ASCII art preview of the icon."""
     import numpy as np
+
     arr = np.array(img)
     for y in range(img.height):
         row = ""
@@ -96,27 +97,30 @@ def main():
     parser = argparse.ArgumentParser(
         description="Convert emoji to pixel-art icons for DMD displays"
     )
-    parser.add_argument(
-        "emojis", nargs="+", help="Emoji character(s) to render"
-    )
+    parser.add_argument("emojis", nargs="+", help="Emoji character(s) to render")
     parser.add_argument(
         "--size", type=int, default=16, help="Icon size in pixels (default: 16)"
     )
     parser.add_argument(
-        "--save", nargs="*", default=None,
-        help="Save as PNG file(s). Scaled 8x for visibility."
+        "--save",
+        nargs="*",
+        default=None,
+        help="Save as PNG file(s). Scaled 8x for visibility.",
     )
     parser.add_argument(
-        "--python", nargs="*", default=None,
-        help="Output Python variable name(s) for the hex data"
+        "--python",
+        nargs="*",
+        default=None,
+        help="Output Python variable name(s) for the hex data",
     )
     parser.add_argument(
-        "--preview", action="store_true", default=True,
-        help="Show ASCII preview (default: on)"
+        "--preview",
+        action="store_true",
+        default=True,
+        help="Show ASCII preview (default: on)",
     )
     parser.add_argument(
-        "--no-preview", action="store_true",
-        help="Suppress ASCII preview"
+        "--no-preview", action="store_true", help="Suppress ASCII preview"
     )
 
     args = parser.parse_args()
@@ -156,17 +160,15 @@ def main():
 
         # Python output
         if name:
-            print(f'\n  # Paste into weather_icons.py:')
+            print(f"\n  # Paste into weather_icons.py:")
             print(f'  _{name.upper()}_HEX = "{hex_data}"')
-            print(f'  # Then add to _ICON_IMAGES:')
+            print(f"  # Then add to _ICON_IMAGES:")
             print(f'  #   "{name}": _hex_to_image(_{name.upper()}_HEX),')
 
         # Save PNG
         if save_path:
             # Save scaled up for visibility
-            scaled = img.resize(
-                (img.width * 8, img.height * 8), Image.NEAREST
-            )
+            scaled = img.resize((img.width * 8, img.height * 8), Image.NEAREST)
             scaled.save(save_path)
             print(f"\n  Saved (8x scaled): {save_path}")
             # Also save original size

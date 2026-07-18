@@ -160,7 +160,9 @@ def upscale_dots_2x(dots_data: bytes, src_w: int, src_h: int) -> tuple:
             if x % 2 == 0:
                 dst_data[byte_idx] = (dst_data[byte_idx] & 0xF0) | (nibble & 0x0F)
             else:
-                dst_data[byte_idx] = (dst_data[byte_idx] & 0x0F) | ((nibble & 0x0F) << 4)
+                dst_data[byte_idx] = (dst_data[byte_idx] & 0x0F) | (
+                    (nibble & 0x0F) << 4
+                )
 
     return bytes(dst_data), dst_w, dst_h
 
@@ -254,7 +256,9 @@ def generate_hd_font(src_path: Path, dst_path: Path) -> None:
         fnt["new_mask_data"] = None
 
     write_fnt(dst_path, fnt)
-    print(f"  ✓ {src_path.name} ({fnt['dots_width']}x{fnt['dots_height']}) → {dst_path.name} ({new_w}x{new_h})")
+    print(
+        f"  ✓ {src_path.name} ({fnt['dots_width']}x{fnt['dots_height']}) → {dst_path.name} ({new_w}x{new_h})"
+    )
 
 
 def main() -> None:

@@ -83,7 +83,9 @@ def main():
 
     # Generate output file
     lines = []
-    lines.append('"""Color weather icons rendered from Noto Color Emoji (SD 16x16 + HD 32x32).')
+    lines.append(
+        '"""Color weather icons rendered from Noto Color Emoji (SD 16x16 + HD 32x32).'
+    )
     lines.append("")
     lines.append("Icons are pre-rendered from the Noto Color Emoji font (SIL OFL).")
     lines.append("https://fonts.google.com/noto/specimen/Noto+Color+Emoji")
@@ -117,7 +119,9 @@ def main():
     lines.append("")
     lines.append("def _hex_to_image(hex_data: str, size: int = 16) -> Image.Image:")
     lines.append('    """Convert hex-encoded RGB data to a PIL Image."""')
-    lines.append('    return Image.frombytes("RGB", (size, size), bytes.fromhex(hex_data))')
+    lines.append(
+        '    return Image.frombytes("RGB", (size, size), bytes.fromhex(hex_data))'
+    )
     lines.append("")
     lines.append("")
     lines.append("# Build icon images from embedded data")
@@ -135,22 +139,43 @@ def main():
     lines.append("# Map WMO weather codes to icon keys")
     lines.append("WMO_CODE_TO_ICON: Dict[int, str] = {")
     wmo_map = [
-        (0, "sun"), (1, "partial_cloud"), (2, "partial_cloud"), (3, "cloud"),
-        (45, "fog"), (48, "fog"),
-        (51, "light_rain"), (53, "light_rain"), (55, "light_rain"),
-        (56, "light_rain"), (57, "light_rain"),
-        (61, "rain"), (63, "rain"), (65, "rain"), (66, "rain"), (67, "rain"),
-        (71, "snow"), (73, "snow"), (75, "snow"), (77, "snow"),
-        (80, "rain"), (81, "rain"), (82, "rain"),
-        (85, "snow"), (86, "snow"),
-        (95, "thunderstorm"), (96, "thunderstorm"), (99, "thunderstorm"),
+        (0, "sun"),
+        (1, "partial_cloud"),
+        (2, "partial_cloud"),
+        (3, "cloud"),
+        (45, "fog"),
+        (48, "fog"),
+        (51, "light_rain"),
+        (53, "light_rain"),
+        (55, "light_rain"),
+        (56, "light_rain"),
+        (57, "light_rain"),
+        (61, "rain"),
+        (63, "rain"),
+        (65, "rain"),
+        (66, "rain"),
+        (67, "rain"),
+        (71, "snow"),
+        (73, "snow"),
+        (75, "snow"),
+        (77, "snow"),
+        (80, "rain"),
+        (81, "rain"),
+        (82, "rain"),
+        (85, "snow"),
+        (86, "snow"),
+        (95, "thunderstorm"),
+        (96, "thunderstorm"),
+        (99, "thunderstorm"),
     ]
     for code, icon in wmo_map:
         lines.append(f'    {code}: "{icon}",')
     lines.append("}")
     lines.append("")
     lines.append("")
-    lines.append("def get_weather_icon_image(code: int, hd: bool = False) -> Image.Image:")
+    lines.append(
+        "def get_weather_icon_image(code: int, hd: bool = False) -> Image.Image:"
+    )
     lines.append('    """Get the color RGB icon for a WMO weather code.')
     lines.append("")
     lines.append("    Args:")
