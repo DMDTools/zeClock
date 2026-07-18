@@ -324,7 +324,75 @@ ZeDMD hardware optional — browser emulation at `http://localhost:3000`.
 
 ### 🍓 Autonomous (Raspberry Pi)
 
-24/7 unattended with read-only filesystem, WiFi auto-connect, systemd service. See [`deploy/rpi/`](deploy/rpi/).
+Plug in a Raspberry Pi, connect ZeDMD via USB, power on — zeClock runs 24/7 unattended.
+
+#### What You Need
+
+- Raspberry Pi 4 (or 5) with WiFi
+- microSD card (8 GB+)
+- ZeDMD display connected via USB
+- Power supply for the Pi and ZeDMD
+
+#### Step 1 — Flash the SD Card
+
+Download the latest `zeclock-rpi.img.xz` from [GitHub Releases](https://github.com/DMDTools/zeClock/releases).
+
+Flash it with [Raspberry Pi Imager](https://www.raspberrypi.com/software/), [balenaEtcher](https://etcher.balena.io/), or from the command line:
+
+```bash
+xzcat zeclock-rpi.img.xz | sudo dd of=/dev/sdX bs=4M status=progress
+sync
+```
+
+#### Step 2 — Connect and Power On
+
+1. Insert the SD card into the Pi
+2. Plug ZeDMD into a USB port on the Pi
+3. Power on the Pi
+
+#### Step 3 — Connect to WiFi
+
+On first boot, the Pi doesn't know your WiFi yet. After ~30 seconds it creates its own hotspot:
+
+1. On your phone or laptop, connect to the WiFi network **zeClock-Setup**
+2. A captive portal opens automatically — select your home WiFi and enter the password
+3. The Pi connects, and zeClock starts within seconds
+
+That's it! WiFi credentials are saved — next time you power on, it connects automatically.
+
+#### Step 4 — Enjoy
+
+The clock is running. The display survives power cuts — just unplug/replug anytime.
+
+#### Changing Settings
+
+The web UI is available at **http://zeclock.local:8080** (REST API enabled by default).
+
+You can also SSH in:
+
+```bash
+ssh zeclock@zeclock.local
+# Default password: zeclock
+```
+
+Configuration lives in `/data/zeclock/config/`:
+
+```bash
+nano /data/zeclock/config/zeclock.ini    # display, brightness, backend
+nano /data/zeclock/config/plugins.yaml   # plugins and their settings
+sudo systemctl restart zeclock           # apply changes
+```
+
+#### Building the Image Yourself
+
+See [`deploy/rpi/`](deploy/rpi/) for the full Packer-based build system:
+
+```bash
+cd deploy/rpi
+./build.sh   # Requires Docker with privileged mode
+```
+
+The image is also built automatically via GitHub Actions on every merge to `main` and on git tags (e.g. `v1.0.0`). See the [Releases page](https://github.com/DMDTools/zeClock/releases).
 
 ## Development
 
