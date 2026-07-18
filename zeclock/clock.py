@@ -314,9 +314,7 @@ class ZeClock:
                             # WiFi addr known but connection failed — retry connect
                             if self.dmd_client.connect():
                                 print("✅ DMD backend connected (WiFi)")
-                                self._discovery_state.update(
-                                    "found", "ZeDMD connected"
-                                )
+                                self._discovery_state.update("found", "ZeDMD connected")
                                 break
 
                     delay = min(delay * 1.3, 10.0)
