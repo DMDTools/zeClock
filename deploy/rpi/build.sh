@@ -34,11 +34,13 @@ echo "  Exported to ${EXPORT_DIR} ($(du -sh "${EXPORT_DIR}" | cut -f1))"
 echo "Pre-downloading .deb packages..."
 DEBS_DIR="${EXPORT_DIR}/.debs"
 mkdir -p "${DEBS_DIR}"
-# f2fs-tools and libserialport0 for arm64 - direct from Debian mirrors
+# f2fs-tools, libserialport0, and libgpiod2 for arm64 - direct from Debian mirrors
 curl -sSL -o "${DEBS_DIR}/f2fs-tools.deb" \
     "http://deb.debian.org/debian/pool/main/f/f2fs-tools/f2fs-tools_1.16.0-1.1+b1_arm64.deb"
 curl -sSL -o "${DEBS_DIR}/libserialport0.deb" \
     "http://deb.debian.org/debian/pool/main/libs/libserialport/libserialport0_0.1.2-1_arm64.deb"
+curl -sSL -o "${DEBS_DIR}/libgpiod2.deb" \
+    "http://ftp.debian.org/debian/pool/main/libg/libgpiod/libgpiod2_1.6.3-1+b3_arm64.deb"
 echo "  Packages: $(ls "${DEBS_DIR}"/*.deb | wc -l) files ($(du -sh "${DEBS_DIR}" | cut -f1))"
 echo "Pre-downloading Python wheels for aarch64..."
 WHEELS_DIR="${EXPORT_DIR}/.wheels"
@@ -49,17 +51,10 @@ pip download \
     --platform manylinux_2_27_aarch64 \
     --platform manylinux_2_28_aarch64 \
     --platform linux_aarch64 \
-    --python-version 313 \
-    --implementation cp \
-    --abi cp313 \
-    --only-binary=:all: \
-    pillow colorama pyyaml aiohttp pyserial 2>/dev/null || true
-# Also download pure-python packages
-pip download \
-    --dest "${WHEELS_DIR}" \
     --platform any \
     --python-version 313 \
     --implementation cp \
+    --abi cp313 \
     --abi none \
     --only-binary=:all: \
     pillow colorama pyyaml aiohttp pyserial 2>/dev/null || true
@@ -70,6 +65,15 @@ echo "Pre-downloading DotClk resources zip..."
 curl -sSL -o "${EXPORT_DIR}/.dotclk-resources.zip" \
     https://github.com/sigmafx/DotClk-Resources/archive/refs/heads/master.zip
 echo "  Resources zip: $(du -sh "${EXPORT_DIR}/.dotclk-resources.zip" | cut -f1)"
+
+# --- Pre-download libzedmd (avoids curl under qemu in chroot) ---
+# Read version from Packer config to stay in sync
+LIBZEDMD_VERSION=$(grep -A5 'variable "libzedmd_version"' "${SCRIPT_DIR}/rpi-zeclock.pkr.hcl" | grep 'default' | grep -o '"[^"]*"' | tail -1 | tr -d '"')
+LIBZEDMD_VER_NUM="${LIBZEDMD_VERSION#v}"
+echo "Pre-downloading libzedmd ${LIBZEDMD_VERSION}..."
+curl -sSL -o "${EXPORT_DIR}/.libzedmd-aarch64.tar.gz" \
+    "https://github.com/PPUC/libzedmd/releases/download/${LIBZEDMD_VERSION}/libzedmd-${LIBZEDMD_VER_NUM}-linux-aarch64.tar.gz"
+echo "  libzedmd: $(du -sh "${EXPORT_DIR}/.libzedmd-aarch64.tar.gz" | cut -f1)"
 echo ""
 
 # --- Build with Packer ---

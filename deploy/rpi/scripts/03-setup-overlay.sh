@@ -177,8 +177,8 @@ fi
 if [ -b "${DEVICE}" ]; then
     CURRENT_FS=$(blkid -s TYPE -o value "${DEVICE}" 2>/dev/null || echo "")
     if [ "${CURRENT_FS}" = "f2fs" ]; then
-        # Run fsck before mounting (fixes corruption from power loss)
-        fsck.f2fs -a "${DEVICE}" 2>/dev/null || true
+        # Run fsck before mounting — use -f for thorough check after power loss
+        fsck.f2fs -a -f "${DEVICE}" 2>/dev/null || true
         mount -t f2fs -o noatime "${DEVICE}" /data
         exit 0
     fi
@@ -293,6 +293,44 @@ chown -R zeclock:zeclock "${DATA}/zeclock"
 chmod 700 "${DATA}/ssh"
 find "${DATA}/ssh" -type f -exec chmod 600 {} \; 2>/dev/null || true
 
+# --- Persistent journal ---
+mkdir -p "${DATA}/log/journal"
+cp /etc/machine-id "${DATA}/machine-id" 2>/dev/null || true
+
+cat > "${DATA}/bind-journal.sh" << 'JSCRIPT'
+#!/bin/bash
+# Mount persistent journal from /data so logs survive reboots (overlay wipes /var)
+set -e
+DATA="/data"
+
+# Use persisted machine-id (overlay may regenerate it each boot)
+if [ -f "${DATA}/machine-id" ]; then
+    cp "${DATA}/machine-id" /etc/machine-id
+fi
+
+MACHINE_ID=$(cat /etc/machine-id)
+JOURNAL_DIR="${DATA}/log/journal/${MACHINE_ID}"
+mkdir -p "${JOURNAL_DIR}"
+chown root:systemd-journal "${JOURNAL_DIR}" 2>/dev/null || true
+chmod 2755 "${JOURNAL_DIR}"
+
+mkdir -p /var/log/journal
+mount --bind "${DATA}/log/journal" /var/log/journal
+
+# Configure journald for persistent storage with size cap
+mkdir -p /etc/systemd/journald.conf.d
+cat > /etc/systemd/journald.conf.d/persistent.conf << 'JCONF'
+[Journal]
+Storage=persistent
+SystemMaxUse=10M
+SystemKeepFree=20M
+JCONF
+
+# Restart journald to pick up new config and location
+systemctl restart systemd-journald 2>/dev/null || true
+JSCRIPT
+chmod +x "${DATA}/bind-journal.sh"
+
 touch "${DATA}/.initialized"
 echo "init-data: done"
 INITDATA
@@ -352,6 +390,11 @@ if [ -d "${DATA}/ssh" ] && [ -f "${DATA}/ssh/ssh_host_ed25519_key" ]; then
             chmod 600 "/etc/ssh/${base}"
         fi
     done
+fi
+
+# --- Persistent journal setup ---
+if [ -f "${DATA}/bind-journal.sh" ]; then
+    bash "${DATA}/bind-journal.sh"
 fi
 
 echo "bind-persistent: done"

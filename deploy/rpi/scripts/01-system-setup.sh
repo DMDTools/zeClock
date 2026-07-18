@@ -114,4 +114,11 @@ fi
 # Enable NetworkManager
 systemctl enable NetworkManager
 
+# Disable NetworkManager-wait-online — it blocks boot when no network is available
+# (e.g. first boot with WiFi-only, before user configures WiFi via the portal).
+# The hardware watchdog (60s) would reboot the Pi if boot stalls too long.
+# Use mask (not just disable) to prevent presets from re-enabling it.
+systemctl disable NetworkManager-wait-online.service 2>/dev/null || true
+systemctl mask NetworkManager-wait-online.service 2>/dev/null || true
+
 echo ">>> System + network setup complete."

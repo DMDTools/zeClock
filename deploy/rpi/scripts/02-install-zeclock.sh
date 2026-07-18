@@ -7,12 +7,16 @@ ZECLOCK_DATA="${ZECLOCK_HOME}/.zeclock"
 
 echo ">>> Installing libzedmd ${LIBZEDMD_VERSION} (pre-built aarch64)..."
 
-# Download pre-built binaries (compatible with Trixie's glibc 2.41)
+# Use pre-downloaded tarball if available, otherwise download
 LIBZEDMD_VER_NUM="${LIBZEDMD_VERSION#v}"
-LIBZEDMD_URL="https://github.com/PPUC/libzedmd/releases/download/${LIBZEDMD_VERSION}/libzedmd-${LIBZEDMD_VER_NUM}-linux-aarch64.tar.gz"
-
 mkdir -p "${ZECLOCK_DATA}/lib"
-curl -sSL "${LIBZEDMD_URL}" | tar xz -C "${ZECLOCK_DATA}/lib"
+if [ -f /tmp/zeclock-src/.libzedmd-aarch64.tar.gz ]; then
+    echo "  Using pre-downloaded libzedmd tarball..."
+    tar xzf /tmp/zeclock-src/.libzedmd-aarch64.tar.gz -C "${ZECLOCK_DATA}/lib"
+else
+    LIBZEDMD_URL="https://github.com/PPUC/libzedmd/releases/download/${LIBZEDMD_VERSION}/libzedmd-${LIBZEDMD_VER_NUM}-linux-aarch64.tar.gz"
+    curl -sSL "${LIBZEDMD_URL}" | tar xz -C "${ZECLOCK_DATA}/lib"
+fi
 echo "${LIBZEDMD_VERSION}" > "${ZECLOCK_DATA}/lib/.libzedmd-version"
 
 # Remove test binaries and static lib — keep only shared libs
@@ -24,10 +28,16 @@ rm -rf "${ZECLOCK_DATA}/lib/test"
 # Do NOT copy to /usr/local/lib — use LD_LIBRARY_PATH in systemd service only
 
 # Trixie ships libgpiod3 (SONAME 3) but libzedmd needs libgpiod.so.2 (SONAME 2, v1.x API)
-# Install libgpiod2 from Bookworm — dpkg -i handles it cleanly
-curl -sSL http://ftp.debian.org/debian/pool/main/libg/libgpiod/libgpiod2_1.6.3-1+b3_arm64.deb -o /tmp/libgpiod2.deb
-dpkg -i /tmp/libgpiod2.deb
-rm /tmp/libgpiod2.deb
+# Use pre-downloaded .deb if available (installed with other debs in 01-system-setup.sh)
+if ! dpkg -l libgpiod2 2>/dev/null | grep -q "^ii"; then
+    if [ -f /tmp/zeclock-src/.debs/libgpiod2.deb ]; then
+        dpkg -i /tmp/zeclock-src/.debs/libgpiod2.deb
+    else
+        curl -sSL http://ftp.debian.org/debian/pool/main/libg/libgpiod/libgpiod2_1.6.3-1+b3_arm64.deb -o /tmp/libgpiod2.deb
+        dpkg -i /tmp/libgpiod2.deb
+        rm /tmp/libgpiod2.deb
+    fi
+fi
 
 ldconfig
 
