@@ -324,136 +324,73 @@ ZeDMD hardware optional — browser emulation at `http://localhost:3000`.
 
 ### 🍓 Autonomous (Raspberry Pi)
 
-24/7 unattended operation with read-only filesystem, WiFi auto-connect, and automatic startup via systemd. Just plug in the Pi, connect ZeDMD via USB, and power on — zeClock runs forever.
+Plug in a Raspberry Pi, connect ZeDMD via USB, power on — zeClock runs 24/7 unattended.
 
-#### Prerequisites
+#### What You Need
 
 - Raspberry Pi 4 (or 5) with WiFi
 - microSD card (8 GB+)
 - ZeDMD display connected via USB
 - Power supply for the Pi and ZeDMD
 
-#### Getting the Image
+#### Step 1 — Flash the SD Card
 
-Download the latest `zeclock-rpi.img.xz` from [GitHub Releases](https://github.com/DMDTools/zeClock/releases), then flash:
+Download the latest `zeclock-rpi.img.xz` from [GitHub Releases](https://github.com/DMDTools/zeClock/releases).
+
+Flash it with [Raspberry Pi Imager](https://www.raspberrypi.com/software/), [balenaEtcher](https://etcher.balena.io/), or from the command line:
 
 ```bash
 xzcat zeclock-rpi.img.xz | sudo dd of=/dev/sdX bs=4M status=progress
 sync
 ```
 
-Or use [Raspberry Pi Imager](https://www.raspberrypi.com/software/) / [balenaEtcher](https://etcher.balena.io/).
+#### Step 2 — Connect and Power On
 
-#### Boot Flow
+1. Insert the SD card into the Pi
+2. Plug ZeDMD into a USB port on the Pi
+3. Power on the Pi
 
-On power-up, the Pi goes through the following sequence:
+#### Step 3 — Connect to WiFi
 
-```
-Power On
-  │
-  ├── 1. Kernel + initramfs
-  │       └── overlayfs mounted (root becomes read-only, writes go to RAM)
-  │
-  ├── 2. systemd starts
-  │       ├── setup-data-partition.service
-  │       │     └── Creates /data (f2fs) partition on first boot, mounts it
-  │       ├── init-data-partition.service
-  │       │     └── Initializes directory structure, extracts DotClk resources
-  │       ├── bind-persistent-dirs.service
-  │       │     └── Restores WiFi connections, SSH keys, journal from /data
-  │       ├── NetworkManager.service
-  │       │     └── Connects to known WiFi (or waits for portal config)
-  │       ├── rfkill-unblock-wifi.service
-  │       │     └── Ensures WiFi radio is enabled
-  │       ├── wifi-connect.service
-  │       │     └── If no WiFi connected → exposes "zeClock-Setup" AP with captive portal
-  │       └── zeclock.service
-  │             └── Starts zeClock (auto-detects ZeDMD via USB)
-  │
-  └── ✅ Clock is running (~15-25s from power-on to display)
-```
+On first boot, the Pi doesn't know your WiFi yet. After ~30 seconds it creates its own hotspot:
 
-#### WiFi Configuration
+1. On your phone or laptop, connect to the WiFi network **zeClock-Setup**
+2. A captive portal opens automatically — select your home WiFi and enter the password
+3. The Pi connects, and zeClock starts within seconds
 
-**Option A — Pre-configured WiFi (headless):**
-Set WiFi credentials at image build time via `deploy/rpi/variables.auto.pkrvars.hcl`:
-```hcl
-wifi_ssid     = "MyNetwork"
-wifi_password = "MyPassword"
-```
+That's it! WiFi credentials are saved — next time you power on, it connects automatically.
 
-**Option B — Captive Portal (no keyboard/monitor needed):**
-1. Power on the Pi without pre-configured WiFi
-2. After ~30s, the Pi exposes an AP named **zeClock-Setup**
-3. Connect to that AP from your phone/laptop
-4. A captive portal opens — select your WiFi network and enter the password
-5. The Pi connects and starts zeClock automatically
+#### Step 4 — Enjoy
 
-WiFi credentials persist in `/data/networkmanager/` — they survive reboots and power cuts.
+The clock is running. The display survives power cuts — just unplug/replug anytime.
 
-#### Filesystem Architecture
+#### Changing Settings
 
-```
-SD Card Partition Layout:
-  mmcblk0p1   /boot/firmware   FAT32   512 MB   Boot files (read-only)
-  mmcblk0p2   /                ext4    ~2.5 GB  Root filesystem (read-only via overlay)
-  mmcblk0p3   /data            f2fs    remaining Persistent data (read-write)
-```
+The web UI is available at **http://zeclock.local:8080** (REST API enabled by default).
 
-The root filesystem is **read-only** at runtime — protected by an initramfs-based overlayfs. All runtime writes go to RAM (tmpfs) and are lost on reboot. This makes the system immune to SD card corruption from power cuts.
-
-Only `/data` is writable on the SD card, using **F2FS** (Flash-Friendly File System) which is resilient to power-loss.
-
-| Persistent path | Purpose |
-|-----------------|---------|
-| `/data/zeclock/config/` | zeClock configuration (`zeclock.ini`, `plugins.yaml`) |
-| `/data/zeclock/resources/` | Fonts and pinball animations |
-| `/data/zeclock/state/` | Runtime state (Pong scores, etc.) |
-| `/data/networkmanager/` | WiFi connection profiles |
-| `/data/ssh/` | SSH host keys |
-| `/data/log/journal/` | Persistent system journal (capped at 10 MB) |
-
-#### Configuration on the Pi
-
-SSH into the Pi (default user: `zeclock` / password: `zeclock`):
+You can also SSH in:
 
 ```bash
 ssh zeclock@zeclock.local
+# Default password: zeclock
 ```
 
-Edit configuration:
-```bash
-nano /data/zeclock/config/zeclock.ini
-sudo systemctl restart zeclock
-```
-
-The REST API is enabled by default on port 8080 — access the web UI at `http://zeclock.local:8080`.
-
-#### Maintenance Mode
-
-To update software or install packages, disable the read-only overlay:
+Configuration lives in `/data/zeclock/config/`:
 
 ```bash
-# Add "skipoverlay" to kernel command line
-sudo mount -o remount,rw /boot/firmware
-sudo sed -i 's/$/ skipoverlay/' /boot/firmware/cmdline.txt
-sudo reboot
-
-# After maintenance, remove the flag and reboot to re-enable protection
-sudo sed -i 's/ skipoverlay//' /boot/firmware/cmdline.txt
-sudo reboot
+nano /data/zeclock/config/zeclock.ini    # display, brightness, backend
+nano /data/zeclock/config/plugins.yaml   # plugins and their settings
+sudo systemctl restart zeclock           # apply changes
 ```
 
 #### Building the Image Yourself
 
-See [`deploy/rpi/`](deploy/rpi/) for the full Packer-based build system. Quick start:
+See [`deploy/rpi/`](deploy/rpi/) for the full Packer-based build system:
 
 ```bash
 cd deploy/rpi
 ./build.sh   # Requires Docker with privileged mode
 ```
-
-Output: `zeclock-rpi.img` (~3 GB) — ready to flash.
 
 The image is also built automatically via GitHub Actions on every merge to `main` and on git tags (e.g. `v1.0.0`). See the [Releases page](https://github.com/DMDTools/zeClock/releases).
 
