@@ -2,13 +2,14 @@ name: Build Raspberry Pi Image
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/rpi-docs-and-ci]
     tags: ["v*"]
   pull_request:
     branches: [main]
     paths:
       - "deploy/rpi/**"
       - ".github/workflows/build-rpi-image.yml"
+  workflow_dispatch:
 
 env:
   DOCKER_IMAGE: mkaczanowski/packer-builder-arm:latest
@@ -109,8 +110,8 @@ jobs:
           echo "IMAGE_FILE=${OUTPUT_IMG}.xz" >> $GITHUB_ENV
           echo "IMAGE_PATH=deploy/rpi/${OUTPUT_IMG}.xz" >> $GITHUB_ENV
 
-      - name: Upload artifact (PR builds)
-        if: github.event_name == 'pull_request'
+      - name: Upload artifact (PR and feature branch builds)
+        if: github.event_name == 'pull_request' || (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/') && github.ref != 'refs/heads/main')
         uses: actions/upload-artifact@v4
         with:
           name: zeclock-rpi-image
@@ -118,7 +119,7 @@ jobs:
           retention-days: 5
 
       - name: Determine release tag
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main')
         id: release_tag
         run: |
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
@@ -134,7 +135,7 @@ jobs:
           fi
 
       - name: Create or update release
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release_tag.outputs.tag }}
