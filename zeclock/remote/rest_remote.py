@@ -121,6 +121,18 @@ class RestRemote:
         )
         self._app.router.add_get("/api/geocode/search", self._handle_geocode_search)
 
+        # GIF directory management routes
+        self._app.router.add_get(
+            "/api/gif/directories", self._handle_list_gif_directories
+        )
+        self._app.router.add_post("/api/gif/upload", self._handle_gif_upload)
+        self._app.router.add_post(
+            "/api/gif/directories/delete", self._handle_delete_gif_directory
+        )
+        self._app.router.add_post(
+            "/api/gif/directories/create", self._handle_create_gif_directory
+        )
+
         # Static files for web UI (must be last to avoid catching API routes)
         if WEB_UI_DIR.exists():
             self._app.router.add_get("/ui/", self._handle_ui_index)
@@ -467,6 +479,276 @@ class RestRemote:
                     for r in results
                 ]
             }
+        )
+
+    # --- GIF Directory Management handlers ---
+
+    def _get_gif_base_dir(self) -> Path:
+        """Get the base GIF directory (plugins/gif/)."""
+        from ..paths import get_plugins_dir
+
+        return get_plugins_dir() / "gif"
+
+    async def _handle_list_gif_directories(self, request: web.Request) -> web.Response:
+        """GET /api/gif/directories — List GIF directories with file counts."""
+        gif_base = self._get_gif_base_dir()
+
+        directories = []
+        if gif_base.exists() and gif_base.is_dir():
+            # List immediate subdirectories
+            for item in sorted(gif_base.iterdir()):
+                if item.is_dir():
+                    # Count GIF files (recursive)
+                    gif_count = len(
+                        list(item.rglob("*.gif")) + list(item.rglob("*.GIF"))
+                    )
+                    directories.append(
+                        {
+                            "name": item.name,
+                            "path": str(item),
+                            "gif_count": gif_count,
+                        }
+                    )
+
+            # Also count GIFs directly in the base dir (not in subdirectories)
+            root_gifs = list(gif_base.glob("*.gif")) + list(gif_base.glob("*.GIF"))
+            if root_gifs:
+                directories.insert(
+                    0,
+                    {
+                        "name": "(root)",
+                        "path": str(gif_base),
+                        "gif_count": len(root_gifs),
+                    },
+                )
+
+        return web.json_response(
+            {
+                "success": True,
+                "data": {
+                    "base_path": str(gif_base),
+                    "directories": directories,
+                },
+            }
+        )
+
+    async def _handle_gif_upload(self, request: web.Request) -> web.Response:
+        """POST /api/gif/upload — Upload GIF files to a directory.
+
+        Accepts multipart/form-data with:
+            - directory: target subdirectory name (optional, defaults to root)
+            - files: one or more GIF files
+
+        Files are saved to plugins/gif/<directory>/.
+        The directory is created if it doesn't exist.
+        """
+        gif_base = self._get_gif_base_dir()
+
+        try:
+            reader = await request.multipart()
+        except Exception:
+            return web.json_response(
+                {"success": False, "message": "Expected multipart/form-data"},
+                status=400,
+            )
+
+        directory_name = ""
+        uploaded_files = []
+        errors = []
+
+        while True:
+            part = await reader.next()
+            if part is None:
+                break
+
+            if part.name == "directory":
+                directory_name = (await part.text()).strip()
+            elif part.name == "files" or part.name == "file":
+                filename = part.filename
+                if not filename:
+                    continue
+
+                # Validate file extension
+                if not filename.lower().endswith(".gif"):
+                    errors.append(f"Skipped '{filename}': not a .gif file")
+                    # Drain the part data
+                    await part.read()
+                    continue
+
+                # Sanitize filename (remove path separators)
+                safe_filename = Path(filename).name
+                if not safe_filename:
+                    continue
+
+                # Determine target directory
+                if directory_name:
+                    # Sanitize directory name
+                    safe_dir = "".join(
+                        c
+                        for c in directory_name
+                        if c.isalnum() or c in "-_ "
+                    ).strip()
+                    if not safe_dir:
+                        safe_dir = "uploads"
+                    target_dir = gif_base / safe_dir
+                else:
+                    target_dir = gif_base
+
+                target_dir.mkdir(parents=True, exist_ok=True)
+                target_path = target_dir / safe_filename
+
+                # Read and write file
+                try:
+                    data = await part.read()
+                    # Basic GIF validation: check magic bytes
+                    if not data[:6] in (b"GIF87a", b"GIF89a"):
+                        errors.append(
+                            f"Skipped '{filename}': not a valid GIF file"
+                        )
+                        continue
+
+                    with open(target_path, "wb") as f:
+                        f.write(data)
+                    uploaded_files.append(
+                        {
+                            "filename": safe_filename,
+                            "path": str(target_path),
+                            "size": len(data),
+                        }
+                    )
+                except Exception as e:
+                    errors.append(f"Failed to save '{filename}': {e}")
+
+        if not uploaded_files and not errors:
+            return web.json_response(
+                {"success": False, "message": "No files uploaded"},
+                status=400,
+            )
+
+        return web.json_response(
+            {
+                "success": len(uploaded_files) > 0,
+                "message": f"Uploaded {len(uploaded_files)} file(s)"
+                + (f", {len(errors)} error(s)" if errors else ""),
+                "data": {
+                    "uploaded": uploaded_files,
+                    "errors": errors,
+                },
+            }
+        )
+
+    async def _handle_create_gif_directory(self, request: web.Request) -> web.Response:
+        """POST /api/gif/directories/create — Create a new GIF directory.
+
+        POST: {"name": "my-gifs"}
+        """
+        try:
+            body = await request.json()
+        except (json.JSONDecodeError, Exception):
+            return web.json_response(
+                {"success": False, "message": "Invalid JSON body"},
+                status=400,
+            )
+
+        name = body.get("name", "").strip()
+        if not name:
+            return web.json_response(
+                {"success": False, "message": "Missing 'name' field"},
+                status=400,
+            )
+
+        # Sanitize directory name
+        safe_name = "".join(c for c in name if c.isalnum() or c in "-_ ").strip()
+        if not safe_name:
+            return web.json_response(
+                {"success": False, "message": "Invalid directory name"},
+                status=400,
+            )
+
+        gif_base = self._get_gif_base_dir()
+        target_dir = gif_base / safe_name
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        logger.info("Created GIF directory: %s", target_dir)
+        return web.json_response(
+            {
+                "success": True,
+                "message": f"Directory '{safe_name}' created",
+                "data": {"name": safe_name, "path": str(target_dir)},
+            }
+        )
+
+    async def _handle_delete_gif_directory(self, request: web.Request) -> web.Response:
+        """POST /api/gif/directories/delete — Delete a GIF directory.
+
+        POST: {"path": "/path/to/dir"} or {"name": "dirname"}
+        """
+        import shutil
+
+        try:
+            body = await request.json()
+        except (json.JSONDecodeError, Exception):
+            return web.json_response(
+                {"success": False, "message": "Invalid JSON body"},
+                status=400,
+            )
+
+        gif_base = self._get_gif_base_dir()
+        target_path = None
+
+        # Accept either full path or name
+        if body.get("name"):
+            name = body["name"].strip()
+            safe_name = "".join(c for c in name if c.isalnum() or c in "-_ ").strip()
+            target_path = gif_base / safe_name
+        elif body.get("path"):
+            target_path = Path(body["path"])
+
+        if not target_path:
+            return web.json_response(
+                {"success": False, "message": "Missing 'name' or 'path' field"},
+                status=400,
+            )
+
+        # Security: ensure path is under gif_base
+        try:
+            target_path.resolve().relative_to(gif_base.resolve())
+        except ValueError:
+            return web.json_response(
+                {"success": False, "message": "Invalid path: outside GIF directory"},
+                status=403,
+            )
+
+        if not target_path.exists():
+            return web.json_response(
+                {"success": False, "message": "Directory does not exist"},
+                status=404,
+            )
+
+        if not target_path.is_dir():
+            return web.json_response(
+                {"success": False, "message": "Path is not a directory"},
+                status=400,
+            )
+
+        # Don't allow deleting the base gif directory itself
+        if target_path.resolve() == gif_base.resolve():
+            return web.json_response(
+                {"success": False, "message": "Cannot delete the root GIF directory"},
+                status=400,
+            )
+
+        try:
+            shutil.rmtree(target_path)
+            logger.info("Deleted GIF directory: %s", target_path)
+        except Exception as e:
+            return web.json_response(
+                {"success": False, "message": f"Failed to delete: {e}"},
+                status=500,
+            )
+
+        return web.json_response(
+            {"success": True, "message": f"Directory '{target_path.name}' deleted"}
         )
 
     # --- Speaker Timer handlers ---

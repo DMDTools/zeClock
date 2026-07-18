@@ -510,6 +510,11 @@ function renderPluginField(pluginName, field, settings) {
     let inputHtml = '';
     let hintHtml = '';
 
+    // Special handling for gif_dirs field
+    if (pluginName === 'gif' && field.name === 'gif_dirs') {
+        return renderGifDirsField(fieldId, currentValue, field);
+    }
+
     switch (field.field_type) {
         case 'number':
             inputHtml = `<input type="number" id="${fieldId}" value="${currentValue}" ${requiredAttr} data-plugin="${pluginName}" data-field="${field.name}">`;
@@ -536,6 +541,301 @@ function renderPluginField(pluginName, field, settings) {
             ${descriptionHtml}
         </div>
     `;
+}
+
+// --- GIF Directories Editor ---
+
+function renderGifDirsField(fieldId, currentValue, field) {
+    const dirs = Array.isArray(currentValue) ? currentValue : [];
+
+    return `
+        <div class="form-group gif-dirs-editor" id="${fieldId}" data-plugin="gif" data-field="gif_dirs" data-field-type="gif_dirs">
+            <label>${field.label} *</label>
+            <div class="field-description">${field.description || ''}</div>
+            <div id="gif-dirs-list" class="gif-dirs-list">
+                ${dirs.map((dir, i) => renderGifDirEntry(dir, i)).join('')}
+            </div>
+            <div class="gif-dirs-actions">
+                <button type="button" class="btn btn-secondary" onclick="addGifDirEntry()">+ Add Directory</button>
+                <button type="button" class="btn btn-secondary" onclick="showNewDirDialog()">📁 Create New Directory</button>
+                <button type="button" class="btn btn-secondary" onclick="refreshGifDirs()">🔄 Refresh</button>
+            </div>
+            <div id="gif-dirs-status" class="muted" style="margin-top: 0.5rem;"></div>
+        </div>
+    `;
+}
+
+function renderGifDirEntry(dir, index) {
+    const path = dir.path || '';
+    const weight = dir.weight || 50;
+    const recursive = dir.recursive !== false; // default true
+
+    return `
+        <div class="gif-dir-entry" data-index="${index}">
+            <div class="gif-dir-header">
+                <span class="gif-dir-title">${path ? path.split('/').pop() || path : 'New directory'}</span>
+                <button type="button" class="btn btn-danger btn-small" onclick="removeGifDirEntry(${index})" title="Remove">✕</button>
+            </div>
+            <div class="gif-dir-fields">
+                <div class="gif-dir-field">
+                    <label>Path</label>
+                    <div class="gif-dir-path-row">
+                        <input type="text" class="gif-dir-path" value="${escapeHtml(path)}" placeholder="/path/to/gif/directory" data-index="${index}">
+                        <button type="button" class="btn btn-secondary btn-small" onclick="browseGifDirs(${index})" title="Browse existing directories">📂</button>
+                    </div>
+                </div>
+                <div class="gif-dir-field gif-dir-field-inline">
+                    <div class="gif-dir-weight">
+                        <label>Weight: <span class="weight-value">${weight}</span></label>
+                        <input type="range" class="gif-dir-weight-slider" min="1" max="100" value="${weight}" data-index="${index}" oninput="updateGifDirWeightLabel(this)">
+                    </div>
+                    <div class="gif-dir-recursive">
+                        <label><input type="checkbox" class="gif-dir-recursive-cb" ${recursive ? 'checked' : ''} data-index="${index}"> Recursive</label>
+                    </div>
+                </div>
+            </div>
+            <div class="gif-dir-upload">
+                <div class="gif-upload-area" data-index="${index}" onclick="triggerGifUpload(${index})" ondragover="handleDragOver(event)" ondrop="handleDrop(event, ${index})">
+                    <span class="upload-icon">📤</span>
+                    <span class="upload-text">Drop GIF files here or click to upload</span>
+                    <input type="file" class="gif-file-input" data-index="${index}" accept=".gif" multiple onchange="handleGifFileSelect(event, ${index})" style="display:none">
+                </div>
+                <div class="gif-upload-progress" data-index="${index}"></div>
+            </div>
+        </div>
+    `;
+}
+
+function updateGifDirWeightLabel(slider) {
+    const label = slider.closest('.gif-dir-weight').querySelector('.weight-value');
+    label.textContent = slider.value;
+}
+
+function addGifDirEntry() {
+    const list = document.getElementById('gif-dirs-list');
+    const index = list.children.length;
+    const html = renderGifDirEntry({ path: '', weight: 50, recursive: true }, index);
+    list.insertAdjacentHTML('beforeend', html);
+}
+
+function removeGifDirEntry(index) {
+    const entry = document.querySelector(`.gif-dir-entry[data-index="${index}"]`);
+    if (entry) entry.remove();
+    // Re-index remaining entries
+    reindexGifDirEntries();
+}
+
+function reindexGifDirEntries() {
+    const entries = document.querySelectorAll('.gif-dir-entry');
+    entries.forEach((entry, i) => {
+        entry.dataset.index = i;
+        entry.querySelectorAll('[data-index]').forEach(el => el.dataset.index = i);
+        // Update onclick handlers
+        const removeBtn = entry.querySelector('.btn-danger');
+        if (removeBtn) removeBtn.setAttribute('onclick', `removeGifDirEntry(${i})`);
+        const browseBtn = entry.querySelector('[title="Browse existing directories"]');
+        if (browseBtn) browseBtn.setAttribute('onclick', `browseGifDirs(${i})`);
+        const uploadArea = entry.querySelector('.gif-upload-area');
+        if (uploadArea) {
+            uploadArea.setAttribute('onclick', `triggerGifUpload(${i})`);
+            uploadArea.setAttribute('ondrop', `handleDrop(event, ${i})`);
+        }
+        const fileInput = entry.querySelector('.gif-file-input');
+        if (fileInput) fileInput.setAttribute('onchange', `handleGifFileSelect(event, ${i})`);
+    });
+}
+
+// --- GIF Upload handlers ---
+
+function triggerGifUpload(index) {
+    const input = document.querySelector(`.gif-file-input[data-index="${index}"]`);
+    if (input) input.click();
+}
+
+function handleDragOver(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.classList.add('drag-over');
+}
+
+function handleDrop(event, index) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.classList.remove('drag-over');
+    const files = event.dataTransfer.files;
+    if (files.length > 0) {
+        uploadGifFiles(files, index);
+    }
+}
+
+function handleGifFileSelect(event, index) {
+    const files = event.target.files;
+    if (files.length > 0) {
+        uploadGifFiles(files, index);
+    }
+}
+
+async function uploadGifFiles(files, index) {
+    const entry = document.querySelector(`.gif-dir-entry[data-index="${index}"]`);
+    const pathInput = entry.querySelector('.gif-dir-path');
+    const progressEl = entry.querySelector('.gif-upload-progress');
+
+    // Determine target directory from path or create one
+    let dirPath = pathInput.value.trim();
+    let dirName = '';
+
+    if (dirPath) {
+        // Extract directory name from path
+        dirName = dirPath.split('/').pop() || '';
+    }
+
+    const formData = new FormData();
+    if (dirName) {
+        formData.append('directory', dirName);
+    }
+
+    let gifCount = 0;
+    for (const file of files) {
+        if (file.name.toLowerCase().endsWith('.gif')) {
+            formData.append('files', file);
+            gifCount++;
+        }
+    }
+
+    if (gifCount === 0) {
+        progressEl.innerHTML = '<span style="color: var(--danger);">No valid GIF files selected</span>';
+        setTimeout(() => progressEl.innerHTML = '', 3000);
+        return;
+    }
+
+    progressEl.innerHTML = `<span style="color: var(--accent);">Uploading ${gifCount} file(s)...</span>`;
+
+    try {
+        const resp = await fetch(API_BASE + '/api/gif/upload', {
+            method: 'POST',
+            body: formData,
+        });
+        const result = await resp.json();
+
+        if (result.success) {
+            progressEl.innerHTML = `<span style="color: var(--success);">✅ ${result.message}</span>`;
+            // If path was empty, set it from the upload result
+            if (!pathInput.value.trim() && result.data && result.data.uploaded && result.data.uploaded.length > 0) {
+                const uploadedPath = result.data.uploaded[0].path;
+                const dir = uploadedPath.substring(0, uploadedPath.lastIndexOf('/'));
+                pathInput.value = dir;
+                // Update title
+                entry.querySelector('.gif-dir-title').textContent = dir.split('/').pop();
+            }
+        } else {
+            progressEl.innerHTML = `<span style="color: var(--danger);">❌ ${result.message}</span>`;
+        }
+
+        if (result.data && result.data.errors && result.data.errors.length > 0) {
+            progressEl.innerHTML += `<br><span style="color: var(--warning); font-size: 0.8rem;">${result.data.errors.join(', ')}</span>`;
+        }
+    } catch (err) {
+        progressEl.innerHTML = `<span style="color: var(--danger);">❌ Upload failed: ${err.message}</span>`;
+    }
+
+    setTimeout(() => {
+        if (progressEl) progressEl.innerHTML = '';
+    }, 5000);
+}
+
+// --- Browse/Refresh GIF directories ---
+
+async function browseGifDirs(index) {
+    const data = await api('/api/gif/directories');
+    if (!data || !data.data) return;
+
+    const dirs = data.data.directories || [];
+    const entry = document.querySelector(`.gif-dir-entry[data-index="${index}"]`);
+    const pathInput = entry.querySelector('.gif-dir-path');
+
+    if (dirs.length === 0) {
+        showGifDirsStatus('No existing directories found. Upload some GIFs first!');
+        return;
+    }
+
+    // Show a simple dropdown-style picker
+    const existing = entry.querySelector('.gif-dir-browse-dropdown');
+    if (existing) { existing.remove(); return; }
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'gif-dir-browse-dropdown';
+    dropdown.innerHTML = dirs.map(d =>
+        `<div class="gif-dir-browse-item" data-path="${escapeHtml(d.path)}">
+            <span class="dir-name">${escapeHtml(d.name)}</span>
+            <span class="dir-count">${d.gif_count} GIF${d.gif_count !== 1 ? 's' : ''}</span>
+        </div>`
+    ).join('');
+
+    dropdown.querySelectorAll('.gif-dir-browse-item').forEach(item => {
+        item.addEventListener('click', () => {
+            pathInput.value = item.dataset.path;
+            entry.querySelector('.gif-dir-title').textContent = item.querySelector('.dir-name').textContent;
+            dropdown.remove();
+        });
+    });
+
+    pathInput.closest('.gif-dir-path-row').appendChild(dropdown);
+
+    // Close on outside click
+    setTimeout(() => {
+        document.addEventListener('click', function closeDropdown(e) {
+            if (!dropdown.contains(e.target)) {
+                dropdown.remove();
+                document.removeEventListener('click', closeDropdown);
+            }
+        });
+    }, 0);
+}
+
+async function refreshGifDirs() {
+    const data = await api('/api/gif/directories');
+    if (!data || !data.data) return;
+    showGifDirsStatus(`Found ${data.data.directories.length} director${data.data.directories.length === 1 ? 'y' : 'ies'} in ${data.data.base_path}`);
+}
+
+async function showNewDirDialog() {
+    const name = prompt('Enter a name for the new GIF directory:');
+    if (!name || !name.trim()) return;
+
+    const result = await api('/api/gif/directories/create', 'POST', { name: name.trim() });
+    if (result && result.success) {
+        showGifDirsStatus(`✅ Directory '${result.data.name}' created at ${result.data.path}`);
+        // Add an entry for this new directory
+        const list = document.getElementById('gif-dirs-list');
+        const index = list.children.length;
+        const html = renderGifDirEntry({ path: result.data.path, weight: 50, recursive: true }, index);
+        list.insertAdjacentHTML('beforeend', html);
+    } else {
+        showGifDirsStatus(`❌ ${result?.message || 'Failed to create directory'}`);
+    }
+}
+
+function showGifDirsStatus(message) {
+    const el = document.getElementById('gif-dirs-status');
+    if (el) {
+        el.textContent = message;
+        setTimeout(() => el.textContent = '', 5000);
+    }
+}
+
+// --- Collect gif_dirs data for saving ---
+
+function collectGifDirsData() {
+    const entries = document.querySelectorAll('.gif-dir-entry');
+    const dirs = [];
+    entries.forEach(entry => {
+        const path = entry.querySelector('.gif-dir-path').value.trim();
+        if (!path) return; // skip empty entries
+        const weight = parseInt(entry.querySelector('.gif-dir-weight-slider').value) || 50;
+        const recursive = entry.querySelector('.gif-dir-recursive-cb').checked;
+        dirs.push({ path, weight, recursive });
+    });
+    return dirs;
 }
 
 function getCityDisplayValue(value) {
@@ -574,24 +874,34 @@ async function savePluginConfig(pluginName) {
 
     // Collect form values for this plugin
     const card = document.querySelector(`.plugin-config-card[data-plugin="${pluginName}"]`);
-    const inputs = card.querySelectorAll('input[data-field]');
+    const inputs = card.querySelectorAll('[data-field]');
 
     inputs.forEach(input => {
         const fieldName = input.dataset.field;
         const fieldType = input.dataset.fieldType;
-        let value = input.value.trim();
 
-        if (fieldType === 'city') {
-            // For city fields, store the value (autocomplete task 9 will add lat/long handling)
-            if (input._cityData) {
-                pluginEntry.settings[fieldName] = input._cityData;
-            } else {
-                pluginEntry.settings[fieldName] = value;
-            }
-        } else if (input.type === 'number') {
-            pluginEntry.settings[fieldName] = value ? Number(value) : null;
+        // Skip child elements inside gif-dirs-editor (they don't have data-field directly)
+        if (input.closest('.gif-dirs-editor') && !input.classList.contains('gif-dirs-editor')) {
+            return;
+        }
+
+        if (fieldType === 'gif_dirs') {
+            // gif_dirs is handled separately via collectGifDirsData()
+            pluginEntry.settings[fieldName] = collectGifDirsData();
         } else {
-            pluginEntry.settings[fieldName] = value || null;
+            let value = (input.value || '').trim();
+            if (fieldType === 'city') {
+                // For city fields, store the value (autocomplete task 9 will add lat/long handling)
+                if (input._cityData) {
+                    pluginEntry.settings[fieldName] = input._cityData;
+                } else {
+                    pluginEntry.settings[fieldName] = value;
+                }
+            } else if (input.type === 'number') {
+                pluginEntry.settings[fieldName] = value ? Number(value) : null;
+            } else {
+                pluginEntry.settings[fieldName] = value || null;
+            }
         }
     });
 

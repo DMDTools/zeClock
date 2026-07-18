@@ -587,3 +587,255 @@ input:focus {
 .plugin-config-card .btn-save-plugin {
     margin-top: 1rem;
 }
+
+
+/* --- GIF Directories Editor --- */
+
+.gif-dirs-editor {
+    margin-bottom: 1rem;
+}
+
+.gif-dirs-editor > label {
+    display: block;
+    margin-bottom: 0.3rem;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.gif-dirs-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin: 0.75rem 0;
+}
+
+.gif-dir-entry {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem;
+    transition: border-color 0.15s;
+}
+
+.gif-dir-entry:hover {
+    border-color: var(--accent);
+}
+
+.gif-dir-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.gif-dir-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--accent);
+}
+
+.gif-dir-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.gif-dir-field label {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 0.2rem;
+}
+
+.gif-dir-path-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    position: relative;
+}
+
+.gif-dir-path-row input[type="text"] {
+    flex: 1;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.9rem;
+}
+
+.gif-dir-field-inline {
+    display: flex;
+    gap: 1.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.gif-dir-weight {
+    flex: 1;
+    min-width: 150px;
+}
+
+.gif-dir-weight label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.gif-dir-weight .weight-value {
+    font-weight: 600;
+    color: var(--accent);
+    min-width: 2ch;
+}
+
+.gif-dir-weight-slider {
+    width: 100%;
+    accent-color: var(--accent);
+    height: 6px;
+    margin-top: 0.25rem;
+}
+
+.gif-dir-recursive {
+    display: flex;
+    align-items: center;
+}
+
+.gif-dir-recursive label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--text);
+    margin-bottom: 0;
+}
+
+.gif-dir-recursive input[type="checkbox"] {
+    accent-color: var(--accent);
+    width: 16px;
+    height: 16px;
+}
+
+/* Upload area */
+.gif-dir-upload {
+    margin-top: 0.75rem;
+}
+
+.gif-upload-area {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 1rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.gif-upload-area:hover {
+    border-color: var(--accent);
+    background: rgba(255, 136, 0, 0.05);
+}
+
+.gif-upload-area.drag-over {
+    border-color: var(--success);
+    background: rgba(0, 200, 83, 0.08);
+}
+
+.gif-upload-area .upload-icon {
+    font-size: 1.2rem;
+}
+
+.gif-upload-area .upload-text {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.gif-upload-progress {
+    margin-top: 0.5rem;
+    font-size: 0.8rem;
+    min-height: 1rem;
+}
+
+/* Actions bar */
+.gif-dirs-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 0.5rem;
+}
+
+/* Browse dropdown */
+.gif-dir-browse-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 var(--radius) var(--radius);
+    max-height: 200px;
+    overflow-y: auto;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.gif-dir-browse-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.6rem 0.75rem;
+    cursor: pointer;
+    color: var(--text);
+    font-size: 0.9rem;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+}
+
+.gif-dir-browse-item:last-child {
+    border-bottom: none;
+}
+
+.gif-dir-browse-item:hover {
+    background: var(--accent);
+    color: #fff;
+}
+
+.gif-dir-browse-item .dir-name {
+    font-weight: 500;
+}
+
+.gif-dir-browse-item .dir-count {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    background: var(--bg-input);
+    padding: 0.15rem 0.5rem;
+    border-radius: 10px;
+}
+
+.gif-dir-browse-item:hover .dir-count {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+    .gif-dir-field-inline {
+        flex-direction: column;
+        gap: 0.5rem;
+        align-items: flex-start;
+    }
+
+    .gif-dir-weight {
+        width: 100%;
+    }
+
+    .gif-dirs-actions {
+        flex-direction: column;
+    }
+
+    .gif-dirs-actions .btn {
+        width: 100%;
+        text-align: center;
+    }
+}
