@@ -105,6 +105,8 @@ jobs:
         run: |
           cd deploy/rpi
           ls -lh "${OUTPUT_IMG}"
+          # Fix ownership (Docker creates files as root)
+          sudo chown "$(id -u):$(id -g)" "${OUTPUT_IMG}"
           xz -9 --threads=0 "${OUTPUT_IMG}"
           ls -lh "${OUTPUT_IMG}.xz"
           echo "IMAGE_FILE=${OUTPUT_IMG}.xz" >> $GITHUB_ENV
