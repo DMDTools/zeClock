@@ -1,0 +1,166 @@
+name: Build Raspberry Pi Image
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+    paths:
+      - "deploy/rpi/**"
+      - ".github/workflows/build-rpi-image.yml"
+
+env:
+  DOCKER_IMAGE: mkaczanowski/packer-builder-arm:latest
+  OUTPUT_IMG: zeclock-rpi.img
+
+jobs:
+  build-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python (for pip download)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Free disk space
+        run: |
+          # Free up space on the runner for the ~3GB image build
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          df -h /
+
+      - name: Prepare export directory
+        run: |
+          EXPORT_DIR="/tmp/zeclock-export"
+          rm -rf "${EXPORT_DIR}"
+          mkdir -p "${EXPORT_DIR}"
+
+          # Export clean source tree (no .git, .venv, etc.)
+          git archive --format=tar HEAD | tar -x -C "${EXPORT_DIR}"
+          echo "Exported source: $(du -sh "${EXPORT_DIR}" | cut -f1)"
+
+          # Pre-download .deb packages for aarch64
+          DEBS_DIR="${EXPORT_DIR}/.debs"
+          mkdir -p "${DEBS_DIR}"
+          curl -sSL -o "${DEBS_DIR}/f2fs-tools.deb" \
+              "http://deb.debian.org/debian/pool/main/f/f2fs-tools/f2fs-tools_1.16.0-1.1+b1_arm64.deb"
+          curl -sSL -o "${DEBS_DIR}/libserialport0.deb" \
+              "http://deb.debian.org/debian/pool/main/libs/libserialport/libserialport0_0.1.2-1_arm64.deb"
+          curl -sSL -o "${DEBS_DIR}/libgpiod2.deb" \
+              "http://ftp.debian.org/debian/pool/main/libg/libgpiod/libgpiod2_1.6.3-1+b3_arm64.deb"
+          echo "Debs: $(ls "${DEBS_DIR}"/*.deb | wc -l) files"
+
+          # Pre-download Python wheels for aarch64
+          WHEELS_DIR="${EXPORT_DIR}/.wheels"
+          mkdir -p "${WHEELS_DIR}"
+          pip download \
+              --dest "${WHEELS_DIR}" \
+              --platform manylinux2014_aarch64 \
+              --platform manylinux_2_27_aarch64 \
+              --platform manylinux_2_28_aarch64 \
+              --platform linux_aarch64 \
+              --platform any \
+              --python-version 313 \
+              --implementation cp \
+              --abi cp313 \
+              --abi none \
+              --only-binary=:all: \
+              pillow colorama pyyaml aiohttp pyserial 2>/dev/null || true
+          echo "Wheels: $(ls "${WHEELS_DIR}" | wc -l) files"
+
+          # Pre-download DotClk resources zip
+          curl -sSL -o "${EXPORT_DIR}/.dotclk-resources.zip" \
+              https://github.com/sigmafx/DotClk-Resources/archive/refs/heads/master.zip
+          echo "DotClk zip: $(du -sh "${EXPORT_DIR}/.dotclk-resources.zip" | cut -f1)"
+
+          # Pre-download libzedmd
+          LIBZEDMD_VERSION=$(grep -A5 'variable "libzedmd_version"' deploy/rpi/rpi-zeclock.pkr.hcl | grep 'default' | grep -o '"[^"]*"' | tail -1 | tr -d '"')
+          LIBZEDMD_VER_NUM="${LIBZEDMD_VERSION#v}"
+          curl -sSL -o "${EXPORT_DIR}/.libzedmd-aarch64.tar.gz" \
+              "https://github.com/PPUC/libzedmd/releases/download/${LIBZEDMD_VERSION}/libzedmd-${LIBZEDMD_VER_NUM}-linux-aarch64.tar.gz"
+          echo "libzedmd: $(du -sh "${EXPORT_DIR}/.libzedmd-aarch64.tar.gz" | cut -f1)"
+
+          echo "Total export: $(du -sh "${EXPORT_DIR}" | cut -f1)"
+
+      - name: Build image with Packer (Docker)
+        run: |
+          docker run --rm \
+              --privileged \
+              -v /dev:/dev \
+              -v "${{ github.workspace }}/deploy/rpi:/build" \
+              -v "/tmp/zeclock-export:/tmp/zeclock-export:ro" \
+              -w /build \
+              ${DOCKER_IMAGE} \
+              build rpi-zeclock.pkr.hcl
+
+      - name: Compress image
+        run: |
+          cd deploy/rpi
+          ls -lh "${OUTPUT_IMG}"
+          xz -9 --threads=0 "${OUTPUT_IMG}"
+          ls -lh "${OUTPUT_IMG}.xz"
+          echo "IMAGE_FILE=${OUTPUT_IMG}.xz" >> $GITHUB_ENV
+          echo "IMAGE_PATH=deploy/rpi/${OUTPUT_IMG}.xz" >> $GITHUB_ENV
+
+      - name: Upload artifact (PR builds)
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: zeclock-rpi-image
+          path: deploy/rpi/${{ env.OUTPUT_IMG }}.xz
+          retention-days: 5
+
+      - name: Determine release tag
+        if: github.event_name == 'push'
+        id: release_tag
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            echo "tag=${TAG}" >> $GITHUB_OUTPUT
+            echo "release_name=zeClock ${TAG}" >> $GITHUB_OUTPUT
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+          else
+            TAG="latest"
+            echo "tag=${TAG}" >> $GITHUB_OUTPUT
+            echo "release_name=zeClock Latest (main)" >> $GITHUB_OUTPUT
+            echo "prerelease=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create or update release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_tag.outputs.tag }}
+          name: ${{ steps.release_tag.outputs.release_name }}
+          prerelease: ${{ steps.release_tag.outputs.prerelease }}
+          files: ${{ env.IMAGE_PATH }}
+          body: |
+            ## Raspberry Pi Image
+
+            Pre-built image for Raspberry Pi 4/5 with zeClock pre-installed.
+
+            ### Flash to SD card
+
+            ```bash
+            xzcat zeclock-rpi.img.xz | sudo dd of=/dev/sdX bs=4M status=progress
+            ```
+
+            Or use [Raspberry Pi Imager](https://www.raspberrypi.com/software/) / [balenaEtcher](https://etcher.balena.io/).
+
+            ### First boot
+
+            1. Insert SD card and power on
+            2. If WiFi is not pre-configured, connect to the **zeClock-Setup** AP
+            3. Configure WiFi via the captive portal
+            4. zeClock starts automatically once connected
+
+            See the [README](https://github.com/DMDTools/zeClock#-autonomous-raspberry-pi) for full documentation.
+          generate_release_notes: true
+          make_latest: ${{ steps.release_tag.outputs.prerelease == 'false' }}
