@@ -92,6 +92,14 @@ jobs:
 
       - name: Build image with Packer (Docker)
         run: |
+          echo "=== Pre-build checks ==="
+          echo "Docker image: ${DOCKER_IMAGE}"
+          echo "Workspace: ${{ github.workspace }}"
+          ls -la "${{ github.workspace }}/deploy/rpi/"
+          echo "Export dir contents:"
+          ls -la /tmp/zeclock-export/ | head -20
+          echo ""
+          echo "=== Starting Packer build ==="
           docker run --rm \
               --privileged \
               -v /dev:/dev \
