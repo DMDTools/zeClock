@@ -1,0 +1,32 @@
+name: Create Evolution Issues
+
+on:
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  create-issues:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create labels
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create "priority: critical" --color "b60205" --description "Highest priority - blocking users" --repo ${{ github.repository }} 2>/dev/null || true
+          gh label create "priority: high" --color "d93f0b" --description "High priority - significant value" --repo ${{ github.repository }} 2>/dev/null || true
+          gh label create "priority: medium" --color "fbca04" --description "Medium priority - nice to have" --repo ${{ github.repository }} 2>/dev/null || true
+          gh label create "priority: low" --color "0e8a16" --description "Low priority - future improvement" --repo ${{ github.repository }} 2>/dev/null || true
+          gh label create "type: bug" --color "d73a4a" --description "Something isn't working" --repo ${{ github.repository }} 2>/dev/null || true
+          gh label create "type: feature" --color "a2eeef" --description "New feature or request" --repo ${{ github.repository }} 2>/dev/null || true
+          gh label create "type: tech-debt" --color "d4c5f9" --description "Technical debt reduction" --repo ${{ github.repository }} 2>/dev/null || true
+          gh label create "type: dx" --color "bfdadc" --description "Developer experience improvement" --repo ${{ github.repository }} 2>/dev/null || true
+
+      - name: Create issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          bash scripts/create-issues.sh
