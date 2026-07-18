@@ -162,17 +162,25 @@
             <div class="card">
                 <h2>Location</h2>
                 <div class="form-group">
+                    <label for="cfg-location-search">Search city or address</label>
+                    <div class="location-input-wrapper">
+                        <input type="text" id="cfg-location-search" class="location-autocomplete-input" placeholder="Start typing a city or address..." autocomplete="off">
+                        <div class="location-coords" id="cfg-location-search-coords"></div>
+                    </div>
+                </div>
+                <div class="form-group">
                     <label for="cfg-latitude">Latitude</label>
-                    <input type="number" id="cfg-latitude" step="0.0001" placeholder="45.1885">
+                    <input type="number" id="cfg-latitude" step="0.0001" placeholder="45.1885" readonly>
                 </div>
                 <div class="form-group">
                     <label for="cfg-longitude">Longitude</label>
-                    <input type="number" id="cfg-longitude" step="0.0001" placeholder="5.7245">
+                    <input type="number" id="cfg-longitude" step="0.0001" placeholder="5.7245" readonly>
                 </div>
                 <div class="form-group">
                     <label for="cfg-city">City Name</label>
-                    <input type="text" id="cfg-city" placeholder="Grenoble">
+                    <input type="text" id="cfg-city" placeholder="Grenoble" readonly>
                 </div>
+                <p class="field-description">Coordinates and city name are auto-filled when you select a location above.</p>
             </div>
 
             <div class="card">

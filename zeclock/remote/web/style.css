@@ -543,7 +543,80 @@ input:focus {
     width: 100%;
 }
 
-/* City autocomplete dropdown */
+/* Location autocomplete (shared component for "city" and "location" fields) */
+
+.location-input-wrapper {
+    position: relative;
+}
+
+.location-input-wrapper input {
+    width: 100%;
+}
+
+.location-coords {
+    font-size: 0.75rem;
+    color: var(--success);
+    margin-top: 0.3rem;
+    min-height: 1rem;
+}
+
+.location-autocomplete-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 var(--radius) var(--radius);
+    max-height: 220px;
+    overflow-y: auto;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.location-autocomplete-item {
+    padding: 0.6rem 0.75rem;
+    cursor: pointer;
+    color: var(--text);
+    font-size: 0.9rem;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.location-autocomplete-item:last-child {
+    border-bottom: none;
+}
+
+.location-autocomplete-item:hover {
+    background: var(--accent);
+    color: #fff;
+}
+
+.location-autocomplete-item:hover .location-item-coords {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.location-item-name {
+    display: block;
+}
+
+.location-item-coords {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.location-autocomplete-no-results {
+    padding: 0.6rem 0.75rem;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    font-style: italic;
+}
+
+/* City autocomplete dropdown (legacy - kept for backward compat) */
 .city-autocomplete-dropdown {
     position: absolute;
     top: 100%;
