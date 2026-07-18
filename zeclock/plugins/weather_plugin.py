@@ -156,11 +156,11 @@ class WeatherPlugin(PagedPlugin):
         """Declare configuration fields for the weather plugin."""
         return [
             ConfigField(
-                "city",
-                "City",
-                "city",
+                "location",
+                "Location 1",
+                "location",
                 required=True,
-                description="Location for weather data",
+                description="City or address for weather data (start typing to search)",
             )
         ]
 
@@ -179,10 +179,12 @@ class WeatherPlugin(PagedPlugin):
         """Initialize the plugin with configuration.
 
         Config keys:
-            latitude (float): City latitude coordinate (optional if city provided)
-            longitude (float): City longitude coordinate (optional if city provided)
-            city_name (str): Display name for the city / city to geocode
-            city (str): City name for geocoding (alternative to lat/long)
+            location (dict): Location object from autocomplete picker
+                {"display_name": "...", "latitude": ..., "longitude": ..., "country": "..."}
+            city (str|dict): Legacy city field (deprecated, use location)
+            latitude (float): City latitude coordinate (legacy fallback)
+            longitude (float): City longitude coordinate (legacy fallback)
+            city_name (str): Display name for the city (legacy fallback)
             temperature_unit (str): "celsius" or "fahrenheit" (default: "celsius")
             page_duration_seconds (int): Duration per page 2-30s (default: 4)
 
@@ -195,19 +197,63 @@ class WeatherPlugin(PagedPlugin):
         self._helpers = config.get("_helpers")
 
         # Read location configuration
+        # Priority: location (new) > city (legacy) > explicit lat/lon
+        location_raw = config.get("location")
+        city_raw = config.get("city", "")
         lat = config.get("latitude")
         lon = config.get("longitude")
-        # "city" is the autocomplete/geocoding field (string or object)
-        # "city_name" is just a display label (never triggers geocoding)
-        city_raw = config.get("city", "")
         display_name = config.get("city_name", "")
 
-        # Handle city field: can be a string or an object from autocomplete
-        # e.g. {"display_name": "Grenoble, ...", "latitude": 45.18, "longitude": 5.73}
+        # --- NEW: Handle "location" field (object from autocomplete picker) ---
+        if isinstance(location_raw, dict):
+            c_lat = location_raw.get("latitude")
+            c_lon = location_raw.get("longitude")
+            full_name = location_raw.get("display_name", "")
+            if (
+                c_lat is not None
+                and c_lon is not None
+                and isinstance(c_lat, (int, float))
+                and isinstance(c_lon, (int, float))
+            ):
+                self._latitude = float(c_lat)
+                self._longitude = float(c_lon)
+                self._city_name = (
+                    full_name.split(",")[0].strip()
+                    if full_name
+                    else f"{self._latitude},{self._longitude}"
+                )
+                self._finalize_init(config)
+                await self._refresh_cache_if_needed()
+                return
+            elif full_name.strip():
+                result = geocode(full_name.strip())
+                if result is None:
+                    raise PluginNotConfiguredError(
+                        f"Could not resolve location '{full_name}' to coordinates."
+                    )
+                self._latitude = result.latitude
+                self._longitude = result.longitude
+                self._city_name = full_name.split(",")[0].strip()
+                self._finalize_init(config)
+                await self._refresh_cache_if_needed()
+                return
+        elif isinstance(location_raw, str) and location_raw.strip():
+            result = geocode(location_raw.strip())
+            if result is None:
+                raise PluginNotConfiguredError(
+                    f"Could not resolve location '{location_raw}' to coordinates."
+                )
+            self._latitude = result.latitude
+            self._longitude = result.longitude
+            self._city_name = location_raw.strip()
+            self._finalize_init(config)
+            await self._refresh_cache_if_needed()
+            return
+
+        # --- LEGACY: Handle "city" field (backward compat) ---
         city_str = ""
         city_coords = None
         if isinstance(city_raw, dict):
-            # Extract just the city name (first part before comma)
             full_name = city_raw.get("display_name", "")
             city_str = full_name.split(",")[0].strip() if full_name else ""
             c_lat = city_raw.get("latitude")
@@ -222,7 +268,6 @@ class WeatherPlugin(PagedPlugin):
         elif isinstance(city_raw, str) and city_raw.strip():
             city_str = city_raw.strip()
 
-        # Determine if explicit lat/long are provided (both non-null numeric)
         has_coords = (
             lat is not None
             and lon is not None
@@ -230,40 +275,38 @@ class WeatherPlugin(PagedPlugin):
             and isinstance(lon, (int, float))
         )
 
-        # Priority: city (autocomplete object with coords) > city (string to geocode) > explicit coords
         if city_coords:
-            # City selected via autocomplete with embedded coordinates
             self._latitude = city_coords[0]
             self._longitude = city_coords[1]
             self._city_name = (
                 city_str or display_name or f"{self._latitude},{self._longitude}"
             )
         elif city_str:
-            # City name provided as string — geocode it
             result = geocode(city_str)
             if result is None:
                 raise PluginNotConfiguredError(
                     f"Could not resolve city '{city_str}' to coordinates. "
                     "Check city name or provide explicit latitude/longitude."
                 )
-            # Cache geocoded result in memory for session
             self._latitude = result.latitude
             self._longitude = result.longitude
             self._city_name = city_str
         elif has_coords:
-            # Fallback to explicit coordinates only if no city configured
-            assert lat is not None and lon is not None  # guaranteed by has_coords
+            assert lat is not None and lon is not None
             self._latitude = float(lat)
             self._longitude = float(lon)
             self._city_name = display_name or f"{self._latitude},{self._longitude}"
         else:
-            # No city and no coords → cannot proceed
             raise PluginNotConfiguredError(
-                "Weather plugin requires either a city name or "
-                "latitude/longitude coordinates."
+                "Weather plugin requires a location. "
+                "Use the location picker or provide a city name."
             )
 
-        # Read optional configuration
+        self._finalize_init(config)
+        await self._refresh_cache_if_needed()
+
+    def _finalize_init(self, config: dict) -> None:
+        """Complete initialization after coordinates are resolved."""
         self._temperature_unit = config.get("temperature_unit", "celsius")
         if self._temperature_unit not in ("celsius", "fahrenheit"):
             self._temperature_unit = "celsius"
@@ -285,9 +328,6 @@ class WeatherPlugin(PagedPlugin):
 
         # Force cache invalidation on reconfigure (coords may have changed)
         self._cache = None
-
-        # Attempt to fetch weather data
-        await self._refresh_cache_if_needed()
 
     async def render_frame(self, width: int, height: int) -> Optional[Image.Image]:
         """Render the next weather frame with staleness indicator."""

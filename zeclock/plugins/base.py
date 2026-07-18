@@ -77,11 +77,24 @@ class ConfigField:
     Used by plugins to declare their required settings via the
     config_schema property. The Web UI uses these to auto-generate
     configuration forms.
+
+    Supported field_type values:
+        "text"     — Free-text input.
+        "number"   — Numeric input.
+        "city"     — Legacy city autocomplete (deprecated, use "location").
+        "location" — Shared location picker with city/address autocomplete.
+                     The Web UI renders an autocomplete input that queries
+                     the geocode API. On selection the stored value is an
+                     object: {"display_name", "latitude", "longitude", "country"}.
+                     Plugins receive this object in their settings and can
+                     extract coordinates directly — no manual lat/lon entry
+                     needed.
+        "list"     — Comma-separated values.
     """
 
     name: str  # Key in plugins.yaml settings dict
     label: str  # Human-readable label for Web UI (max 50 chars)
-    field_type: str  # "text" | "number" | "city" | "list"
+    field_type: str  # "text" | "number" | "city" | "location" | "list"
     required: bool = True
     description: str = ""  # max 200 chars
     default: Any = None
