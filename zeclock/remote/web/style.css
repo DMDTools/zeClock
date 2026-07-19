@@ -535,55 +535,6 @@ input:focus {
     font-style: italic;
 }
 
-.plugin-config-card .city-input-wrapper {
-    position: relative;
-}
-
-.plugin-config-card .city-input-wrapper input {
-    width: 100%;
-}
-
-/* City autocomplete dropdown */
-.city-autocomplete-dropdown {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    z-index: 100;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-top: none;
-    border-radius: 0 0 var(--radius) var(--radius);
-    max-height: 200px;
-    overflow-y: auto;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.city-autocomplete-item {
-    padding: 0.6rem 0.75rem;
-    cursor: pointer;
-    color: var(--text);
-    font-size: 0.9rem;
-    border-bottom: 1px solid var(--border);
-    transition: background 0.1s;
-}
-
-.city-autocomplete-item:last-child {
-    border-bottom: none;
-}
-
-.city-autocomplete-item:hover {
-    background: var(--accent);
-    color: #fff;
-}
-
-.city-autocomplete-no-results {
-    padding: 0.6rem 0.75rem;
-    color: var(--text-muted);
-    font-size: 0.85rem;
-    font-style: italic;
-}
-
 .plugin-config-card .btn-save-plugin {
     margin-top: 1rem;
 }

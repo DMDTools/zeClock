@@ -502,8 +502,7 @@ async function loadPluginConfigForms(currentPluginsConfig) {
         `;
     }).join('');
 
-    // Initialize city autocomplete handlers after forms are rendered
-    initCityAutocomplete();
+    // Initialize location autocomplete handlers after forms are rendered
     initLocationAutocomplete();
 }
 
@@ -845,13 +844,6 @@ function collectGifDirsData() {
     return dirs;
 }
 
-function getCityDisplayValue(value) {
-    if (!value) return '';
-    if (typeof value === 'object' && value.display_name) return value.display_name;
-    if (typeof value === 'string') return value;
-    return '';
-}
-
 function getLocationDisplayValue(value) {
     if (!value) return '';
     if (typeof value === 'object' && value.display_name) return value.display_name;
@@ -938,127 +930,6 @@ async function savePluginConfig(pluginName) {
         const msg = result?.message || 'Unknown error';
         showPluginSaveStatus(pluginName, false, msg);
     }
-}
-
-// --- City Autocomplete ---
-
-let cityAutocompleteTimeout = null;
-let _cityAutocompleteDocClickBound = false;
-
-function initCityAutocomplete() {
-    const cityInputs = document.querySelectorAll('.city-autocomplete-input');
-    cityInputs.forEach(input => {
-        // Prevent duplicate listeners by marking initialized inputs
-        if (input._cityAutocompleteInit) return;
-        input._cityAutocompleteInit = true;
-        input.addEventListener('input', handleCityInput);
-        input.addEventListener('keydown', handleCityKeydown);
-    });
-
-    // Close dropdowns when clicking outside — bind only once
-    if (!_cityAutocompleteDocClickBound) {
-        _cityAutocompleteDocClickBound = true;
-        document.addEventListener('click', (e) => {
-            if (!e.target.closest('.city-input-wrapper')) {
-                closeCityDropdowns();
-            }
-        });
-    }
-}
-
-function handleCityInput(e) {
-    const input = e.target;
-    const query = input.value.trim();
-
-    // Clear any pending debounce
-    if (cityAutocompleteTimeout) {
-        clearTimeout(cityAutocompleteTimeout);
-        cityAutocompleteTimeout = null;
-    }
-
-    // Clear stored city data when user types (selection invalidated)
-    input._cityData = null;
-
-    // Only search if 3+ characters
-    if (query.length < 3) {
-        removeCityDropdown(input);
-        return;
-    }
-
-    // Debounce: wait 300ms after last keystroke
-    cityAutocompleteTimeout = setTimeout(() => {
-        searchCities(input, query);
-    }, 300);
-}
-
-function handleCityKeydown(e) {
-    if (e.key === 'Escape') {
-        removeCityDropdown(e.target);
-    }
-}
-
-async function searchCities(input, query) {
-    const data = await api(`/api/geocode/search?q=${encodeURIComponent(query)}`);
-
-    if (!data || !data.results) {
-        showCityDropdown(input, []);
-        return;
-    }
-
-    showCityDropdown(input, data.results);
-}
-
-function showCityDropdown(input, results) {
-    const wrapper = input.closest('.city-input-wrapper');
-    if (!wrapper) return;
-
-    // Remove existing dropdown
-    removeCityDropdown(input);
-
-    const dropdown = document.createElement('div');
-    dropdown.className = 'city-autocomplete-dropdown';
-
-    if (results.length === 0) {
-        dropdown.innerHTML = '<div class="city-autocomplete-no-results">No results found</div>';
-    } else {
-        const items = results.slice(0, 5);
-        dropdown.innerHTML = items.map((result, index) => `
-            <div class="city-autocomplete-item" data-index="${index}">
-                ${escapeHtml(result.display_name)}
-            </div>
-        `).join('');
-
-        // Attach click handlers to items
-        dropdown.querySelectorAll('.city-autocomplete-item').forEach((item, index) => {
-            item.addEventListener('click', () => {
-                selectCity(input, items[index]);
-            });
-        });
-    }
-
-    wrapper.appendChild(dropdown);
-}
-
-function selectCity(input, result) {
-    input.value = result.display_name;
-    input._cityData = {
-        display_name: result.display_name,
-        latitude: result.latitude,
-        longitude: result.longitude,
-        country: result.country
-    };
-    removeCityDropdown(input);
-}
-
-function removeCityDropdown(input) {
-    const wrapper = input.closest('.city-input-wrapper');
-    if (!wrapper) return;
-    const existing = wrapper.querySelector('.city-autocomplete-dropdown');
-    if (existing) existing.remove();
-}
-
-function closeCityDropdowns() {
-    document.querySelectorAll('.city-autocomplete-dropdown').forEach(d => d.remove());
 }
 
 // --- Location Autocomplete (shared service for "location" field type) ---
