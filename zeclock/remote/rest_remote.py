@@ -466,7 +466,9 @@ class RestRemote:
                 status=400,
             )
 
-        results = search_cities(query)
+        # Run blocking geocoder in a thread to avoid blocking the event loop
+        loop = asyncio.get_event_loop()
+        results = await loop.run_in_executor(None, search_cities, query)
         return web.json_response(
             {
                 "results": [
