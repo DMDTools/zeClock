@@ -21,19 +21,19 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from PIL import Image
 
-from .base import ClockPlugin, ConfigField, PluginNotConfiguredError
+from .base import ClockPlugin, ConfigField
 
 logger = logging.getLogger(__name__)
 
 # Date format presets
 DATE_FORMATS = {
-    "dmy": "%d/%m/%Y",       # 19/07/2026
-    "mdy": "%m/%d/%Y",       # 07/19/2026
-    "ymd": "%Y-%m-%d",       # 2026-07-19
-    "short_dmy": "%d/%m",    # 19/07
-    "short_mdy": "%m/%d",    # 07/19
-    "text_en": "%b %d",      # Jul 19
-    "text_fr": "%d %b",      # 19 Jul
+    "dmy": "%d/%m/%Y",  # 19/07/2026
+    "mdy": "%m/%d/%Y",  # 07/19/2026
+    "ymd": "%Y-%m-%d",  # 2026-07-19
+    "short_dmy": "%d/%m",  # 19/07
+    "short_mdy": "%m/%d",  # 07/19
+    "text_en": "%b %d",  # Jul 19
+    "text_fr": "%d %b",  # 19 Jul
 }
 
 # Day names (short, 3 chars max for DMD)
@@ -427,9 +427,7 @@ class ClockDisplayPlugin(ClockPlugin):
         day_names = DAY_NAMES.get(self._language, DAY_NAMES["en"])
         return day_names[dt.weekday()]
 
-    def _render_time_only(
-        self, dt: datetime, width: int, height: int
-    ) -> Image.Image:
+    def _render_time_only(self, dt: datetime, width: int, height: int) -> Image.Image:
         """Render time centered on the full display.
 
         Uses the largest available font (STANDARD) for maximum visibility.
@@ -442,9 +440,7 @@ class ClockDisplayPlugin(ClockPlugin):
         color = self._current_color
 
         # Render time centered using STANDARD font (largest)
-        time_frame = self._helpers.render_text(
-            time_str, centered=True, color=color
-        )
+        time_frame = self._helpers.render_text(time_str, centered=True, color=color)
         frame = self._helpers.composite_frames(frame, time_frame)
 
         # If 12h mode, add AM/PM indicator in top-right corner (SYSTEM font)

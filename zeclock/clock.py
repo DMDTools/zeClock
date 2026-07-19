@@ -782,10 +782,22 @@ class ZeClock:
     async def _init_clock_plugin(self) -> None:
         """Initialize the clock plugin for rendering clock frames.
 
-        Creates a ClockDisplayPlugin instance and initializes it with
-        configuration from plugins.yaml (if available) or defaults based
-        on the CLI --color argument.
+        The clock plugin is OPTIONAL. It is only activated if the user has
+        explicitly added a "clock" entry in their plugins.yaml configuration.
+        If not configured, the legacy inline clock renderer is used instead.
         """
+        # Check if the clock plugin is explicitly configured by the user
+        if self._plugin_manager:
+            clock_entry = self._plugin_manager.registry.get_plugin("clock")
+            if clock_entry is None:
+                # Clock plugin not configured — use legacy renderer
+                logger.info(
+                    "Clock plugin not configured in plugins.yaml, "
+                    "using legacy clock renderer"
+                )
+                self._clock_plugin_initialized = False
+                return
+
         self._clock_plugin = ClockDisplayPlugin()
 
         # Build config for the clock plugin
@@ -806,7 +818,9 @@ class ZeClock:
             self._clock_plugin_initialized = True
             logger.info("Clock plugin initialized successfully")
         except Exception as e:
-            logger.warning(f"Clock plugin initialization failed: {e}, using legacy fallback")
+            logger.warning(
+                f"Clock plugin initialization failed: {e}, using legacy fallback"
+            )
             self._clock_plugin_initialized = False
 
     async def _render_clock_plugin_frame(self) -> Image.Image:
@@ -824,7 +838,9 @@ class ZeClock:
             try:
                 clock_config = {}
                 if self._plugin_manager:
-                    clock_config = self._plugin_manager.get_plugin_config_with_helpers("clock")
+                    clock_config = self._plugin_manager.get_plugin_config_with_helpers(
+                        "clock"
+                    )
                 if "color" not in clock_config or clock_config.get("color") is None:
                     clock_config["color"] = self.color_mode
                 await self._clock_plugin.initialize(clock_config)
