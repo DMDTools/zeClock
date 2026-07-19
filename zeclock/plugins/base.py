@@ -81,6 +81,8 @@ class ConfigField:
     Supported field_type values:
         "text"     — Free-text input.
         "number"   — Numeric input.
+        "boolean"  — Toggle switch (on/off). Stored as "yes"/"no" in config.
+                     The Web UI renders a styled toggle with labels.
         "city"     — Legacy city autocomplete (deprecated, use "location").
         "location" — Shared location picker with city/address autocomplete.
                      The Web UI renders an autocomplete input that queries

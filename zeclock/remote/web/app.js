@@ -505,6 +505,7 @@ async function loadPluginConfigForms(currentPluginsConfig) {
     // Initialize city autocomplete handlers after forms are rendered
     initCityAutocomplete();
     initLocationAutocomplete();
+    initBooleanToggles();
 }
 
 function renderPluginField(pluginName, field, settings) {
@@ -520,6 +521,15 @@ function renderPluginField(pluginName, field, settings) {
     }
 
     switch (field.field_type) {
+        case 'boolean':
+            const isChecked = parseBoolValue(currentValue);
+            inputHtml = `
+                <label class="toggle-switch" for="${fieldId}">
+                    <input type="checkbox" id="${fieldId}" ${isChecked ? 'checked' : ''} data-plugin="${pluginName}" data-field="${field.name}" data-field-type="boolean">
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-label">${isChecked ? 'Oui' : 'Non'}</span>
+                </label>`;
+            break;
         case 'number':
             inputHtml = `<input type="number" id="${fieldId}" value="${currentValue}" ${requiredAttr} data-plugin="${pluginName}" data-field="${field.name}">`;
             break;
@@ -548,6 +558,15 @@ function renderPluginField(pluginName, field, settings) {
             ${descriptionHtml}
         </div>
     `;
+}
+
+function parseBoolValue(value) {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value !== 0;
+    if (typeof value === 'string') {
+        return ['yes', 'true', '1', 'on'].includes(value.toLowerCase().trim());
+    }
+    return false;
 }
 
 // --- GIF Directories Editor ---
@@ -910,6 +929,9 @@ async function savePluginConfig(pluginName) {
         if (fieldType === 'gif_dirs') {
             // gif_dirs is handled separately via collectGifDirsData()
             pluginEntry.settings[fieldName] = collectGifDirsData();
+        } else if (fieldType === 'boolean') {
+            // Boolean toggle: store as "yes"/"no"
+            pluginEntry.settings[fieldName] = input.checked ? 'yes' : 'no';
         } else {
             let value = (input.value || '').trim();
             if (fieldType === 'city' || fieldType === 'location') {
@@ -938,6 +960,20 @@ async function savePluginConfig(pluginName) {
         const msg = result?.message || 'Unknown error';
         showPluginSaveStatus(pluginName, false, msg);
     }
+}
+
+// --- Boolean Toggle Switches ---
+
+function initBooleanToggles() {
+    const toggleInputs = document.querySelectorAll('.toggle-switch input[type="checkbox"]');
+    toggleInputs.forEach(input => {
+        input.addEventListener('change', function() {
+            const label = this.closest('.toggle-switch').querySelector('.toggle-label');
+            if (label) {
+                label.textContent = this.checked ? 'Oui' : 'Non';
+            }
+        });
+    });
 }
 
 // --- City Autocomplete ---

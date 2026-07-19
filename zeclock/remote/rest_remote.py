@@ -393,6 +393,12 @@ class RestRemote:
 
         plugins = []
         for entry in pm.registry.get_all_plugins():
+            # Skip the clock plugin from the dashboard list — it is not a
+            # rotatable plugin and has its own dedicated display/config.
+            # Showing it here would let users "force" it, causing a duplicate
+            # clock on top of the normal clock-only state.
+            if entry.name == "clock":
+                continue
             plugin_info: dict = {
                 "name": entry.name,
                 "description": entry.plugin.description,
