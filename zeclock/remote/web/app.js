@@ -340,7 +340,7 @@ async function loadConfig() {
     }
 
     // Load and render auto-generated plugin config forms
-    loadPluginConfigForms(pluginsResp && pluginsResp.data);
+    await loadPluginConfigForms(pluginsResp && pluginsResp.data);
 
     // Initialize location autocomplete for global settings
     initLocationAutocomplete();
@@ -943,20 +943,27 @@ async function savePluginConfig(pluginName) {
 // --- City Autocomplete ---
 
 let cityAutocompleteTimeout = null;
+let _cityAutocompleteDocClickBound = false;
 
 function initCityAutocomplete() {
     const cityInputs = document.querySelectorAll('.city-autocomplete-input');
     cityInputs.forEach(input => {
+        // Prevent duplicate listeners by marking initialized inputs
+        if (input._cityAutocompleteInit) return;
+        input._cityAutocompleteInit = true;
         input.addEventListener('input', handleCityInput);
         input.addEventListener('keydown', handleCityKeydown);
     });
 
-    // Close dropdowns when clicking outside
-    document.addEventListener('click', (e) => {
-        if (!e.target.closest('.city-input-wrapper')) {
-            closeCityDropdowns();
-        }
-    });
+    // Close dropdowns when clicking outside — bind only once
+    if (!_cityAutocompleteDocClickBound) {
+        _cityAutocompleteDocClickBound = true;
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.city-input-wrapper')) {
+                closeCityDropdowns();
+            }
+        });
+    }
 }
 
 function handleCityInput(e) {
@@ -1057,20 +1064,27 @@ function closeCityDropdowns() {
 // --- Location Autocomplete (shared service for "location" field type) ---
 
 let locationAutocompleteTimeout = null;
+let _locationAutocompleteDocClickBound = false;
 
 function initLocationAutocomplete() {
     const locationInputs = document.querySelectorAll('.location-autocomplete-input');
     locationInputs.forEach(input => {
+        // Prevent duplicate listeners by marking initialized inputs
+        if (input._locationAutocompleteInit) return;
+        input._locationAutocompleteInit = true;
         input.addEventListener('input', handleLocationInput);
         input.addEventListener('keydown', handleLocationKeydown);
     });
 
-    // Close dropdowns when clicking outside
-    document.addEventListener('click', (e) => {
-        if (!e.target.closest('.location-input-wrapper')) {
-            closeLocationDropdowns();
-        }
-    });
+    // Close dropdowns when clicking outside — bind only once
+    if (!_locationAutocompleteDocClickBound) {
+        _locationAutocompleteDocClickBound = true;
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.location-input-wrapper')) {
+                closeLocationDropdowns();
+            }
+        });
+    }
 }
 
 function handleLocationInput(e) {
