@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 CLOCK_DISPLAY_SECONDS_MIN = 1
 CLOCK_DISPLAY_SECONDS_MAX = 300
 CLOCK_DISPLAY_SECONDS_DEFAULT = 5
+DEFAULT_PLUGIN_NAME = "clock"
 FREQUENCY_MIN = 0
 FREQUENCY_MAX = 100
 
@@ -24,11 +25,19 @@ class PluginConfig:
 
     Handles loading from disk, creating defaults, clamping out-of-range
     values, and providing plugin-specific settings.
+
+    The ``default_plugin`` field specifies which plugin is displayed
+    between other plugin rotations. Any plugin can be the default, but
+    only one at a time. If unset, falls back to "clock".
     """
 
     DEFAULT_CONFIG = {
+        "default_plugin": DEFAULT_PLUGIN_NAME,
         "clock_display_seconds": CLOCK_DISPLAY_SECONDS_DEFAULT,
-        "plugins": [{"name": "pinball", "frequency": 100, "settings": {}}],
+        "plugins": [
+            {"name": "clock", "frequency": 0, "settings": {}},
+            {"name": "pinball", "frequency": 100, "settings": {}},
+        ],
     }
 
     def __init__(self, config_path: Optional[Path] = None):
@@ -36,6 +45,7 @@ class PluginConfig:
 
         self.path = config_path or get_config_dir() / "plugins.yaml"
         self.clock_display_seconds: int = CLOCK_DISPLAY_SECONDS_DEFAULT
+        self.default_plugin: str = DEFAULT_PLUGIN_NAME
         self.plugin_entries: List[Dict[str, Any]] = []
         self._raw: Dict[str, Any] = {}
 
@@ -75,6 +85,13 @@ class PluginConfig:
 
     def _parse_config(self, data: Dict[str, Any]) -> None:
         """Parse and validate configuration data."""
+        # default_plugin
+        raw_default = data.get("default_plugin", DEFAULT_PLUGIN_NAME)
+        if isinstance(raw_default, str) and raw_default.strip():
+            self.default_plugin = raw_default.strip()
+        else:
+            self.default_plugin = DEFAULT_PLUGIN_NAME
+
         # clock_display_seconds
         raw_seconds = data.get("clock_display_seconds", CLOCK_DISPLAY_SECONDS_DEFAULT)
         if isinstance(raw_seconds, int):
@@ -133,7 +150,11 @@ class PluginConfig:
     def _apply_defaults(self) -> None:
         """Apply default configuration."""
         self.clock_display_seconds = CLOCK_DISPLAY_SECONDS_DEFAULT
-        self.plugin_entries = [{"name": "pinball", "frequency": 100, "settings": {}}]
+        self.default_plugin = DEFAULT_PLUGIN_NAME
+        self.plugin_entries = [
+            {"name": "clock", "frequency": 0, "settings": {}},
+            {"name": "pinball", "frequency": 100, "settings": {}},
+        ]
 
     def _create_default_config(self) -> None:
         """Create a default plugins.yaml file on disk."""

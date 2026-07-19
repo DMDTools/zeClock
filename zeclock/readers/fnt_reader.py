@@ -161,9 +161,7 @@ class BitmapFont:
                 self.char_info[" "]["width"] = colon_width
                 self.char_info[" "]["kerning"] = colon_kerning
                 # Replace glyph with blank of correct colon dimensions
-                self.glyphs[" "] = Image.new(
-                    "L", (colon_width, self.char_height), 0
-                )
+                self.glyphs[" "] = Image.new("L", (colon_width, self.char_height), 0)
 
     def render_text(
         self, text: str, width: int = 128, height: int = 32, upscale_mode: str = "epx"

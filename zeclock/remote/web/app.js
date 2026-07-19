@@ -146,9 +146,12 @@ async function refreshPlugins() {
 
     container.innerHTML = plugins.map(p => {
         const isActive = p.name === activePlugin || p.name === forcedPlugin;
+        const isDefault = p.is_default;
+        const defaultBadge = isDefault ? '<span class="plugin-default-badge">default</span>' : '';
         return `
-            <div class="plugin-btn ${isActive ? 'active' : ''}" onclick="forcePlugin('${p.name}')">
+            <div class="plugin-btn ${isActive ? 'active' : ''} ${isDefault ? 'default' : ''}" onclick="forcePlugin('${p.name}')">
                 <span class="plugin-name">${p.name}</span>
+                ${defaultBadge}
                 <span class="plugin-desc">${p.description || ''}</span>
             </div>
         `;
@@ -337,6 +340,18 @@ async function loadConfig() {
         const pCfg = pluginsResp.data;
         document.getElementById('cfg-clock-seconds').value = pCfg.clock_display_seconds || 5;
         renderPluginEntries(pCfg.plugins || []);
+
+        // Populate default_plugin selector with all configured plugins
+        const defaultPluginSelect = document.getElementById('cfg-default-plugin');
+        const currentDefault = pCfg.default_plugin || 'clock';
+        const pluginNames = (pCfg.plugins || []).map(p => p.name).filter(Boolean);
+        // Ensure the current default is in the list
+        if (!pluginNames.includes(currentDefault)) {
+            pluginNames.unshift(currentDefault);
+        }
+        defaultPluginSelect.innerHTML = pluginNames.map(name =>
+            `<option value="${name}" ${name === currentDefault ? 'selected' : ''}>${name}</option>`
+        ).join('');
     }
 
     // Load and render auto-generated plugin config forms
@@ -436,6 +451,7 @@ async function saveConfig() {
 
     // Build plugins.yaml structure
     const pluginsConfig = {
+        default_plugin: document.getElementById('cfg-default-plugin').value || 'clock',
         clock_display_seconds: parseInt(document.getElementById('cfg-clock-seconds').value) || 5,
         plugins: [],
     };

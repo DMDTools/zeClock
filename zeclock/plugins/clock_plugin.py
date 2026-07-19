@@ -38,9 +38,25 @@ DATE_FORMATS = {
 
 # Day names (full names — fits on DMD with SYSTEM font)
 DAY_NAMES = {
-    "en": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"],
+    "en": [
+        "MONDAY",
+        "TUESDAY",
+        "WEDNESDAY",
+        "THURSDAY",
+        "FRIDAY",
+        "SATURDAY",
+        "SUNDAY",
+    ],
     "fr": ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI", "DIMANCHE"],
-    "de": ["MONTAG", "DIENSTAG", "MITTWOCH", "DONNERSTAG", "FREITAG", "SAMSTAG", "SONNTAG"],
+    "de": [
+        "MONTAG",
+        "DIENSTAG",
+        "MITTWOCH",
+        "DONNERSTAG",
+        "FREITAG",
+        "SAMSTAG",
+        "SONNTAG",
+    ],
     "es": ["LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO", "DOMINGO"],
 }
 
@@ -153,11 +169,10 @@ class ClockDisplayPlugin(ClockPlugin):
 
     @property
     def rotatable(self) -> bool:
-        # The clock plugin is NOT part of normal rotation scheduling.
-        # It is rendered between other plugins by the ZeClock state machine.
-        # Setting rotatable=False ensures the scheduler never selects it,
-        # but it remains visible in the web UI for configuration.
-        return False
+        # The clock plugin participates in normal plugin rotation.
+        # When configured as the default_plugin in plugins.yaml, the
+        # PluginManager excludes it from rotation automatically.
+        return True
 
     @property
     def config_schema(self) -> List[ConfigField]:
@@ -544,9 +559,7 @@ class ClockDisplayPlugin(ClockPlugin):
 
         if colon_visible:
             # Normal render with colons visible
-            time_frame = self._helpers.render_text(
-                time_str, centered=True, color=color
-            )
+            time_frame = self._helpers.render_text(time_str, centered=True, color=color)
         else:
             # Hide colons: render only the digit characters at fixed positions
             # Replace colons with spaces that have the same width (guaranteed by font)
@@ -733,10 +746,7 @@ class ClockDisplayPlugin(ClockPlugin):
 
         # Always use ':' for consistent positioning
         if self._show_seconds:
-            time_str = (
-                f"{hour:02d}:{city_dt.minute:02d}"
-                f":{city_dt.second:02d}"
-            )
+            time_str = f"{hour:02d}:{city_dt.minute:02d}" f":{city_dt.second:02d}"
         else:
             time_str = f"{hour:02d}:{city_dt.minute:02d}"
 

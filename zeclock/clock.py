@@ -20,7 +20,6 @@ from .colors import COLOR_LIST, COLOR_MAP
 from .overlay import colorize_grayscale
 from .paths import get_config_dir
 from .plugin_manager import PluginManager
-from .plugins.clock_plugin import ClockDisplayPlugin
 from .readers import load_font
 
 logger = logging.getLogger(__name__)
@@ -180,11 +179,10 @@ class ZeClock:
         self._plugins_override = plugins_override
         self._plugin_manager: Optional[PluginManager] = None
 
-        # Clock plugin instance (renders clock frames via plugin system)
-        self._clock_plugin: Optional[ClockDisplayPlugin] = None
-        self._clock_plugin_initialized: bool = False
+        # Default plugin state (the plugin displayed between rotations)
+        self._default_plugin_initialized: bool = False
 
-        # Clock caching (legacy fallback if clock plugin fails to init)
+        # Clock caching (legacy fallback if no default plugin is available)
         self.cached_clock_frame: Optional[Image.Image] = None
         self.cached_clock_rgb: Optional[Image.Image] = None
         self.last_clock_time = ""
@@ -380,8 +378,8 @@ class ZeClock:
 
                 # State machine transitions
                 elif self._state == ClockState.CLOCK_ONLY:
-                    frame = await self._render_clock_plugin_frame()
-                    frame_time = self._get_clock_frame_delay()
+                    frame = await self._render_default_plugin_frame()
+                    frame_time = self._get_default_frame_delay()
 
                     # Check if clock-only duration has elapsed
                     # In "time only" mode, never transition to plugins
@@ -391,15 +389,21 @@ class ZeClock:
                             self._state = ClockState.PLUGIN_SELECT
 
                 elif self._state == ClockState.PLUGIN_SELECT:
-                    frame = await self._render_clock_plugin_frame()
-                    frame_time = self._get_clock_frame_delay()
+                    frame = await self._render_default_plugin_frame()
+                    frame_time = self._get_default_frame_delay()
 
                     # Check if a plugin is forced by remote control
                     if self._command_handler and self._command_handler.forced_plugin:
                         forced_name = self._command_handler.forced_plugin
-                        # Reject forcing the clock plugin (it's already the
-                        # default display, forcing it would duplicate it)
-                        if forced_name == "clock":
+                        # Reject forcing the default plugin (it's already the
+                        # display shown between rotations, forcing it would
+                        # duplicate it)
+                        default_name = (
+                            self._plugin_manager.config.default_plugin
+                            if self._plugin_manager
+                            else "clock"
+                        )
+                        if forced_name == default_name:
                             self._command_handler._forced_plugin = None
                             self._state = ClockState.CLOCK_ONLY
                             self._clock_only_start = now
@@ -448,7 +452,7 @@ class ZeClock:
                         if self._plugin_manager:
                             await self._plugin_manager.deactivate_plugin()
                         self._state = ClockState.PLUGIN_SELECT
-                        frame = await self._render_clock_plugin_frame()
+                        frame = await self._render_default_plugin_frame()
                         frame_time = 0.04  # minimal delay to re-enter loop fast
                     elif not forced_name and forced_name is not None:
                         # forced_plugin was cleared (resume) — let normal deactivation handle it
@@ -465,8 +469,8 @@ class ZeClock:
                             await self._plugin_manager.deactivate_plugin()
                             self._state = ClockState.CLOCK_ONLY
                             self._clock_only_start = time.time()
-                            frame = await self._render_clock_plugin_frame()
-                            frame_time = self._get_clock_frame_delay()
+                            frame = await self._render_default_plugin_frame()
+                            frame_time = self._get_default_frame_delay()
                         else:
                             # Get frame from active plugin
                             assert self._plugin_manager is not None
@@ -484,8 +488,8 @@ class ZeClock:
                                     await self._plugin_manager.deactivate_plugin()
                                     self._state = ClockState.CLOCK_ONLY
                                     self._clock_only_start = time.time()
-                                frame = await self._render_clock_plugin_frame()
-                                frame_time = self._get_clock_frame_delay()
+                                frame = await self._render_default_plugin_frame()
+                                frame_time = self._get_default_frame_delay()
                             else:
                                 frame = plugin_frame
                                 # Use plugin's frame delay
@@ -605,8 +609,8 @@ class ZeClock:
         if not active_plugins:
             logger.warning("No active plugins available, clock-only mode")
 
-        # Initialize the clock plugin (used for clock display between other plugins)
-        await self._init_clock_plugin()
+        # Initialize the default plugin (displayed between other plugins)
+        await self._init_default_plugin()
 
     async def _init_remote_control(self) -> None:
         """Initialize remote control services (MQTT and REST API).
@@ -785,89 +789,89 @@ class ZeClock:
         success = await self._plugin_manager.activate_plugin(plugin)
         return success
 
-    async def _init_clock_plugin(self) -> None:
-        """Initialize the clock plugin for rendering clock frames.
+    async def _init_default_plugin(self) -> None:
+        """Initialize the default plugin for rendering between rotations.
 
-        The clock plugin is OPTIONAL. It is only activated if the user has
-        explicitly added a "clock" entry in their plugins.yaml configuration.
-        If not configured, the legacy inline clock renderer is used instead.
+        The default plugin is identified by the ``default_plugin`` field in
+        plugins.yaml. Any plugin can be the default. If the configured
+        default plugin is not found in the registry or fails to initialize,
+        the legacy inline clock renderer is used as a last-resort fallback.
         """
-        # Check if the clock plugin is explicitly configured by the user
-        if self._plugin_manager:
-            clock_entry = self._plugin_manager.registry.get_plugin("clock")
-            if clock_entry is None:
-                # Clock plugin not configured — use legacy renderer
-                logger.info(
-                    "Clock plugin not configured in plugins.yaml, "
-                    "using legacy clock renderer"
-                )
-                self._clock_plugin_initialized = False
-                return
+        if not self._plugin_manager:
+            self._default_plugin_initialized = False
+            return
 
-        self._clock_plugin = ClockDisplayPlugin()
+        default_name = self._plugin_manager.config.default_plugin
+        plugin = self._plugin_manager.get_default_plugin()
 
-        # Build config for the clock plugin
-        # Merge settings from plugins.yaml with CLI color preference
-        clock_config: dict = {}
-        if self._plugin_manager:
-            clock_config = self._plugin_manager.get_plugin_config_with_helpers("clock")
-        else:
-            # Fallback: create minimal config with helpers
-            clock_config = {"_upscale_mode": self.upscale_mode}
+        if plugin is None:
+            logger.info(
+                "Default plugin '%s' not found in registry, "
+                "using legacy clock renderer",
+                default_name,
+            )
+            self._default_plugin_initialized = False
+            return
 
-        # If no color is set in plugin config, use the CLI --color argument
-        if "color" not in clock_config or clock_config.get("color") is None:
-            clock_config["color"] = self.color_mode
+        # Build config for the default plugin
+        config = self._plugin_manager.get_plugin_config_with_helpers(plugin.name)
+
+        # If the default plugin is the clock and no color is set, use CLI color
+        if "color" not in config or config.get("color") is None:
+            config["color"] = self.color_mode
 
         try:
-            await self._clock_plugin.initialize(clock_config)
-            self._clock_plugin_initialized = True
-            logger.info("Clock plugin initialized successfully")
+            await plugin.initialize(config)
+            self._default_plugin_initialized = True
+            logger.info("Default plugin '%s' initialized successfully", default_name)
         except Exception as e:
             logger.warning(
-                f"Clock plugin initialization failed: {e}, using legacy fallback"
+                "Default plugin '%s' initialization failed: %s, "
+                "using legacy fallback",
+                default_name,
+                e,
             )
-            self._clock_plugin_initialized = False
+            self._default_plugin_initialized = False
 
-    async def _render_clock_plugin_frame(self) -> Image.Image:
-        """Render a clock frame using the clock plugin.
+    async def _render_default_plugin_frame(self) -> Image.Image:
+        """Render a frame using the default plugin.
 
-        Falls back to the legacy inline renderer if the clock plugin
-        is not initialized.
+        Falls back to the legacy inline clock renderer if the default
+        plugin is not initialized.
         """
-        if self._clock_plugin_initialized and self._clock_plugin:
-            frame = await self._clock_plugin.render_frame(self.width, self.height)
+        if self._default_plugin_initialized and self._plugin_manager:
+            frame = await self._plugin_manager.render_default_plugin_frame()
             if frame is not None:
                 return frame
-            # Plugin returned None (page cycle complete) — re-initialize for next cycle
-            await self._clock_plugin.cleanup()
-            try:
-                clock_config = {}
-                if self._plugin_manager:
-                    clock_config = self._plugin_manager.get_plugin_config_with_helpers(
-                        "clock"
+            # Plugin returned None (page cycle complete) — re-initialize
+            plugin = self._plugin_manager.get_default_plugin()
+            if plugin:
+                await plugin.cleanup()
+                try:
+                    config = self._plugin_manager.get_plugin_config_with_helpers(
+                        plugin.name
                     )
-                if "color" not in clock_config or clock_config.get("color") is None:
-                    clock_config["color"] = self.color_mode
-                await self._clock_plugin.initialize(clock_config)
-            except Exception as e:
-                logger.warning(f"Clock plugin re-init failed: {e}")
-            # Return a frame from the fresh cycle
-            frame = await self._clock_plugin.render_frame(self.width, self.height)
-            if frame is not None:
-                return frame
+                    if "color" not in config or config.get("color") is None:
+                        config["color"] = self.color_mode
+                    await plugin.initialize(config)
+                except Exception as e:
+                    logger.warning("Default plugin re-init failed: %s", e)
+                # Return a frame from the fresh cycle
+                frame = await self._plugin_manager.render_default_plugin_frame()
+                if frame is not None:
+                    return frame
 
         # Legacy fallback: inline clock rendering
         return self._render_clock_frame_legacy()
 
-    def _get_clock_frame_delay(self) -> float:
-        """Get the frame delay for clock rendering."""
-        if self._clock_plugin_initialized and self._clock_plugin:
-            return self._clock_plugin.frame_delay_ms / 1000.0
+    def _get_default_frame_delay(self) -> float:
+        """Get the frame delay for the default plugin."""
+        if self._default_plugin_initialized and self._plugin_manager:
+            return self._plugin_manager.get_default_plugin_frame_delay()
         return 0.5  # Legacy fallback: 500ms
 
     def _render_clock_frame_legacy(self) -> Image.Image:
-        """Legacy clock renderer - fallback if clock plugin fails.
+        """Legacy clock renderer - last-resort fallback if no default plugin.
 
         Uses two-level caching:
         1. Grayscale text frame (changes every 500ms on blink)

@@ -392,19 +392,15 @@ class RestRemote:
             )
 
         plugins = []
+        default_plugin_name = pm.config.default_plugin
         for entry in pm.registry.get_all_plugins():
-            # Skip the clock plugin from the dashboard list — it is not a
-            # rotatable plugin and has its own dedicated display/config.
-            # Showing it here would let users "force" it, causing a duplicate
-            # clock on top of the normal clock-only state.
-            if entry.name == "clock":
-                continue
             plugin_info: dict = {
                 "name": entry.name,
                 "description": entry.plugin.description,
                 "state": entry.state,
                 "frequency": entry.frequency,
                 "source": entry.source,
+                "is_default": entry.name == default_plugin_name,
             }
             # Check if plugin has web controls
             if hasattr(entry.plugin, "get_web_controls"):
@@ -426,6 +422,7 @@ class RestRemote:
                     "plugins": plugins,
                     "active_plugin": active_plugin,
                     "forced_plugin": forced_plugin,
+                    "default_plugin": default_plugin_name,
                 },
             }
         )

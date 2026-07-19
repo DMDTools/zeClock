@@ -348,6 +348,9 @@ class PluginManager:
         the last selected plugin from candidates (unless it's the only
         one available or has 100% of the total weight).
 
+        The default plugin (configured via default_plugin in plugins.yaml)
+        is excluded from rotation since it is shown between other plugins.
+
         Returns:
             A ClockPlugin instance, or None if no plugins are available.
         """
@@ -355,8 +358,16 @@ class PluginManager:
         if not normalized:
             return None
 
-        plugins = [plugin for plugin, _freq in normalized]
-        weights = [freq for _plugin, freq in normalized]
+        # Exclude the default plugin from rotation candidates
+        default_name = self.config.default_plugin
+        filtered = [
+            (plugin, freq) for plugin, freq in normalized if plugin.name != default_name
+        ]
+        if not filtered:
+            return None
+
+        plugins = [plugin for plugin, _freq in filtered]
+        weights = [freq for _plugin, freq in filtered]
 
         # If more than one candidate and last plugin isn't at 100%, exclude it
         if (
@@ -602,3 +613,72 @@ class PluginManager:
             True if a plugin is currently active, False otherwise.
         """
         return self.active_plugin is not None
+
+    def get_default_plugin(self) -> Optional[ClockPlugin]:
+        """Get the configured default plugin instance.
+
+        The default plugin is the one shown between other plugin rotations.
+        It is identified by the ``default_plugin`` field in plugins.yaml.
+
+        Returns:
+            The default plugin instance, or None if not found in registry.
+        """
+        default_name = self.config.default_plugin
+        entry = self.registry.get_plugin(default_name)
+        if entry is None:
+            return None
+        return entry.plugin
+
+    async def init_default_plugin(self) -> bool:
+        """Initialize the default plugin for rendering.
+
+        Calls activate logic (initialize with config) on the default plugin
+        so it's ready to render frames immediately.
+
+        Returns:
+            True if the default plugin was initialized successfully.
+        """
+        plugin = self.get_default_plugin()
+        if plugin is None:
+            logger.warning(
+                "Default plugin '%s' not found in registry",
+                self.config.default_plugin,
+            )
+            return False
+
+        config = self.get_plugin_config_with_helpers(plugin.name)
+        try:
+            await plugin.initialize(config)
+            return True
+        except Exception as e:
+            logger.warning(
+                "Default plugin '%s' initialization failed: %s", plugin.name, e
+            )
+            return False
+
+    async def render_default_plugin_frame(self) -> Optional[Image.Image]:
+        """Render a frame from the default plugin.
+
+        Returns:
+            A PIL Image frame, or None if the plugin signals page-cycle
+            completion (caller should re-init and try again).
+        """
+        plugin = self.get_default_plugin()
+        if plugin is None:
+            return None
+        try:
+            return await plugin.render_frame(self.width, self.height)
+        except Exception as e:
+            logger.warning("Default plugin render error: %s", e)
+            return None
+
+    def get_default_plugin_frame_delay(self) -> float:
+        """Get the frame delay for the default plugin.
+
+        Returns:
+            Frame delay in seconds, or 0.5s fallback.
+        """
+        plugin = self.get_default_plugin()
+        if plugin is not None:
+            return plugin.frame_delay_ms / 1000.0
+        return 0.5
