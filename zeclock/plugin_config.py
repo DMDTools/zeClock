@@ -28,7 +28,24 @@ class PluginConfig:
 
     DEFAULT_CONFIG = {
         "clock_display_seconds": CLOCK_DISPLAY_SECONDS_DEFAULT,
-        "plugins": [{"name": "pinball", "frequency": 100, "settings": {}}],
+        "plugins": [
+            {
+                "name": "clock",
+                "frequency": 100,
+                "settings": {
+                    "time_format": "24h",
+                    "show_seconds": "no",
+                    "blink_colon": "yes",
+                    "show_date": "yes",
+                    "date_format": "short_dmy",
+                    "show_day": "yes",
+                    "language": "en",
+                    "color": "auto",
+                    "page_duration_seconds": 5,
+                },
+            },
+            {"name": "pinball", "frequency": 100, "settings": {}},
+        ],
     }
 
     def __init__(self, config_path: Optional[Path] = None):
@@ -133,7 +150,24 @@ class PluginConfig:
     def _apply_defaults(self) -> None:
         """Apply default configuration."""
         self.clock_display_seconds = CLOCK_DISPLAY_SECONDS_DEFAULT
-        self.plugin_entries = [{"name": "pinball", "frequency": 100, "settings": {}}]
+        self.plugin_entries = [
+            {
+                "name": "clock",
+                "frequency": 100,
+                "settings": {
+                    "time_format": "24h",
+                    "show_seconds": "no",
+                    "blink_colon": "yes",
+                    "show_date": "yes",
+                    "date_format": "short_dmy",
+                    "show_day": "yes",
+                    "language": "en",
+                    "color": "auto",
+                    "page_duration_seconds": 5,
+                },
+            },
+            {"name": "pinball", "frequency": 100, "settings": {}},
+        ]
 
     def _create_default_config(self) -> None:
         """Create a default plugins.yaml file on disk."""
