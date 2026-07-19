@@ -1,0 +1,22 @@
+[Unit]
+Description=zeClock OTA Update - Check and install latest release from GitHub
+After=network-online.target bind-persistent-dirs.service
+Wants=network-online.target
+Requires=bind-persistent-dirs.service
+
+[Service]
+Type=oneshot
+User=root
+Environment=PATH=/home/zeclock/venv/bin:/usr/local/bin:/usr/bin
+Environment=LD_LIBRARY_PATH=/home/zeclock/.zeclock/lib
+Environment=ZECLOCK_DATA_DIR=/data/zeclock
+WorkingDirectory=/home/zeclock/app
+ExecStart=/home/zeclock/venv/bin/python -m zeclock.updater
+TimeoutStartSec=300
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=zeclock-update
+
+[Install]
+WantedBy=multi-user.target

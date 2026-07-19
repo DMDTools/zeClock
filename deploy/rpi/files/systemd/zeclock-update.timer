@@ -1,0 +1,16 @@
+[Unit]
+Description=Nightly OTA update check for zeClock
+After=network-online.target
+
+[Timer]
+# Run at 3:00 AM every night
+OnCalendar=*-*-* 03:00:00
+# Randomize start within 30 minutes to avoid thundering herd on GitHub API
+RandomizedDelaySec=1800
+# If system was off at trigger time, run on next boot
+Persistent=true
+# Wait 2 minutes after boot before first run (let network stabilize)
+OnBootSec=120
+
+[Install]
+WantedBy=timers.target
