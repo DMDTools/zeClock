@@ -337,7 +337,11 @@ def _apply_cached_update() -> Optional[str]:
         return None
 
     # Check if the cached version matches what's in the version file
-    cached_version = UPDATE_VERSION_FILE.read_text().strip() if UPDATE_VERSION_FILE.exists() else None
+    cached_version = (
+        UPDATE_VERSION_FILE.read_text().strip()
+        if UPDATE_VERSION_FILE.exists()
+        else None
+    )
     if not cached_version:
         return None
 
@@ -515,7 +519,11 @@ def main() -> None:
         if args.check:
             result = check_for_update()
             print(result)
-            sys.exit(0 if not _is_newer_version(result.latest_version, result.current_version) else 1)
+            sys.exit(
+                0
+                if not _is_newer_version(result.latest_version, result.current_version)
+                else 1
+            )
 
         result = perform_update(force=args.force)
         print(result)
