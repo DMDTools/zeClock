@@ -160,12 +160,15 @@ build {
   provisioner "shell" {
     inline = [
       "cp /tmp/zeclock-files/systemd/*.service /etc/systemd/system/",
+      "cp /tmp/zeclock-files/systemd/*.timer /etc/systemd/system/",
       "rm -rf /tmp/zeclock-files",
       "systemctl daemon-reload",
       "systemctl enable zeclock.service",
       "systemctl enable wifi-connect.service",
       "systemctl enable rfkill-unblock-wifi.service",
       "systemctl enable rw-mode.service",
+      "systemctl enable zeclock-update.timer",
+      "systemctl enable zeclock-update-boot.service",
     ]
   }
 }

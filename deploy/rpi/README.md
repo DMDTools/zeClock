@@ -8,6 +8,7 @@ Headless Raspberry Pi OS Lite (64-bit) image built with Packer for running zeClo
 - **WiFi auto-connect** — connects to configured WiFi on boot
 - **WiFi fallback AP** — if WiFi is unavailable, exposes an access point with a captive portal to configure credentials (uses [wifi-connect](https://github.com/balena-os/wifi-connect))
 - **zeClock pre-installed** — Python app + libzedmd + DotClk resources, starts automatically via systemd
+- **Automatic OTA updates** — nightly check for new releases via GitHub API, auto-installs and restarts
 - **Power-loss protection** — read-only root filesystem with overlay; survives hard power cuts without SD corruption
 - **Persistent /data partition** — F2FS partition for config, WiFi credentials, and application state that persists across reboots
 
@@ -66,6 +67,7 @@ The root filesystem is mounted **read-only** at boot. Volatile directories (`/va
 | `/data/zeclock/config/` | zeClock configuration (zeclock.ini) |
 | `/data/zeclock/logs/` | Application logs (optional) |
 | `/data/zeclock/state/` | Runtime state |
+| `/data/zeclock/update/` | OTA updater state, cached releases, update history |
 | `/data/networkmanager/` | WiFi connection profiles |
 | `/data/ssh/` | SSH host keys (preserved across reflash) |
 
@@ -89,7 +91,72 @@ Packer (packer-builder-arm, chroot in .img)
 ├── scripts/03-setup-overlay.sh     — read-only root, tmpfs overlays, /data partition
 └── files/systemd/                  — systemd units for all services
     ├── zeclock.service             — main clock application
+    ├── zeclock-update.timer        — nightly OTA update trigger (3 AM)
+    ├── zeclock-update.service      — OTA update check and install
+    ├── zeclock-update-boot.service — re-apply cached update after reboot
     ├── wifi-connect.service        — WiFi captive portal
     ├── rfkill-unblock-wifi.service — ensure WiFi radio is on
     └── rw-mode.service             — remount rw when "nooverlay" is set
+```
+
+## Automatic OTA Updates
+
+zeClock includes a fully autonomous OTA (Over-The-Air) update mechanism using the GitHub Releases API.
+
+### How it works
+
+1. **Nightly check** — A systemd timer (`zeclock-update.timer`) fires at **3:00 AM** (with a random 0–30 min delay to avoid thundering herd on the API)
+2. **Version comparison** — The updater fetches `https://api.github.com/repos/DMDTools/zeClock/releases/latest` and compares with the installed version
+3. **Download & install** — If a newer release is found, the source zipball is downloaded, extracted, and installed into the app directory
+4. **Cache on /data** — The release is cached on the persistent `/data` partition so it can be re-applied after a reboot (overlay FS resets the root filesystem)
+5. **Service restart** — After install, the `zeclock.service` is automatically restarted to pick up the new code
+6. **Boot re-apply** — On each boot, `zeclock-update-boot.service` re-applies the cached update (since the overlay resets the root to the original image version)
+
+### Overlay filesystem integration
+
+Because the root filesystem is read-only (overlayfs), updates written to `/home/zeclock/app` during a running session live in the tmpfs upper layer and are **lost on reboot**. To handle this:
+
+- The latest release is always **cached** in `/data/zeclock/update/cached-release/`
+- On boot, `zeclock-update-boot.service` detects if the cached version differs from the running code and re-applies it
+- This ensures the Pi always runs the latest version, even after power cycles
+
+### Monitoring updates
+
+```bash
+# Check update status
+journalctl -u zeclock-update.service --no-pager -n 50
+
+# View update history
+cat /data/zeclock/update/history.json
+
+# Check current installed version
+cat /data/zeclock/update/current-version
+
+# View timer status
+systemctl status zeclock-update.timer
+
+# Manually trigger an update check
+sudo systemctl start zeclock-update.service
+```
+
+### Disabling OTA updates
+
+```bash
+# Temporarily disable (until re-enabled)
+sudo systemctl stop zeclock-update.timer
+sudo systemctl disable zeclock-update.timer
+
+# Disable boot re-apply too
+sudo systemctl disable zeclock-update-boot.service
+```
+
+### GitHub API rate limits
+
+Anonymous GitHub API requests are limited to 60/hour. Since zeClock only makes one request per night, this is well within limits. For environments with multiple devices or tighter limits, set the `GITHUB_TOKEN` environment variable in the systemd service override:
+
+```bash
+sudo systemctl edit zeclock-update.service
+# Add:
+# [Service]
+# Environment=GITHUB_TOKEN=ghp_your_token_here
 ```
