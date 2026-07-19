@@ -397,7 +397,13 @@ class ZeClock:
                     # Check if a plugin is forced by remote control
                     if self._command_handler and self._command_handler.forced_plugin:
                         forced_name = self._command_handler.forced_plugin
-                        if (
+                        # Reject forcing the clock plugin (it's already the
+                        # default display, forcing it would duplicate it)
+                        if forced_name == "clock":
+                            self._command_handler._forced_plugin = None
+                            self._state = ClockState.CLOCK_ONLY
+                            self._clock_only_start = now
+                        elif (
                             self._plugin_manager
                             and self._plugin_manager.registry.has_plugin(forced_name)
                         ):
@@ -866,6 +872,10 @@ class ZeClock:
         Uses two-level caching:
         1. Grayscale text frame (changes every 500ms on blink)
         2. Colorized RGB frame (invalidated on color or text change)
+
+        The colon blink is achieved by replacing ':' with ' ' which has
+        the same pixel width (guaranteed by the font loader), preventing
+        digit shifting.
         """
         # Generate clock with 500ms blink timing
         milliseconds = int(time.time() * 1000)
@@ -878,7 +888,8 @@ class ZeClock:
             if blink_state == 0:
                 display_time = time.strftime("%H:%M")
             else:
-                display_time = time.strftime("%H %M")
+                # Use space instead of colon for blink-off (same width)
+                display_time = time.strftime("%H") + " " + time.strftime("%M")
 
             # Standard centered positioning
             assert self.dotclk_font is not None

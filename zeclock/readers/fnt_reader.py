@@ -148,9 +148,22 @@ class BitmapFont:
                 x_offset += width
 
         # Add space character with same properties as colon for consistent blinking
-        if ":" in self.char_info and " " not in self.char_info:
-            self.char_info[" "] = self.char_info[":"].copy()
-            self.glyphs[" "] = Image.new("L", self.glyphs[":"].size, 0)
+        # Always override space width/size to match colon for clock display
+        # (ensures digit positions don't shift when toggling ":" vs " ")
+        if ":" in self.char_info:
+            colon_width = self.char_info[":"]["width"]
+            colon_kerning = self.char_info[":"]["kerning"]
+            if " " not in self.char_info:
+                self.char_info[" "] = {"width": colon_width, "kerning": colon_kerning}
+                self.glyphs[" "] = Image.new("L", self.glyphs[":"].size, 0)
+            else:
+                # Space exists but may have different width — override to match colon
+                self.char_info[" "]["width"] = colon_width
+                self.char_info[" "]["kerning"] = colon_kerning
+                # Replace glyph with blank of correct colon dimensions
+                self.glyphs[" "] = Image.new(
+                    "L", (colon_width, self.char_height), 0
+                )
 
     def render_text(
         self, text: str, width: int = 128, height: int = 32, upscale_mode: str = "epx"
