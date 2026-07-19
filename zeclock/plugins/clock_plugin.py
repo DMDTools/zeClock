@@ -153,11 +153,10 @@ class ClockDisplayPlugin(ClockPlugin):
 
     @property
     def rotatable(self) -> bool:
-        # The clock plugin is NOT part of normal rotation scheduling.
-        # It is rendered between other plugins by the ZeClock state machine.
-        # Setting rotatable=False ensures the scheduler never selects it,
-        # but it remains visible in the web UI for configuration.
-        return False
+        # The clock plugin participates in normal plugin rotation.
+        # When configured as the default_plugin in plugins.yaml, the
+        # PluginManager excludes it from rotation automatically.
+        return True
 
     @property
     def config_schema(self) -> List[ConfigField]:
