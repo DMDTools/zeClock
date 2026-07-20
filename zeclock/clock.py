@@ -21,85 +21,9 @@ from .overlay import colorize_grayscale
 from .paths import get_config_dir
 from .plugin_manager import PluginManager
 from .readers import load_font
+from .text_utils import transliterate
 
 logger = logging.getLogger(__name__)
-
-# Transliteration table: accented/special chars → ASCII equivalents
-_TRANSLITERATE_MAP = str.maketrans(
-    {
-        "à": "a",
-        "á": "a",
-        "â": "a",
-        "ã": "a",
-        "ä": "a",
-        "å": "a",
-        "ç": "c",
-        "è": "e",
-        "é": "e",
-        "ê": "e",
-        "ë": "e",
-        "ì": "i",
-        "í": "i",
-        "î": "i",
-        "ï": "i",
-        "ð": "d",
-        "ñ": "n",
-        "ò": "o",
-        "ó": "o",
-        "ô": "o",
-        "õ": "o",
-        "ö": "o",
-        "ù": "u",
-        "ú": "u",
-        "û": "u",
-        "ü": "u",
-        "ý": "y",
-        "ÿ": "y",
-        "ß": "ss",
-        "À": "A",
-        "Á": "A",
-        "Â": "A",
-        "Ã": "A",
-        "Ä": "A",
-        "Å": "A",
-        "Ç": "C",
-        "È": "E",
-        "É": "E",
-        "Ê": "E",
-        "Ë": "E",
-        "Ì": "I",
-        "Í": "I",
-        "Î": "I",
-        "Ï": "I",
-        "Ð": "D",
-        "Ñ": "N",
-        "Ò": "O",
-        "Ó": "O",
-        "Ô": "O",
-        "Õ": "O",
-        "Ö": "O",
-        "Ù": "U",
-        "Ú": "U",
-        "Û": "U",
-        "Ü": "U",
-        "Ý": "Y",
-        "æ": "ae",
-        "Æ": "AE",
-        "œ": "oe",
-        "Œ": "OE",
-    }
-)
-
-
-def _transliterate(text: str) -> str:
-    """Replace accented and special characters with ASCII equivalents.
-
-    Characters not in the translation table and not printable ASCII
-    are stripped.
-    """
-    result = text.translate(_TRANSLITERATE_MAP)
-    # Strip any remaining non-ASCII characters
-    return "".join(ch for ch in result if 32 <= ord(ch) <= 126)
 
 
 class ClockState(enum.Enum):
@@ -629,7 +553,7 @@ class ZeClock:
             return Image.new("RGB", (self.width, self.height), (0, 0, 0))
 
         # Transliterate accented/special characters to ASCII equivalents
-        text = _transliterate(text)
+        text = transliterate(text)
 
         # Try MENU font first (11px, uppercase + digits — good balance of size and charset)
         # Convert to uppercase since MENU only has uppercase
