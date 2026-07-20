@@ -111,9 +111,12 @@ class TestConfigRoundtrip:
             config.load()
 
             assert config.clock_display_seconds == 5
-            assert len(config.plugin_entries) == 1
-            assert config.plugin_entries[0]["name"] == "pinball"
-            assert config.plugin_entries[0]["frequency"] == 100
+            assert config.default_plugin == "clock"
+            assert len(config.plugin_entries) == 2
+            assert config.plugin_entries[0]["name"] == "clock"
+            assert config.plugin_entries[0]["frequency"] == 0
+            assert config.plugin_entries[1]["name"] == "pinball"
+            assert config.plugin_entries[1]["frequency"] == 100
 
     def test_invalid_yaml_falls_back_to_defaults(self):
         """Invalid YAML syntax triggers fallback to defaults."""
@@ -126,8 +129,10 @@ class TestConfigRoundtrip:
             config.load()
 
             assert config.clock_display_seconds == 5
-            assert len(config.plugin_entries) == 1
-            assert config.plugin_entries[0]["name"] == "pinball"
+            assert config.default_plugin == "clock"
+            assert len(config.plugin_entries) == 2
+            assert config.plugin_entries[0]["name"] == "clock"
+            assert config.plugin_entries[1]["name"] == "pinball"
         finally:
             tmp_path.unlink()
 

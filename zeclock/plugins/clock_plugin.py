@@ -36,12 +36,28 @@ DATE_FORMATS = {
     "text_fr": "%d %b",  # 19 Jul
 }
 
-# Day names (short, 3 chars max for DMD)
+# Day names (full names — fits on DMD with SYSTEM font)
 DAY_NAMES = {
-    "en": ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"],
-    "fr": ["LUN", "MAR", "MER", "JEU", "VEN", "SAM", "DIM"],
-    "de": ["MON", "DIE", "MIT", "DON", "FRE", "SAM", "SON"],
-    "es": ["LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM"],
+    "en": [
+        "MONDAY",
+        "TUESDAY",
+        "WEDNESDAY",
+        "THURSDAY",
+        "FRIDAY",
+        "SATURDAY",
+        "SUNDAY",
+    ],
+    "fr": ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI", "DIMANCHE"],
+    "de": [
+        "MONTAG",
+        "DIENSTAG",
+        "MITTWOCH",
+        "DONNERSTAG",
+        "FREITAG",
+        "SAMSTAG",
+        "SONNTAG",
+    ],
+    "es": ["LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO", "DOMINGO"],
 }
 
 # Available color names mapped to RGB
@@ -153,11 +169,10 @@ class ClockDisplayPlugin(ClockPlugin):
 
     @property
     def rotatable(self) -> bool:
-        # The clock plugin is NOT part of normal rotation scheduling.
-        # It is rendered between other plugins by the ZeClock state machine.
-        # Setting rotatable=False ensures the scheduler never selects it,
-        # but it remains visible in the web UI for configuration.
-        return False
+        # The clock plugin participates in normal plugin rotation.
+        # When configured as the default_plugin in plugins.yaml, the
+        # PluginManager excludes it from rotation automatically.
+        return True
 
     @property
     def config_schema(self) -> List[ConfigField]:
@@ -174,25 +189,25 @@ class ClockDisplayPlugin(ClockPlugin):
             ConfigField(
                 "show_seconds",
                 "Show Seconds",
-                "text",
+                "boolean",
                 required=False,
-                description="yes or no (default: no)",
+                description="Display seconds in time",
                 default="no",
             ),
             ConfigField(
                 "blink_colon",
                 "Blink Colon",
-                "text",
+                "boolean",
                 required=False,
-                description="yes or no (default: yes)",
+                description="Animate colon separator blinking",
                 default="yes",
             ),
             ConfigField(
                 "show_date",
                 "Show Date",
-                "text",
+                "boolean",
                 required=False,
-                description="yes or no (default: yes)",
+                description="Display date page",
                 default="yes",
             ),
             ConfigField(
@@ -206,9 +221,9 @@ class ClockDisplayPlugin(ClockPlugin):
             ConfigField(
                 "show_day",
                 "Show Day of Week",
-                "text",
+                "boolean",
                 required=False,
-                description="yes or no (default: yes)",
+                description="Display day of week page",
                 default="yes",
             ),
             ConfigField(
@@ -240,7 +255,7 @@ class ClockDisplayPlugin(ClockPlugin):
                 "Page Duration (seconds)",
                 "number",
                 required=False,
-                description="Duration per display page in seconds (default: 5)",
+                description="Duration per display page in seconds, minimum 5 (default: 5)",
                 default=5,
             ),
             ConfigField(
@@ -348,7 +363,7 @@ class ClockDisplayPlugin(ClockPlugin):
         # Page duration
         page_dur = config.get("page_duration_seconds", 5)
         try:
-            self._page_duration_seconds = max(2, min(30, int(page_dur)))
+            self._page_duration_seconds = max(5, min(30, int(page_dur)))
         except (ValueError, TypeError):
             self._page_duration_seconds = 5
 
@@ -483,20 +498,23 @@ class ClockDisplayPlugin(ClockPlugin):
         else:
             return self._render_time_only(dt, width, height)
 
-    def _format_time_string(self, dt: datetime) -> Tuple[str, str]:
+    def _format_time_string(self, dt: datetime) -> Tuple[str, str, bool]:
         """Format the time string based on configuration.
 
         Handles 12h/24h format, seconds, and blinking colon.
 
+        The colon is always present in the string to maintain consistent
+        character positioning. The blink state is returned separately so
+        the renderer can hide the colon pixels without shifting digits.
+
         Returns:
-            Tuple of (time_string, am_pm_indicator).
+            Tuple of (time_string, am_pm_indicator, colon_visible).
         """
-        # Determine separator based on blink state
+        # Determine colon visibility based on blink state
         if self._blink_colon:
-            blink_state = (int(time.time() * 2)) % 2  # Toggle every 500ms
-            separator = ":" if blink_state == 0 else " "
+            colon_visible = (int(time.time() * 2)) % 2 == 0  # Toggle every 500ms
         else:
-            separator = ":"
+            colon_visible = True
 
         hour = dt.hour
         am_pm = ""
@@ -507,12 +525,13 @@ class ClockDisplayPlugin(ClockPlugin):
             if hour == 0:
                 hour = 12
 
+        # Always use ':' as separator to maintain fixed character positions
         if self._show_seconds:
-            time_str = f"{hour:02d}{separator}{dt.minute:02d}{separator}{dt.second:02d}"
+            time_str = f"{hour:02d}:{dt.minute:02d}:{dt.second:02d}"
         else:
-            time_str = f"{hour:02d}{separator}{dt.minute:02d}"
+            time_str = f"{hour:02d}:{dt.minute:02d}"
 
-        return time_str, am_pm
+        return time_str, am_pm, colon_visible
 
     def _format_date_string(self, dt: datetime) -> str:
         """Format the date string based on configuration."""
@@ -528,16 +547,27 @@ class ClockDisplayPlugin(ClockPlugin):
         """Render time centered on the full display.
 
         Uses the largest available font (STANDARD) for maximum visibility.
+        When blinking, the colon characters are hidden without shifting
+        digit positions by rendering the full string then masking colons.
         """
         if self._helpers is None:
             return Image.new("RGB", (width, height), (0, 0, 0))
 
         frame = self._helpers.create_frame()
-        time_str, am_pm = self._format_time_string(dt)
+        time_str, am_pm, colon_visible = self._format_time_string(dt)
         color = self._current_color
 
-        # Render time centered using STANDARD font (largest)
-        time_frame = self._helpers.render_text(time_str, centered=True, color=color)
+        if colon_visible:
+            # Normal render with colons visible
+            time_frame = self._helpers.render_text(time_str, centered=True, color=color)
+        else:
+            # Hide colons: render only the digit characters at fixed positions
+            # Replace colons with spaces that have the same width (guaranteed by font)
+            hidden_str = time_str.replace(":", " ")
+            time_frame = self._helpers.render_text(
+                hidden_str, centered=True, color=color
+            )
+
         frame = self._helpers.composite_frames(frame, time_frame)
 
         # If 12h mode, add AM/PM indicator in top-right corner (SYSTEM font)
@@ -562,9 +592,12 @@ class ClockDisplayPlugin(ClockPlugin):
             return Image.new("RGB", (width, height), (0, 0, 0))
 
         frame = self._helpers.create_frame()
-        time_str, am_pm = self._format_time_string(dt)
+        time_str, am_pm, colon_visible = self._format_time_string(dt)
         date_str = self._format_date_string(dt)
         color = self._current_color
+
+        # When blink is off, replace colons with spaces (same width guaranteed)
+        display_time = time_str if colon_visible else time_str.replace(":", " ")
 
         # Scale factor for HD
         sy = height / 32
@@ -575,7 +608,7 @@ class ClockDisplayPlugin(ClockPlugin):
         time_y = int(1 * sy)
 
         time_frame = self._helpers.render_text(
-            time_str, x=time_x, y=time_y, color=color, font_name="MENU"
+            display_time, x=time_x, y=time_y, color=color, font_name="MENU"
         )
         frame = self._helpers.composite_frames(frame, time_frame)
 
@@ -619,9 +652,12 @@ class ClockDisplayPlugin(ClockPlugin):
             return Image.new("RGB", (width, height), (0, 0, 0))
 
         frame = self._helpers.create_frame()
-        time_str, am_pm = self._format_time_string(dt)
+        time_str, am_pm, colon_visible = self._format_time_string(dt)
         day_name = self._get_day_name(dt)
         color = self._current_color
+
+        # When blink is off, replace colons with spaces (same width guaranteed)
+        display_time = time_str if colon_visible else time_str.replace(":", " ")
 
         # Scale factor for HD
         sy = height / 32
@@ -632,7 +668,7 @@ class ClockDisplayPlugin(ClockPlugin):
         time_y = int(1 * sy)
 
         time_frame = self._helpers.render_text(
-            time_str, x=time_x, y=time_y, color=color, font_name="MENU"
+            display_time, x=time_x, y=time_y, color=color, font_name="MENU"
         )
         frame = self._helpers.composite_frames(frame, time_frame)
 
@@ -694,12 +730,11 @@ class ClockDisplayPlugin(ClockPlugin):
         tz = timezone(timedelta(hours=utc_offset))
         city_dt = datetime.now(tz)
 
-        # Format time string for this city
+        # Determine colon visibility based on blink state
         if self._blink_colon:
-            blink_state = (int(time.time() * 2)) % 2
-            separator = ":" if blink_state == 0 else " "
+            colon_visible = (int(time.time() * 2)) % 2 == 0
         else:
-            separator = ":"
+            colon_visible = True
 
         hour = city_dt.hour
         am_pm = ""
@@ -709,13 +744,14 @@ class ClockDisplayPlugin(ClockPlugin):
             if hour == 0:
                 hour = 12
 
+        # Always use ':' for consistent positioning
         if self._show_seconds:
-            time_str = (
-                f"{hour:02d}{separator}{city_dt.minute:02d}"
-                f"{separator}{city_dt.second:02d}"
-            )
+            time_str = f"{hour:02d}:{city_dt.minute:02d}" f":{city_dt.second:02d}"
         else:
-            time_str = f"{hour:02d}{separator}{city_dt.minute:02d}"
+            time_str = f"{hour:02d}:{city_dt.minute:02d}"
+
+        # When blink is off, replace colons with spaces (same width)
+        display_time = time_str if colon_visible else time_str.replace(":", " ")
 
         # City name at top (MENU font, contrasting color — cyan-ish)
         city_display = city_name.upper()[:16]  # Truncate for DMD width
@@ -740,7 +776,7 @@ class ClockDisplayPlugin(ClockPlugin):
         time_y = int(17 * sy)
 
         time_frame = self._helpers.render_text(
-            time_str, x=time_x, y=time_y, color=color, font_name="MENU"
+            display_time, x=time_x, y=time_y, color=color, font_name="MENU"
         )
         frame = self._helpers.composite_frames(frame, time_frame)
 

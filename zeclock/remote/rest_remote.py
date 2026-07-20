@@ -392,6 +392,7 @@ class RestRemote:
             )
 
         plugins = []
+        default_plugin_name = pm.config.default_plugin
         for entry in pm.registry.get_all_plugins():
             plugin_info: dict = {
                 "name": entry.name,
@@ -399,6 +400,7 @@ class RestRemote:
                 "state": entry.state,
                 "frequency": entry.frequency,
                 "source": entry.source,
+                "is_default": entry.name == default_plugin_name,
             }
             # Check if plugin has web controls
             if hasattr(entry.plugin, "get_web_controls"):
@@ -420,6 +422,7 @@ class RestRemote:
                     "plugins": plugins,
                     "active_plugin": active_plugin,
                     "forced_plugin": forced_plugin,
+                    "default_plugin": default_plugin_name,
                 },
             }
         )

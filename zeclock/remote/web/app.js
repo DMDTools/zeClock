@@ -146,9 +146,12 @@ async function refreshPlugins() {
 
     container.innerHTML = plugins.map(p => {
         const isActive = p.name === activePlugin || p.name === forcedPlugin;
+        const isDefault = p.is_default;
+        const defaultBadge = isDefault ? '<span class="plugin-default-badge">default</span>' : '';
         return `
-            <div class="plugin-btn ${isActive ? 'active' : ''}" onclick="forcePlugin('${p.name}')">
+            <div class="plugin-btn ${isActive ? 'active' : ''} ${isDefault ? 'default' : ''}" onclick="forcePlugin('${p.name}')">
                 <span class="plugin-name">${p.name}</span>
+                ${defaultBadge}
                 <span class="plugin-desc">${p.description || ''}</span>
             </div>
         `;
@@ -337,6 +340,18 @@ async function loadConfig() {
         const pCfg = pluginsResp.data;
         document.getElementById('cfg-clock-seconds').value = pCfg.clock_display_seconds || 5;
         renderPluginEntries(pCfg.plugins || []);
+
+        // Populate default_plugin selector with all configured plugins
+        const defaultPluginSelect = document.getElementById('cfg-default-plugin');
+        const currentDefault = pCfg.default_plugin || 'clock';
+        const pluginNames = (pCfg.plugins || []).map(p => p.name).filter(Boolean);
+        // Ensure the current default is in the list
+        if (!pluginNames.includes(currentDefault)) {
+            pluginNames.unshift(currentDefault);
+        }
+        defaultPluginSelect.innerHTML = pluginNames.map(name =>
+            `<option value="${name}" ${name === currentDefault ? 'selected' : ''}>${name}</option>`
+        ).join('');
     }
 
     // Load and render auto-generated plugin config forms
@@ -436,6 +451,7 @@ async function saveConfig() {
 
     // Build plugins.yaml structure
     const pluginsConfig = {
+        default_plugin: document.getElementById('cfg-default-plugin').value || 'clock',
         clock_display_seconds: parseInt(document.getElementById('cfg-clock-seconds').value) || 5,
         plugins: [],
     };
@@ -504,6 +520,7 @@ async function loadPluginConfigForms(currentPluginsConfig) {
 
     // Initialize location autocomplete handlers after forms are rendered
     initLocationAutocomplete();
+    initBooleanToggles();
 }
 
 function renderPluginField(pluginName, field, settings) {
@@ -519,6 +536,15 @@ function renderPluginField(pluginName, field, settings) {
     }
 
     switch (field.field_type) {
+        case 'boolean':
+            const isChecked = parseBoolValue(currentValue);
+            inputHtml = `
+                <label class="toggle-switch" for="${fieldId}">
+                    <input type="checkbox" id="${fieldId}" ${isChecked ? 'checked' : ''} data-plugin="${pluginName}" data-field="${field.name}" data-field-type="boolean">
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-label">${isChecked ? 'Oui' : 'Non'}</span>
+                </label>`;
+            break;
         case 'number':
             inputHtml = `<input type="number" id="${fieldId}" value="${currentValue}" ${requiredAttr} data-plugin="${pluginName}" data-field="${field.name}">`;
             break;
@@ -547,6 +573,15 @@ function renderPluginField(pluginName, field, settings) {
             ${descriptionHtml}
         </div>
     `;
+}
+
+function parseBoolValue(value) {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value !== 0;
+    if (typeof value === 'string') {
+        return ['yes', 'true', '1', 'on'].includes(value.toLowerCase().trim());
+    }
+    return false;
 }
 
 // --- GIF Directories Editor ---
@@ -902,6 +937,9 @@ async function savePluginConfig(pluginName) {
         if (fieldType === 'gif_dirs') {
             // gif_dirs is handled separately via collectGifDirsData()
             pluginEntry.settings[fieldName] = collectGifDirsData();
+        } else if (fieldType === 'boolean') {
+            // Boolean toggle: store as "yes"/"no"
+            pluginEntry.settings[fieldName] = input.checked ? 'yes' : 'no';
         } else {
             let value = (input.value || '').trim();
             if (fieldType === 'city' || fieldType === 'location') {
@@ -930,6 +968,20 @@ async function savePluginConfig(pluginName) {
         const msg = result?.message || 'Unknown error';
         showPluginSaveStatus(pluginName, false, msg);
     }
+}
+
+// --- Boolean Toggle Switches ---
+
+function initBooleanToggles() {
+    const toggleInputs = document.querySelectorAll('.toggle-switch input[type="checkbox"]');
+    toggleInputs.forEach(input => {
+        input.addEventListener('change', function() {
+            const label = this.closest('.toggle-switch').querySelector('.toggle-label');
+            if (label) {
+                label.textContent = this.checked ? 'Oui' : 'Non';
+            }
+        });
+    });
 }
 
 // --- Location Autocomplete (shared service for "location" field type) ---
