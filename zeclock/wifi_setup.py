@@ -50,6 +50,73 @@ def is_wifi_connected() -> bool:
         return False
 
 
+def _nm_is_trying_to_connect() -> bool:
+    """Check if NetworkManager is currently in a 'connecting' state."""
+    try:
+        result = subprocess.run(
+            ["nmcli", "-t", "-f", "STATE", "general"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        state = result.stdout.strip()
+        return state in ("connecting",)
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return False
+
+
+def _has_wifi_profiles() -> bool:
+    """Check if NetworkManager has any WiFi connection profiles configured."""
+    try:
+        result = subprocess.run(
+            ["nmcli", "-t", "-f", "TYPE", "connection", "show"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        # Each line is a field; wifi connections have type '802-11-wireless'
+        for line in result.stdout.strip().split("\n"):
+            if "wireless" in line:
+                return True
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+    return False
+
+
+def wait_for_wifi_connection(timeout: int = 30) -> bool:
+    """Wait for NetworkManager to establish a WiFi connection.
+
+    Polls every 2 seconds up to *timeout* seconds.  Exits early if NM is no
+    longer in a 'connecting' state (i.e. it gave up or there are no profiles).
+
+    Returns True if WiFi is connected, False otherwise.
+    """
+    logger.info(
+        "Waiting up to %ds for NetworkManager to connect WiFi...", timeout
+    )
+
+    # If there are no WiFi profiles at all, no point waiting
+    if not _has_wifi_profiles():
+        logger.info("No WiFi connection profiles found — skipping wait")
+        return False
+
+    elapsed = 0
+    interval = 2
+    while elapsed < timeout:
+        if is_wifi_connected():
+            return True
+        # If NM is no longer trying, stop waiting
+        if elapsed > 4 and not _nm_is_trying_to_connect():
+            logger.info(
+                "NetworkManager no longer connecting after %ds — giving up", elapsed
+            )
+            break
+        time.sleep(interval)
+        elapsed += interval
+
+    return is_wifi_connected()
+
+
 def get_wifi_interface() -> str:
     """Get the WiFi interface name."""
     try:
@@ -532,10 +599,11 @@ def main() -> None:
 
     print("🔍 Checking WiFi connection...")
 
-    # Wait a bit for NetworkManager to settle
-    time.sleep(5)
-
-    if is_wifi_connected():
+    # Wait for NetworkManager to finish connecting (polls up to 30s).
+    # On a Raspberry Pi, WiFi association + DHCP typically takes 8-15s;
+    # the previous fixed 5s sleep was too short and caused the hotspot to
+    # launch (and kill the connection attempt) before NM could finish.
+    if wait_for_wifi_connection(timeout=30):
         ssid = subprocess.run(
             ["iwgetid", "-r"], capture_output=True, text=True
         ).stdout.strip()
