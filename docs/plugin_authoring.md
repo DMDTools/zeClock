@@ -428,7 +428,6 @@ plugins:
       longitude: 2.3522
       city_name: "Paris"
       temperature_unit: "celsius"
-      language: "fr"               # "en" or "fr" for condition descriptions
       page_duration_seconds: 4
 ```
 
@@ -441,6 +440,7 @@ The `config` dict passed to `initialize()` contains everything from the `setting
 | `_helpers` | `PluginHelpers` | Rendering utilities (text, icons, frames) |
 | `_upscale_mode` | `str` | Upscaling algorithm in use: `"epx"`, `"hq2x"`, or `"nearest"` |
 | `_font` | `str` | Global font name (e.g. `"STANDARD"`) |
+| `language` | `str` | Global language setting (e.g. `"en"`, `"fr"`). Always injected from the top-level config — cannot be overridden per-plugin. |
 | `_context` | `PluginContext` | Typed context object (see below) |
 
 ```python
@@ -1073,7 +1073,7 @@ class WeatherPlugin(ClockPlugin):
         self._latitude = config.get("latitude")
         self._longitude = config.get("longitude")
         self._city_name = config.get("city_name", "")
-        # Language for condition descriptions: "en" or "fr"
+        # Language is a global setting — always injected into config by PluginConfig
         self._language = config.get("language", "en")
 
         missing = []

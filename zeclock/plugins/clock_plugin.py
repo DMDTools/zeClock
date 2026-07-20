@@ -360,12 +360,32 @@ class ClockDisplayPlugin(ClockPlugin):
         else:
             self._timezone_offset = None
 
-        # Page duration
-        page_dur = config.get("page_duration_seconds", 5)
-        try:
-            self._page_duration_seconds = max(5, min(30, int(page_dur)))
-        except (ValueError, TypeError):
-            self._page_duration_seconds = 5
+        # Page duration: auto-calculate from clock_display_seconds so all pages
+        # fit within the allotted display time. If user explicitly configures
+        # page_duration_seconds, respect it.
+        explicit_page_dur = config.get("page_duration_seconds")
+        clock_display_seconds = config.get("_clock_display_seconds", 5)
+        if explicit_page_dur is not None:
+            try:
+                self._page_duration_seconds = max(2, min(30, int(explicit_page_dur)))
+            except (ValueError, TypeError):
+                self._page_duration_seconds = 5
+        else:
+            # Auto-derive: distribute clock_display_seconds across pages
+            # Pages are determined after world_clocks are parsed, so we
+            # calculate based on what we know now
+            num_pages = 1  # time always
+            if self._show_date:
+                num_pages += 1
+            if self._show_day:
+                num_pages += 1
+            # World clocks will be parsed next; estimate here
+            world_clocks_raw = config.get("world_clocks")
+            if isinstance(world_clocks_raw, list):
+                num_pages += len(world_clocks_raw)
+            elif isinstance(world_clocks_raw, str) and world_clocks_raw.strip():
+                num_pages += len([c for c in world_clocks_raw.split(",") if c.strip()])
+            self._page_duration_seconds = max(2, clock_display_seconds // num_pages)
 
         # Adjust frame delay: if showing seconds, need faster updates
         if self._show_seconds:
@@ -585,8 +605,8 @@ class ClockDisplayPlugin(ClockPlugin):
         """Render time on top and date on bottom.
 
         Layout:
-        - Top row: Time in MENU font (medium size)
-        - Bottom row: Date in SYSTEM font (small size)
+        - Top row: Time in STANDARD font (large size, fills width)
+        - Bottom row: Date in MENU font (medium size)
         """
         if self._helpers is None:
             return Image.new("RGB", (width, height), (0, 0, 0))
@@ -602,13 +622,13 @@ class ClockDisplayPlugin(ClockPlugin):
         # Scale factor for HD
         sy = height / 32
 
-        # Time at top (MENU font - medium size, centered)
-        time_width = self._helpers.get_text_width(time_str, font_name="MENU")
+        # Time at top (STANDARD font - large, centered)
+        time_width = self._helpers.get_text_width(time_str, font_name="STANDARD")
         time_x = (width - time_width) // 2
-        time_y = int(1 * sy)
+        time_y = 0
 
         time_frame = self._helpers.render_text(
-            display_time, x=time_x, y=time_y, color=color, font_name="MENU"
+            display_time, x=time_x, y=time_y, color=color, font_name="STANDARD"
         )
         frame = self._helpers.composite_frames(frame, time_frame)
 
@@ -620,10 +640,10 @@ class ClockDisplayPlugin(ClockPlugin):
             )
             frame = self._helpers.composite_frames(frame, ampm_frame)
 
-        # Date at bottom (SYSTEM font - small, centered)
-        date_width = self._helpers.get_text_width(date_str, font_name="SYSTEM")
+        # Date at bottom (MENU font - medium, centered)
+        date_width = self._helpers.get_text_width(date_str, font_name="MENU")
         date_x = (width - date_width) // 2
-        date_y = int(23 * sy)
+        date_y = int(21 * sy)
 
         # Use a slightly dimmer version of the color for the date
         date_color = (
@@ -633,7 +653,7 @@ class ClockDisplayPlugin(ClockPlugin):
         )
 
         date_frame = self._helpers.render_text(
-            date_str, x=date_x, y=date_y, color=date_color, font_name="SYSTEM"
+            date_str, x=date_x, y=date_y, color=date_color, font_name="MENU"
         )
         frame = self._helpers.composite_frames(frame, date_frame)
 
@@ -645,8 +665,8 @@ class ClockDisplayPlugin(ClockPlugin):
         """Render time on top and day of week on bottom.
 
         Layout:
-        - Top row: Time in MENU font
-        - Bottom row: Day name in SYSTEM font (highlighted color)
+        - Top row: Time in STANDARD font (large)
+        - Bottom row: Day name in MENU font (highlighted color)
         """
         if self._helpers is None:
             return Image.new("RGB", (width, height), (0, 0, 0))
@@ -662,13 +682,13 @@ class ClockDisplayPlugin(ClockPlugin):
         # Scale factor for HD
         sy = height / 32
 
-        # Time at top (MENU font, centered)
-        time_width = self._helpers.get_text_width(time_str, font_name="MENU")
+        # Time at top (STANDARD font, centered)
+        time_width = self._helpers.get_text_width(time_str, font_name="STANDARD")
         time_x = (width - time_width) // 2
-        time_y = int(1 * sy)
+        time_y = 0
 
         time_frame = self._helpers.render_text(
-            display_time, x=time_x, y=time_y, color=color, font_name="MENU"
+            display_time, x=time_x, y=time_y, color=color, font_name="STANDARD"
         )
         frame = self._helpers.composite_frames(frame, time_frame)
 
@@ -680,10 +700,10 @@ class ClockDisplayPlugin(ClockPlugin):
             )
             frame = self._helpers.composite_frames(frame, ampm_frame)
 
-        # Day of week at bottom (SYSTEM font, centered, bright)
-        day_width = self._helpers.get_text_width(day_name, font_name="SYSTEM")
+        # Day of week at bottom (MENU font, centered, bright)
+        day_width = self._helpers.get_text_width(day_name, font_name="MENU")
         day_x = (width - day_width) // 2
-        day_y = int(23 * sy)
+        day_y = int(21 * sy)
 
         # Use a contrasting color for the day name
         day_color = (
@@ -693,7 +713,7 @@ class ClockDisplayPlugin(ClockPlugin):
         )
 
         day_frame = self._helpers.render_text(
-            day_name, x=day_x, y=day_y, color=day_color, font_name="SYSTEM"
+            day_name, x=day_x, y=day_y, color=day_color, font_name="MENU"
         )
         frame = self._helpers.composite_frames(frame, day_frame)
 

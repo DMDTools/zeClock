@@ -299,10 +299,17 @@ document.getElementById('speaker-message-text').addEventListener('keydown', (e) 
 // --- Configuration ---
 
 async function loadConfig() {
-    const [configResp, pluginsResp] = await Promise.all([
+    const [configResp, pluginsResp, availableResp] = await Promise.all([
         api('/api/config'),
         api('/api/config/plugins'),
+        api('/api/plugins'),
     ]);
+
+    // Build list of available plugin names for dropdowns
+    window._availablePlugins = [];
+    if (availableResp && availableResp.data && availableResp.data.plugins) {
+        window._availablePlugins = availableResp.data.plugins.map(p => p.name).sort();
+    }
 
     if (configResp && configResp.data) {
         const cfg = configResp.data;
@@ -339,6 +346,12 @@ async function loadConfig() {
     if (pluginsResp && pluginsResp.data) {
         const pCfg = pluginsResp.data;
         document.getElementById('cfg-clock-seconds').value = pCfg.clock_display_seconds || 5;
+
+        // Global language
+        const langSelect = document.getElementById('cfg-language');
+        const currentLang = pCfg.language || 'en';
+        langSelect.value = currentLang;
+
         renderPluginEntries(pCfg.plugins || []);
 
         // Populate default_plugin selector with all configured plugins
@@ -366,7 +379,11 @@ function renderPluginEntries(plugins) {
     container.innerHTML = plugins.map((p, i) => `
         <div class="plugin-config-entry" data-index="${i}">
             <div class="form-row">
-                <input type="text" class="plugin-name-input" value="${p.name || ''}" placeholder="Plugin name">
+                <select class="plugin-name-input">
+                    ${window._availablePlugins.map(ap =>
+                        `<option value="${ap}" ${ap === p.name ? 'selected' : ''}>${ap}</option>`
+                    ).join('')}
+                </select>
                 <input type="number" class="plugin-freq-input" value="${p.frequency || 20}" min="0" max="100" title="Frequency %">
                 <button class="btn btn-danger btn-small" onclick="removePluginEntry(${i})">✕</button>
             </div>
@@ -382,7 +399,11 @@ function addPluginEntry() {
     div.dataset.index = i;
     div.innerHTML = `
         <div class="form-row">
-            <input type="text" class="plugin-name-input" value="" placeholder="Plugin name">
+            <select class="plugin-name-input">
+                ${window._availablePlugins.map(ap =>
+                    `<option value="${ap}">${ap}</option>`
+                ).join('')}
+            </select>
             <input type="number" class="plugin-freq-input" value="20" min="0" max="100" title="Frequency %">
             <button class="btn btn-danger btn-small" onclick="removePluginEntry(${i})">✕</button>
         </div>
@@ -451,6 +472,7 @@ async function saveConfig() {
 
     // Build plugins.yaml structure
     const pluginsConfig = {
+        language: document.getElementById('cfg-language').value || 'en',
         default_plugin: document.getElementById('cfg-default-plugin').value || 'clock',
         clock_display_seconds: parseInt(document.getElementById('cfg-clock-seconds').value) || 5,
         plugins: [],

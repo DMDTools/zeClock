@@ -192,7 +192,7 @@ class TestConfigRoundtrip:
             assert settings["latitude"] == 48.85
             assert settings["city_name"] == "Paris"
 
-            # Unknown plugin returns empty dict
-            assert config.get_plugin_config("unknown") == {}
+            # Unknown plugin inherits global language
+            assert config.get_plugin_config("unknown") == {"language": "en"}
         finally:
             tmp_path.unlink()

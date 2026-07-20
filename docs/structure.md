@@ -46,6 +46,7 @@ zeClock/
 │   │   └── web/                # Web UI static files (served at /ui/)
 │   │       ├── index.html      # Web UI main page (browser-based control panel)
 │   │       └── style.css       # Web UI stylesheet
+│   ├── text_utils.py            # Text transliteration (accented chars → ASCII for bitmap font rendering)
 │   ├── plugin_registry.py      # Plugin registry: stores plugins with state, frequency, override logic
 │   ├── plugin_config.py        # Plugin YAML configuration loader and validator
 │   ├── plugin_manager.py       # Plugin manager: discovery, loading, scheduling, lifecycle orchestration
@@ -128,6 +129,7 @@ This is the application core. It contains all the Python logic for reading resou
 | `remote/rest_remote.py` | `RestRemote`: REST API remote control via HTTP endpoints, plugin list API, Speaker Timer sub-API, and Web UI static file serving |
 | `remote/web/index.html` | Web UI main page: browser-based control panel for the clock (served at `/ui/`) |
 | `remote/web/style.css` | Web UI stylesheet |
+| `text_utils.py` | Text transliteration utilities: `transliterate()` replaces accented and special characters (é→e, ü→u, œ→oe, etc.) with their closest ASCII equivalents for bitmap font rendering (fonts only support printable ASCII 32–126). Strips any remaining non-ASCII characters. |
 | `plugin_registry.py` | `PluginRegistry`: stores loaded plugins with state, frequency, and error tracking; handles override logic and frequency normalization |
 | `plugin_config.py` | `PluginConfig`: loads and validates `plugins.yaml` configuration; provides defaults, frequency clamping, and plugin-specific settings |
 | `plugin_manager.py` | `PluginManager`: top-level orchestrator that discovers, loads, validates, schedules, and drives plugins through their lifecycle |

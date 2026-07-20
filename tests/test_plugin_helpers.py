@@ -489,10 +489,20 @@ class TestTextWidthConsistencyProperty:
         **Validates: Requirements 6.8**
         """
         helpers = self._make_helpers()
-        predicted_width = helpers.get_text_width(text, font_name="MENU")
+
+        # Strip trailing spaces — they contribute to logical width but produce
+        # no visible pixels, so _rightmost_content_column cannot detect them.
+        visible_text = text.rstrip(" ")
+        if not visible_text:
+            # All-space strings produce no visible output; just verify non-negative
+            predicted_width = helpers.get_text_width(text, font_name="MENU")
+            assert predicted_width >= 0
+            return
+
+        predicted_width = helpers.get_text_width(visible_text, font_name="MENU")
 
         # Render text at x=0 (non-centered) to measure actual content width
-        frame = helpers.render_text(text, x=0, y=0, font_name="MENU")
+        frame = helpers.render_text(visible_text, x=0, y=0, font_name="MENU")
 
         actual_width = _rightmost_content_column(frame) + 1
 
@@ -501,7 +511,7 @@ class TestTextWidthConsistencyProperty:
             return
 
         assert predicted_width == actual_width, (
-            f"Text '{text}': get_text_width={predicted_width}, "
+            f"Text '{visible_text}': get_text_width={predicted_width}, "
             f"actual rendered width={actual_width}"
         )
 

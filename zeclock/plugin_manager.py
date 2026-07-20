@@ -309,6 +309,7 @@ class PluginManager:
         config["_helpers"] = self._helpers
         config["_upscale_mode"] = self.upscale_mode
         config["_font"] = self.font_name
+        config["_clock_display_seconds"] = self.config.clock_display_seconds
         config["_context"] = PluginContext(
             helpers=self._helpers,
             upscale_mode=self.upscale_mode,
