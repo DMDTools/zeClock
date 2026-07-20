@@ -13,6 +13,12 @@
     <header>
         <h1>🕒 zeClock</h1>
         <div id="connection-status" class="status-dot connected" title="Connected"></div>
+        <div class="header-actions">
+            <button class="btn-icon" onclick="downloadSettings()" title="Download settings backup">⬇️</button>
+            <label class="btn-icon" title="Upload settings backup">⬆️
+                <input type="file" id="upload-settings-input" accept=".json" onchange="uploadSettings(event)" style="display:none">
+            </label>
+        </div>
     </header>
 
     <div id="backend-banner" class="backend-banner hidden">

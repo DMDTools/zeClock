@@ -122,6 +122,10 @@ class RestRemote:
         self._app.router.add_get("/api/geocode/search", self._handle_geocode_search)
         self._app.router.add_get("/api/timezone", self._handle_resolve_timezone)
 
+        # Settings export/import routes
+        self._app.router.add_get("/api/config/export", self._handle_export_config)
+        self._app.router.add_post("/api/config/import", self._handle_import_config)
+
         # GIF directory management routes
         self._app.router.add_get(
             "/api/gif/directories", self._handle_list_gif_directories
@@ -429,6 +433,106 @@ class RestRemote:
                     "forced_plugin": forced_plugin,
                     "default_plugin": default_plugin_name,
                 },
+            }
+        )
+
+    # --- Settings Export/Import handlers ---
+
+    async def _handle_export_config(self, request: web.Request) -> web.Response:
+        """GET /api/config/export — Export all settings as a JSON bundle."""
+        import configparser
+
+        import yaml
+
+        from ..paths import get_config_dir
+
+        config_dir = get_config_dir()
+        bundle: dict = {"_version": 1}
+
+        # Export zeclock.ini
+        ini_path = config_dir / "zeclock.ini"
+        if ini_path.exists():
+            parser = configparser.RawConfigParser()
+            parser.read(str(ini_path))
+            ini_data: dict = {}
+            for section in parser.sections():
+                ini_data[section] = dict(parser.items(section))
+            bundle["config"] = ini_data
+
+        # Export plugins.yaml
+        plugins_path = config_dir / "plugins.yaml"
+        if plugins_path.exists():
+            try:
+                with open(plugins_path, "r") as f:
+                    plugins_data = yaml.safe_load(f)
+                bundle["plugins"] = plugins_data or {}
+            except Exception as e:
+                logger.warning("Failed to read plugins.yaml for export: %s", e)
+
+        return web.json_response({"success": True, "data": bundle})
+
+    async def _handle_import_config(self, request: web.Request) -> web.Response:
+        """POST /api/config/import — Restore settings from a JSON bundle."""
+        import configparser
+
+        import yaml
+
+        from ..paths import get_config_dir
+
+        try:
+            body = await request.json()
+        except (json.JSONDecodeError, Exception):
+            return web.json_response(
+                {"success": False, "message": "Invalid JSON body"}, status=400
+            )
+
+        if not isinstance(body, dict):
+            return web.json_response(
+                {"success": False, "message": "Body must be a JSON object"}, status=400
+            )
+
+        config_dir = get_config_dir()
+        config_dir.mkdir(parents=True, exist_ok=True)
+        restored = []
+
+        # Restore zeclock.ini
+        if "config" in body and isinstance(body["config"], dict):
+            ini_path = config_dir / "zeclock.ini"
+            parser = configparser.RawConfigParser()
+            for section, values in body["config"].items():
+                if not isinstance(values, dict):
+                    continue
+                parser.add_section(section)
+                for key, value in values.items():
+                    parser.set(section, str(key), str(value))
+            with open(ini_path, "w") as f:
+                parser.write(f)
+            restored.append("zeclock.ini")
+
+        # Restore plugins.yaml
+        if "plugins" in body and isinstance(body["plugins"], dict):
+            plugins_path = config_dir / "plugins.yaml"
+            with open(plugins_path, "w") as f:
+                yaml.dump(body["plugins"], f, default_flow_style=False, sort_keys=False)
+            restored.append("plugins.yaml")
+
+            # Reload plugin config
+            pm = self._handler._clock._plugin_manager
+            if pm:
+                pm.config.reload()
+
+        if not restored:
+            return web.json_response(
+                {"success": False, "message": "No valid configuration found in file"},
+                status=400,
+            )
+
+        logger.info("Configuration restored: %s", ", ".join(restored))
+        return web.json_response(
+            {
+                "success": True,
+                "message": f"Restored: {', '.join(restored)}. "
+                "Restart zeClock for full effect.",
             }
         )
 
