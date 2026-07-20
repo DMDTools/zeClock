@@ -468,32 +468,9 @@ input:focus {
     margin-bottom: 0.5rem;
 }
 
-.form-row .plugin-name-input {
-    flex: 2;
-    padding: 0.4rem 0.6rem;
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--text);
-}
-
-.form-row .plugin-freq-input {
-    flex: 0 0 70px;
-    padding: 0.4rem 0.6rem;
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--text);
-    text-align: center;
-}
-
 .btn-small {
     padding: 0.3rem 0.6rem;
     font-size: 0.8rem;
-}
-
-.plugin-config-entry {
-    padding: 0.25rem 0;
 }
 
 /* --- Plugin configuration form cards --- */
@@ -968,4 +945,289 @@ input:focus {
     margin-bottom: 0.2rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+}
+
+
+/* --- Settings page layout improvements --- */
+
+.settings-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+@media (max-width: 600px) {
+    .settings-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.settings-grid .form-group {
+    margin-bottom: 0;
+}
+
+.settings-section {
+    padding: 0.25rem 0;
+}
+
+.settings-section h3 {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+    font-weight: 600;
+}
+
+.settings-divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 1rem 0;
+}
+
+/* Collapsible cards using <details> */
+.card.collapsible {
+    padding: 0;
+}
+
+.card.collapsible > summary {
+    padding: 1.25rem;
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    user-select: none;
+}
+
+.card.collapsible > summary::-webkit-details-marker {
+    display: none;
+}
+
+.card.collapsible > summary::after {
+    content: '▸';
+    margin-left: auto;
+    font-size: 1rem;
+    color: var(--text-muted);
+    transition: transform 0.2s;
+}
+
+.card.collapsible[open] > summary::after {
+    transform: rotate(90deg);
+}
+
+.card.collapsible > summary h2 {
+    margin: 0;
+    font-size: 1.1rem;
+    color: var(--accent);
+}
+
+.card.collapsible > summary:hover {
+    background: rgba(255, 136, 0, 0.04);
+    border-radius: var(--radius);
+}
+
+.collapsible-content {
+    padding: 0 1.25rem 1.25rem;
+}
+
+.collapsible-content h3 {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+    font-weight: 600;
+}
+
+/* Field description (subtle hint text under inputs) */
+.field-description {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    margin-top: 0.25rem;
+    font-style: italic;
+}
+
+
+/* --- Plugin configuration tabs --- */
+
+.plugin-tabs {
+    display: flex;
+    gap: 0.25rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    padding-bottom: 0.5rem;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.plugin-tabs::-webkit-scrollbar {
+    height: 4px;
+}
+
+.plugin-tabs::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.plugin-tabs::-webkit-scrollbar-thumb {
+    background: var(--secondary);
+    border-radius: 2px;
+}
+
+.plugin-tab {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 0.4rem 1rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+    flex-shrink: 0;
+}
+
+.plugin-tab:hover {
+    color: var(--text);
+    border-color: var(--accent);
+}
+
+.plugin-tab.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 600;
+}
+
+.plugin-config-panel {
+    display: none;
+}
+
+.plugin-config-panel.active {
+    display: block;
+}
+
+.plugin-config-panel .plugin-config-card {
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+}
+
+.plugin-config-panel .plugin-description {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+    font-style: italic;
+}
+
+/* Responsive: stack plugin tabs if too many */
+@media (max-width: 600px) {
+    .plugin-tabs {
+        gap: 0.35rem;
+        padding-bottom: 0.75rem;
+    }
+
+    .plugin-tab {
+        padding: 0.35rem 0.75rem;
+        font-size: 0.8rem;
+    }
+}
+
+
+/* --- Plugin rotation list (improved) --- */
+
+.plugin-list-header {
+    display: grid;
+    grid-template-columns: 1fr 1.2fr;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.4rem 0.5rem;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 0.25rem;
+}
+
+.plugin-list-header .plugin-list-col-name {
+    grid-column: 1;
+}
+
+.plugin-list-header .plugin-list-col-freq {
+    grid-column: 2;
+}
+
+.plugin-config-entry {
+    display: grid;
+    grid-template-columns: 1fr 1.2fr;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.5rem;
+    border-radius: var(--radius);
+    transition: background 0.15s, opacity 0.15s;
+    margin-bottom: 2px;
+}
+
+.plugin-config-entry:hover {
+    background: rgba(255, 136, 0, 0.04);
+}
+
+.plugin-config-entry.plugin-disabled {
+    opacity: 0.45;
+}
+
+.plugin-config-entry.plugin-disabled .plugin-entry-name {
+    text-decoration: line-through;
+}
+
+.plugin-entry-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text);
+}
+
+.plugin-config-entry .plugin-name-input {
+    padding: 0.4rem 0.6rem;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 0.9rem;
+    width: 100%;
+}
+
+.plugin-freq-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.plugin-freq-slider {
+    flex: 1;
+    accent-color: var(--accent);
+    height: 6px;
+    min-width: 60px;
+}
+
+.plugin-freq-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--accent);
+    min-width: 3.5ch;
+    text-align: right;
+}
+
+/* Responsive: stack on mobile */
+@media (max-width: 600px) {
+    .plugin-list-header {
+        display: none;
+    }
+
+    .plugin-config-entry {
+        grid-template-columns: 1fr;
+        gap: 0.25rem;
+    }
+
+    .plugin-freq-wrapper {
+        padding-left: 0;
+    }
 }
