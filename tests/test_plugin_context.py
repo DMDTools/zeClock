@@ -154,7 +154,7 @@ class TestPluginContext:
         await plugin_manager.activate_plugin(plugin)
 
         ctx = plugin._config["_context"]
-        assert ctx.settings == {"api_key": "test123", "city": "Paris"}
+        assert ctx.settings == {"api_key": "test123", "city": "Paris", "language": "en"}
 
     @pytest.mark.asyncio
     async def test_backward_compat_helpers_key(self, plugin_manager):

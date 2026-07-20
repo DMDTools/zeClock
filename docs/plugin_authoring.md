@@ -428,7 +428,6 @@ plugins:
       longitude: 2.3522
       city_name: "Paris"
       temperature_unit: "celsius"
-      language: "fr"               # "en" or "fr" for condition descriptions
       page_duration_seconds: 4
 ```
 
@@ -441,6 +440,7 @@ The `config` dict passed to `initialize()` contains everything from the `setting
 | `_helpers` | `PluginHelpers` | Rendering utilities (text, icons, frames) |
 | `_upscale_mode` | `str` | Upscaling algorithm in use: `"epx"`, `"hq2x"`, or `"nearest"` |
 | `_font` | `str` | Global font name (e.g. `"STANDARD"`) |
+| `language` | `str` | Global language setting (e.g. `"en"`, `"fr"`). Always injected from the top-level config — cannot be overridden per-plugin. |
 | `_context` | `PluginContext` | Typed context object (see below) |
 
 ```python
@@ -673,6 +673,43 @@ async def render_frame(self, width: int, height: int) -> Optional[Image.Image]:
 ```
 
 The plugin will be re-activated later and can resume from where it left off (see Persistent State below).
+
+---
+
+## Default Plugin and Page Cycling
+
+Any plugin can be configured as the **default plugin** (shown between rotations) via the `default_plugin` field in `plugins.yaml`. The built-in `clock` plugin is the default.
+
+### How Default Plugin Page Cycling Works
+
+When used as the default plugin:
+
+1. **Display**: The plugin's `render_frame()` is called continuously for `clock_display_seconds` (configured globally).
+2. **Transition**: When time elapses, the system calls `cleanup()` then selects a rotation plugin.
+3. **Resume**: After the rotation plugin finishes, the default plugin is re-initialized via `initialize()` and displayed again.
+
+This means `cleanup()` is called **between each display cycle**. Plugins with multiple pages can use this to advance their page counter:
+
+```python
+class MyDefaultPlugin(ClockPlugin):
+    def __init__(self):
+        self._current_page = 0
+        self._total_pages = 3
+
+    async def render_frame(self, width, height):
+        # Always render the current page (never return None as default plugin)
+        return self._render_page(self._current_page, width, height)
+
+    async def cleanup(self):
+        # Advance to next page for the next display cycle
+        self._current_page = (self._current_page + 1) % self._total_pages
+```
+
+**Key rules for default plugins:**
+- `render_frame()` should **never** return `None` — the main loop controls the display duration
+- Use `cleanup()` to advance internal state (page counter, animation phase, etc.)
+- State set in `__init__()` persists across activations (the instance is reused)
+- `initialize()` is called before each display cycle — reset timers but preserve page position
 
 ---
 
@@ -1073,7 +1110,7 @@ class WeatherPlugin(ClockPlugin):
         self._latitude = config.get("latitude")
         self._longitude = config.get("longitude")
         self._city_name = config.get("city_name", "")
-        # Language for condition descriptions: "en" or "fr"
+        # Language is a global setting — always injected into config by PluginConfig
         self._language = config.get("language", "en")
 
         missing = []

@@ -46,6 +46,7 @@ class PluginConfig:
         self.path = config_path or get_config_dir() / "plugins.yaml"
         self.clock_display_seconds: int = CLOCK_DISPLAY_SECONDS_DEFAULT
         self.default_plugin: str = DEFAULT_PLUGIN_NAME
+        self.language: str = "en"
         self.plugin_entries: List[Dict[str, Any]] = []
         self._raw: Dict[str, Any] = {}
 
@@ -91,6 +92,13 @@ class PluginConfig:
             self.default_plugin = raw_default.strip()
         else:
             self.default_plugin = DEFAULT_PLUGIN_NAME
+
+        # Global language (inherited by plugins that don't set their own)
+        raw_lang = data.get("language", "en")
+        if isinstance(raw_lang, str) and raw_lang.strip():
+            self.language = raw_lang.strip().lower()
+        else:
+            self.language = "en"
 
         # clock_display_seconds
         raw_seconds = data.get("clock_display_seconds", CLOCK_DISPLAY_SECONDS_DEFAULT)
@@ -151,6 +159,7 @@ class PluginConfig:
         """Apply default configuration."""
         self.clock_display_seconds = CLOCK_DISPLAY_SECONDS_DEFAULT
         self.default_plugin = DEFAULT_PLUGIN_NAME
+        self.language = "en"
         self.plugin_entries = [
             {"name": "clock", "frequency": 0, "settings": {}},
             {"name": "pinball", "frequency": 100, "settings": {}},
@@ -173,6 +182,9 @@ class PluginConfig:
     def get_plugin_config(self, plugin_name: str) -> dict:
         """Get plugin-specific settings map.
 
+        The global ``language`` setting is always injected and cannot be
+        overridden per-plugin — language is a global setting only.
+
         Args:
             plugin_name: The plugin name to look up.
 
@@ -181,8 +193,13 @@ class PluginConfig:
         """
         for entry in self.plugin_entries:
             if entry["name"] == plugin_name:
-                return entry.get("settings", {})
-        return {}
+                settings = dict(entry.get("settings", {}))
+                # Remove any per-plugin language override — language is global only
+                settings.pop("language", None)
+                settings["language"] = self.language
+                return settings
+        # Plugin not in config — still provide global language
+        return {"language": self.language}
 
     def get_frequency(self, plugin_name: str) -> int:
         """Get configured frequency for a plugin (0-100).

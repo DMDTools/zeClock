@@ -975,8 +975,12 @@ class RestRemote:
 
         logger.info("Plugins configuration saved to %s", config_path)
 
-        # Reconfigure affected plugins without restart
+        # Reload plugin config to pick up global settings (language, etc.)
         pm = self._handler._clock._plugin_manager
+        if pm:
+            pm.config.reload()
+
+        # Reconfigure affected plugins without restart
         reconfigured = []
         if pm and body.get("plugins"):
             for plugin_entry in body["plugins"]:

@@ -360,12 +360,10 @@ class ClockDisplayPlugin(ClockPlugin):
         else:
             self._timezone_offset = None
 
-        # Page duration
-        page_dur = config.get("page_duration_seconds", 5)
-        try:
-            self._page_duration_seconds = max(5, min(30, int(page_dur)))
-        except (ValueError, TypeError):
-            self._page_duration_seconds = 5
+        # Page duration is no longer used internally — the main loop controls
+        # display duration via clock_display_seconds. We keep the field for
+        # backward compatibility with config but it has no effect.
+        self._page_duration_seconds = config.get("_clock_display_seconds", 5)
 
         # Adjust frame delay: if showing seconds, need faster updates
         if self._show_seconds:
@@ -378,34 +376,15 @@ class ClockDisplayPlugin(ClockPlugin):
         # World clocks: parse list of city/timezone entries
         self._world_clocks = _parse_world_clocks(config.get("world_clocks"))
 
-        # Reset page state
-        self._current_page = 0
-        self._page_start_time = time.time()
-
-        logger.info(
-            "[clock] Initialized: format=%s, seconds=%s, blink=%s, "
-            "date=%s(%s), day=%s, color=%s, tz_offset=%s, world_clocks=%d",
-            self._time_format,
-            self._show_seconds,
-            self._blink_colon,
-            self._show_date,
-            self._date_format,
-            self._show_day,
-            self._color_mode,
-            self._timezone_offset,
-            len(self._world_clocks),
-        )
-
     async def render_frame(self, width: int, height: int) -> Optional[Image.Image]:
         """Render the clock display frame.
 
-        The clock cycles through pages:
-        - Page 0: Time (always shown)
-        - Page 1: Time + Date (if show_date=yes)
-        - Page 2: Time + Day of week (if show_day=yes)
+        Shows the current page for the entire activation. The page advances
+        each time the clock is re-activated (after a plugin rotation), cycling
+        through: time -> time_date -> time_day -> time -> ...
 
-        Returns None when all pages have been displayed (signals to plugin
-        manager that rotation can continue).
+        Never returns None — the main loop controls display duration via
+        clock_display_seconds.
         """
         now = time.time()
 
@@ -419,19 +398,19 @@ class ClockDisplayPlugin(ClockPlugin):
         pages = self._get_active_pages()
         total_pages = len(pages)
 
-        # Check page advancement
-        if now - self._page_start_time >= self._page_duration_seconds:
-            self._current_page += 1
-            self._page_start_time = now
-
-            # All pages shown - signal completion
-            if self._current_page >= total_pages:
-                self._current_page = 0
-                return None
-
         # Clamp current page
         if self._current_page >= total_pages:
             self._current_page = 0
+
+        # Log on first render of a new page
+        if getattr(self, "_last_logged_page", -1) != self._current_page:
+            logger.info(
+                "[clock] Showing page %d/%d: '%s'",
+                self._current_page + 1,
+                total_pages,
+                pages[self._current_page],
+            )
+            self._last_logged_page = self._current_page
 
         # Get current datetime (with timezone offset if configured)
         dt = self._get_current_datetime()
@@ -585,8 +564,8 @@ class ClockDisplayPlugin(ClockPlugin):
         """Render time on top and date on bottom.
 
         Layout:
-        - Top row: Time in MENU font (medium size)
-        - Bottom row: Date in SYSTEM font (small size)
+        - Top row: Time in STANDARD font (large size, fills width)
+        - Bottom row: Date in MENU font (medium size)
         """
         if self._helpers is None:
             return Image.new("RGB", (width, height), (0, 0, 0))
@@ -602,13 +581,13 @@ class ClockDisplayPlugin(ClockPlugin):
         # Scale factor for HD
         sy = height / 32
 
-        # Time at top (MENU font - medium size, centered)
-        time_width = self._helpers.get_text_width(time_str, font_name="MENU")
+        # Time at top (STANDARD font - large, centered)
+        time_width = self._helpers.get_text_width(time_str, font_name="STANDARD")
         time_x = (width - time_width) // 2
-        time_y = int(1 * sy)
+        time_y = 0
 
         time_frame = self._helpers.render_text(
-            display_time, x=time_x, y=time_y, color=color, font_name="MENU"
+            display_time, x=time_x, y=time_y, color=color, font_name="STANDARD"
         )
         frame = self._helpers.composite_frames(frame, time_frame)
 
@@ -620,10 +599,10 @@ class ClockDisplayPlugin(ClockPlugin):
             )
             frame = self._helpers.composite_frames(frame, ampm_frame)
 
-        # Date at bottom (SYSTEM font - small, centered)
-        date_width = self._helpers.get_text_width(date_str, font_name="SYSTEM")
+        # Date at bottom (MENU font - medium, centered)
+        date_width = self._helpers.get_text_width(date_str, font_name="MENU")
         date_x = (width - date_width) // 2
-        date_y = int(23 * sy)
+        date_y = int(21 * sy)
 
         # Use a slightly dimmer version of the color for the date
         date_color = (
@@ -633,7 +612,7 @@ class ClockDisplayPlugin(ClockPlugin):
         )
 
         date_frame = self._helpers.render_text(
-            date_str, x=date_x, y=date_y, color=date_color, font_name="SYSTEM"
+            date_str, x=date_x, y=date_y, color=date_color, font_name="MENU"
         )
         frame = self._helpers.composite_frames(frame, date_frame)
 
@@ -645,8 +624,8 @@ class ClockDisplayPlugin(ClockPlugin):
         """Render time on top and day of week on bottom.
 
         Layout:
-        - Top row: Time in MENU font
-        - Bottom row: Day name in SYSTEM font (highlighted color)
+        - Top row: Time in STANDARD font (large)
+        - Bottom row: Day name in MENU font (highlighted color)
         """
         if self._helpers is None:
             return Image.new("RGB", (width, height), (0, 0, 0))
@@ -662,13 +641,13 @@ class ClockDisplayPlugin(ClockPlugin):
         # Scale factor for HD
         sy = height / 32
 
-        # Time at top (MENU font, centered)
-        time_width = self._helpers.get_text_width(time_str, font_name="MENU")
+        # Time at top (STANDARD font, centered)
+        time_width = self._helpers.get_text_width(time_str, font_name="STANDARD")
         time_x = (width - time_width) // 2
-        time_y = int(1 * sy)
+        time_y = 0
 
         time_frame = self._helpers.render_text(
-            display_time, x=time_x, y=time_y, color=color, font_name="MENU"
+            display_time, x=time_x, y=time_y, color=color, font_name="STANDARD"
         )
         frame = self._helpers.composite_frames(frame, time_frame)
 
@@ -680,10 +659,10 @@ class ClockDisplayPlugin(ClockPlugin):
             )
             frame = self._helpers.composite_frames(frame, ampm_frame)
 
-        # Day of week at bottom (SYSTEM font, centered, bright)
-        day_width = self._helpers.get_text_width(day_name, font_name="SYSTEM")
+        # Day of week at bottom (MENU font, centered, bright)
+        day_width = self._helpers.get_text_width(day_name, font_name="MENU")
         day_x = (width - day_width) // 2
-        day_y = int(23 * sy)
+        day_y = int(21 * sy)
 
         # Use a contrasting color for the day name
         day_color = (
@@ -693,7 +672,7 @@ class ClockDisplayPlugin(ClockPlugin):
         )
 
         day_frame = self._helpers.render_text(
-            day_name, x=day_x, y=day_y, color=day_color, font_name="SYSTEM"
+            day_name, x=day_x, y=day_y, color=day_color, font_name="MENU"
         )
         frame = self._helpers.composite_frames(frame, day_frame)
 
@@ -791,9 +770,9 @@ class ClockDisplayPlugin(ClockPlugin):
         return frame
 
     async def cleanup(self) -> None:
-        """Reset page state for next activation."""
-        self._current_page = 0
-        self._page_start_time = time.time()
+        """Advance to next page for the next activation cycle."""
+        total_pages = len(self._get_active_pages())
+        self._current_page = (self._current_page + 1) % max(1, total_pages)
         self._cached_frame = None
         self._cached_key = ""
 
