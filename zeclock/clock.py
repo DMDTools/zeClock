@@ -182,12 +182,6 @@ class ZeClock:
         # Default plugin state (the plugin displayed between rotations)
         self._default_plugin_initialized: bool = False
 
-        # Clock caching (legacy fallback if no default plugin is available)
-        self.cached_clock_frame: Optional[Image.Image] = None
-        self.cached_clock_rgb: Optional[Image.Image] = None
-        self.last_clock_time = ""
-        self.last_clock_color: Optional[tuple] = None
-
         # Reconnection state
         self._reconnect_logged = False
         self._reconnect_delay = 2.0
@@ -197,31 +191,6 @@ class ZeClock:
         self._last_brightness_check = 0.0
         self._current_sw_dimming = 0
         self._current_is_time_only = False
-
-        # Load font — prefer HD variant for HD displays
-        self.dotclk_font = None
-        from .resources.paths import get_fonts_dir
-
-        fonts_dir = get_fonts_dir()
-        hd_font_path = fonts_dir / f"{self.font_name}_HD.fnt"
-        sd_font_path = fonts_dir / f"{self.font_name}.fnt"
-
-        # Use HD font if display is HD and the font file exists
-        if self.width >= 256 and self.height >= 64 and hd_font_path.exists():
-            font_path = hd_font_path
-        else:
-            font_path = sd_font_path
-
-        if font_path.exists():
-            try:
-                self.dotclk_font = load_font(font_path)
-                print(
-                    f"✅ Loaded font: {self.dotclk_font.name} (upscale={self.upscale_mode})"
-                )
-            except Exception as e:
-                print(f"⚠️ Failed to load font: {e}")
-        else:
-            print("❌ No font found")
 
         # Remote control
         self._mqtt_config = mqtt_config
@@ -340,10 +309,6 @@ class ZeClock:
                     )
                     self.width = detected_w
                     self.height = detected_h
-                    # Invalidate cached frames
-                    self.cached_clock_frame = None
-                    self.cached_clock_rgb = None
-                    self.last_clock_time = ""
 
         # Initialize plugin system
         await self._init_plugin_system()
@@ -364,7 +329,6 @@ class ZeClock:
                 if self.color_mode == "auto" and now - self.last_color_change >= 60:
                     self.color = COLOR_LIST[int(now // 60) % len(COLOR_LIST)]
                     self.last_color_change = now
-                    self.last_clock_time = ""  # Force refresh
 
                 # Remote control: check for text overlay
                 if self._command_handler and self._command_handler.has_text_overlay:
@@ -795,7 +759,7 @@ class ZeClock:
         The default plugin is identified by the ``default_plugin`` field in
         plugins.yaml. Any plugin can be the default. If the configured
         default plugin is not found in the registry or fails to initialize,
-        the legacy inline clock renderer is used as a last-resort fallback.
+        a black screen is shown (no hidden legacy renderer).
         """
         if not self._plugin_manager:
             self._default_plugin_initialized = False
@@ -805,9 +769,9 @@ class ZeClock:
         plugin = self._plugin_manager.get_default_plugin()
 
         if plugin is None:
-            logger.info(
-                "Default plugin '%s' not found in registry, "
-                "using legacy clock renderer",
+            logger.error(
+                "Default plugin '%s' not found in registry. "
+                "Check your plugins.yaml configuration.",
                 default_name,
             )
             self._default_plugin_initialized = False
@@ -825,9 +789,9 @@ class ZeClock:
             self._default_plugin_initialized = True
             logger.info("Default plugin '%s' initialized successfully", default_name)
         except Exception as e:
-            logger.warning(
-                "Default plugin '%s' initialization failed: %s, "
-                "using legacy fallback",
+            logger.error(
+                "Default plugin '%s' initialization failed: %s. "
+                "Check your plugins.yaml configuration.",
                 default_name,
                 e,
             )
@@ -836,8 +800,8 @@ class ZeClock:
     async def _render_default_plugin_frame(self) -> Image.Image:
         """Render a frame using the default plugin.
 
-        Falls back to the legacy inline clock renderer if the default
-        plugin is not initialized.
+        If the default plugin is not initialized or unavailable, returns
+        a black frame.
         """
         if self._default_plugin_initialized and self._plugin_manager:
             frame = await self._plugin_manager.render_default_plugin_frame()
@@ -861,59 +825,14 @@ class ZeClock:
                 if frame is not None:
                     return frame
 
-        # Legacy fallback: inline clock rendering
-        return self._render_clock_frame_legacy()
+        # No default plugin available — black screen
+        return Image.new("RGB", (self.width, self.height), (0, 0, 0))
 
     def _get_default_frame_delay(self) -> float:
         """Get the frame delay for the default plugin."""
         if self._default_plugin_initialized and self._plugin_manager:
             return self._plugin_manager.get_default_plugin_frame_delay()
-        return 0.5  # Legacy fallback: 500ms
-
-    def _render_clock_frame_legacy(self) -> Image.Image:
-        """Legacy clock renderer - last-resort fallback if no default plugin.
-
-        Uses two-level caching:
-        1. Grayscale text frame (changes every 500ms on blink)
-        2. Colorized RGB frame (invalidated on color or text change)
-
-        The colon blink is achieved by replacing ':' with ' ' which has
-        the same pixel width (guaranteed by the font loader), preventing
-        digit shifting.
-        """
-        # Generate clock with 500ms blink timing
-        milliseconds = int(time.time() * 1000)
-        blink_state = (milliseconds // 500) % 2
-        cache_key = f"{time.strftime('%H:%M:%S')}_{blink_state}"
-
-        needs_colorize = False
-
-        if cache_key != self.last_clock_time:
-            if blink_state == 0:
-                display_time = time.strftime("%H:%M")
-            else:
-                # Use space instead of colon for blink-off (same width)
-                display_time = time.strftime("%H") + " " + time.strftime("%M")
-
-            # Standard centered positioning
-            assert self.dotclk_font is not None
-            self.cached_clock_frame = self.dotclk_font.render_text(
-                display_time, self.width, self.height, upscale_mode=self.upscale_mode
-            )
-            self.last_clock_time = cache_key
-            needs_colorize = True
-
-        if self.last_clock_color != self.color:
-            self.last_clock_color = self.color
-            needs_colorize = True
-
-        if needs_colorize or self.cached_clock_rgb is None:
-            assert self.cached_clock_frame is not None
-            self.cached_clock_rgb = colorize_grayscale(
-                self.cached_clock_frame, self.color
-            )
-
-        return self.cached_clock_rgb
+        return 1.0  # No plugin: slow refresh rate
 
     async def _update_brightness(self) -> None:
         """Check and apply brightness schedule (once per minute).
