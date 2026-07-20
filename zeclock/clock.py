@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 class ClockState(enum.Enum):
     """State machine states for the clock display."""
 
-    CLOCK_ONLY = "clock_only"
+    DEFAULT_PLUGIN = "default_plugin"
     PLUGIN_SELECT = "plugin_select"
     PLUGIN_ACTIVE = "plugin_active"
 
@@ -97,8 +97,8 @@ class ZeClock:
             self.dmd_client = DMDServerBackend(host=dmdserver_host, port=dmdserver_port)
 
         # Plugin system state
-        self._state = ClockState.CLOCK_ONLY
-        self._clock_only_start = time.time()
+        self._state = ClockState.DEFAULT_PLUGIN
+        self._default_plugin_start = time.time()
         self._plugin_config_path = plugin_config_path
         self._plugins_override = plugins_override
         self._plugin_manager: Optional[PluginManager] = None
@@ -265,15 +265,22 @@ class ZeClock:
                     frame_time = 1.0
 
                 # State machine transitions
-                elif self._state == ClockState.CLOCK_ONLY:
+                elif self._state == ClockState.DEFAULT_PLUGIN:
                     frame = await self._render_default_plugin_frame()
                     frame_time = self._get_default_frame_delay()
 
-                    # Check if clock-only duration has elapsed
+                    # Check if default plugin duration has elapsed
                     # In "time only" mode, never transition to plugins
                     if not self._current_is_time_only:
                         clock_display_seconds = self._get_clock_display_seconds()
-                        if now - self._clock_only_start >= clock_display_seconds:
+                        elapsed_clock = now - self._default_plugin_start
+                        if elapsed_clock >= clock_display_seconds:
+                            logger.debug(
+                                "[state] DEFAULT_PLUGIN -> PLUGIN_SELECT "
+                                "(elapsed=%.1fs, clock_display_seconds=%d)",
+                                elapsed_clock,
+                                clock_display_seconds,
+                            )
                             self._state = ClockState.PLUGIN_SELECT
 
                 elif self._state == ClockState.PLUGIN_SELECT:
@@ -293,8 +300,8 @@ class ZeClock:
                         )
                         if forced_name == default_name:
                             self._command_handler._forced_plugin = None
-                            self._state = ClockState.CLOCK_ONLY
-                            self._clock_only_start = now
+                            self._state = ClockState.DEFAULT_PLUGIN
+                            self._default_plugin_start = now
                         elif (
                             self._plugin_manager
                             and self._plugin_manager.registry.has_plugin(forced_name)
@@ -307,21 +314,30 @@ class ZeClock:
                                     entry.plugin
                                 )
                                 if success:
+                                    # Advance default plugin page for next display cycle
+                                    dp = self._plugin_manager.get_default_plugin()
+                                    if dp:
+                                        await dp.cleanup()
                                     self._state = ClockState.PLUGIN_ACTIVE
                         else:
                             # Invalid forced plugin, clear it
                             self._command_handler._forced_plugin = None
-                            self._state = ClockState.CLOCK_ONLY
-                            self._clock_only_start = now
+                            self._state = ClockState.DEFAULT_PLUGIN
+                            self._default_plugin_start = now
                     else:
                         # Try to select and activate a plugin
                         activated = await self._select_and_activate_plugin()
                         if activated:
+                            # Advance default plugin page for next display cycle
+                            if self._plugin_manager:
+                                dp = self._plugin_manager.get_default_plugin()
+                                if dp:
+                                    await dp.cleanup()
                             self._state = ClockState.PLUGIN_ACTIVE
                         else:
-                            # No plugins available - stay in clock-only
-                            self._state = ClockState.CLOCK_ONLY
-                            self._clock_only_start = now
+                            # No plugins available - stay in default plugin
+                            self._state = ClockState.DEFAULT_PLUGIN
+                            self._default_plugin_start = now
 
                 elif self._state == ClockState.PLUGIN_ACTIVE:
                     # Check if forced plugin changed (user clicked a different plugin)
@@ -355,8 +371,11 @@ class ZeClock:
                             and self._plugin_manager.should_deactivate()
                         ):
                             await self._plugin_manager.deactivate_plugin()
-                            self._state = ClockState.CLOCK_ONLY
-                            self._clock_only_start = time.time()
+                            self._state = ClockState.DEFAULT_PLUGIN
+                            self._default_plugin_start = time.time()
+                            logger.debug(
+                                "[state] PLUGIN_ACTIVE -> DEFAULT_PLUGIN (plugin deactivated)"
+                            )
                             frame = await self._render_default_plugin_frame()
                             frame_time = self._get_default_frame_delay()
                         else:
@@ -374,8 +393,8 @@ class ZeClock:
                                     self._state = ClockState.PLUGIN_SELECT
                                 else:
                                     await self._plugin_manager.deactivate_plugin()
-                                    self._state = ClockState.CLOCK_ONLY
-                                    self._clock_only_start = time.time()
+                                    self._state = ClockState.DEFAULT_PLUGIN
+                                    self._default_plugin_start = time.time()
                                 frame = await self._render_default_plugin_frame()
                                 frame_time = self._get_default_frame_delay()
                             else:
@@ -495,7 +514,7 @@ class ZeClock:
         # Check if any plugins are available
         active_plugins = self._plugin_manager.registry.get_active_plugins()
         if not active_plugins:
-            logger.warning("No active plugins available, clock-only mode")
+            logger.warning("No active plugins available, default-plugin-only mode")
 
         # Initialize the default plugin (displayed between other plugins)
         await self._init_default_plugin()
@@ -656,7 +675,7 @@ class ZeClock:
         return True
 
     def _get_clock_display_seconds(self) -> float:
-        """Get the clock-only display duration from plugin config."""
+        """Get the default plugin display duration from plugin config."""
         if self._plugin_manager:
             return self._plugin_manager.config.clock_display_seconds
         return 5.0  # Default fallback
@@ -828,8 +847,8 @@ class ZeClock:
         if result.is_time_only and not was_time_only:
             if self._plugin_manager and self._plugin_manager.is_plugin_active():
                 await self._plugin_manager.deactivate_plugin()
-                self._state = ClockState.CLOCK_ONLY
-                self._clock_only_start = time.time()
+                self._state = ClockState.DEFAULT_PLUGIN
+                self._default_plugin_start = time.time()
             start = self._brightness_scheduler._time_only_start
             end = self._brightness_scheduler._time_only_end
             logger.info(

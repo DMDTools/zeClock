@@ -59,7 +59,7 @@ graph TD
 Manages global state and the time-based execution loop.
 
 - **Render Loop (Tick Event)**: Runs as an async background task. Precisely calculates the remaining delay before the next frame to call `asyncio.sleep` and stabilize the framerate (25 FPS by default, or per-scene timing).
-- **Animation State Machine**: Coordinates transitions between "Clock Only" mode and "Attract Mode" (retro pinball animations). After 5 seconds of inactivity, a new animation is randomly selected.
+- **Animation State Machine**: Coordinates transitions between clock pages and plugin activations. The clock shows one page per activation (time → time+date → time+day), returning `None` after `page_duration_seconds` to hand control to the main loop for plugin selection.
 - **Async Pre-computer (`_precompute_animation`)**: To avoid any slowdown during real-time rendering, an async task loads a randomly chosen `.scn` animation, merges each frame with the current time (in two versions: with and without the colon `:` for blinking) and stores everything in RAM. The PinballPlugin and GifPlugin further optimize this by running pre-computation in a **background thread**, appending frames progressively so rendering can start before all frames are ready.
 - **Dual Color**: Supports independent colors for the clock and animations, with an `auto` mode that rotates colors every 60 seconds.
 - **CLI Entry Point**: The `main()` function exposes `--color`, `--animation-color`, and `--bootstrap` arguments.
@@ -280,16 +280,17 @@ sequenceDiagram
 
 ```mermaid
 stateDiagram-v2
-    [*] --> ClockOnly: Startup
-    ClockOnly --> PluginSelect: clock_display_seconds elapsed
+    [*] --> ClockPage: Startup
+    ClockPage --> PluginSelect: Clock returns None #40;page done#41;
     PluginSelect --> PluginActive: Plugin selected #40;weighted random#41;
-    PluginActive --> ClockOnly: Plugin signals completion or 30s max
-    PluginActive --> ClockOnly: 5 consecutive errors #40;deactivate plugin#41;
-    ClockOnly --> ClockOnly: Refresh every 500ms #40;colon blink#41;
+    PluginActive --> ClockPage: Plugin signals completion or 30s max
+    PluginActive --> ClockPage: 5 consecutive errors #40;deactivate plugin#41;
+    ClockPage --> ClockPage: Refresh every 500ms #40;colon blink#41;
     note right of PluginSelect: PluginManager selects via\nnormalized frequency weights
+    note left of ClockPage: Pages cycle: time → time+date → time+day
 ```
 
-- **ClockOnly**: Displays time with colon blinking every 500ms. Duration configurable via `clock_display_seconds` (default 5s).
+- **ClockPage**: Displays one clock page (time, time+date, or time+day) with colon blinking every 500ms. After `page_duration_seconds` elapses, the clock returns `None` to signal completion to the main loop. On the next clock activation, the next page in the cycle is shown.
 - **PluginSelect**: PluginManager selects the next plugin using weighted random selection from normalized frequencies.
 - **PluginActive**: The selected plugin renders frames at its configured `frame_delay_ms`. Ends when the plugin returns `None`, 30 seconds elapse, or 5 consecutive errors occur.
 - **Fallback**: If all plugins are deactivated due to errors, the system falls back to the built-in pinball animation behavior.

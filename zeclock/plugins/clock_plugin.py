@@ -360,32 +360,10 @@ class ClockDisplayPlugin(ClockPlugin):
         else:
             self._timezone_offset = None
 
-        # Page duration: auto-calculate from clock_display_seconds so all pages
-        # fit within the allotted display time. If user explicitly configures
-        # page_duration_seconds, respect it.
-        explicit_page_dur = config.get("page_duration_seconds")
-        clock_display_seconds = config.get("_clock_display_seconds", 5)
-        if explicit_page_dur is not None:
-            try:
-                self._page_duration_seconds = max(2, min(30, int(explicit_page_dur)))
-            except (ValueError, TypeError):
-                self._page_duration_seconds = 5
-        else:
-            # Auto-derive: distribute clock_display_seconds across pages
-            # Pages are determined after world_clocks are parsed, so we
-            # calculate based on what we know now
-            num_pages = 1  # time always
-            if self._show_date:
-                num_pages += 1
-            if self._show_day:
-                num_pages += 1
-            # World clocks will be parsed next; estimate here
-            world_clocks_raw = config.get("world_clocks")
-            if isinstance(world_clocks_raw, list):
-                num_pages += len(world_clocks_raw)
-            elif isinstance(world_clocks_raw, str) and world_clocks_raw.strip():
-                num_pages += len([c for c in world_clocks_raw.split(",") if c.strip()])
-            self._page_duration_seconds = max(2, clock_display_seconds // num_pages)
+        # Page duration is no longer used internally — the main loop controls
+        # display duration via clock_display_seconds. We keep the field for
+        # backward compatibility with config but it has no effect.
+        self._page_duration_seconds = config.get("_clock_display_seconds", 5)
 
         # Adjust frame delay: if showing seconds, need faster updates
         if self._show_seconds:
@@ -398,34 +376,15 @@ class ClockDisplayPlugin(ClockPlugin):
         # World clocks: parse list of city/timezone entries
         self._world_clocks = _parse_world_clocks(config.get("world_clocks"))
 
-        # Reset page state
-        self._current_page = 0
-        self._page_start_time = time.time()
-
-        logger.info(
-            "[clock] Initialized: format=%s, seconds=%s, blink=%s, "
-            "date=%s(%s), day=%s, color=%s, tz_offset=%s, world_clocks=%d",
-            self._time_format,
-            self._show_seconds,
-            self._blink_colon,
-            self._show_date,
-            self._date_format,
-            self._show_day,
-            self._color_mode,
-            self._timezone_offset,
-            len(self._world_clocks),
-        )
-
     async def render_frame(self, width: int, height: int) -> Optional[Image.Image]:
         """Render the clock display frame.
 
-        The clock cycles through pages:
-        - Page 0: Time (always shown)
-        - Page 1: Time + Date (if show_date=yes)
-        - Page 2: Time + Day of week (if show_day=yes)
+        Shows the current page for the entire activation. The page advances
+        each time the clock is re-activated (after a plugin rotation), cycling
+        through: time -> time_date -> time_day -> time -> ...
 
-        Returns None when all pages have been displayed (signals to plugin
-        manager that rotation can continue).
+        Never returns None — the main loop controls display duration via
+        clock_display_seconds.
         """
         now = time.time()
 
@@ -439,19 +398,19 @@ class ClockDisplayPlugin(ClockPlugin):
         pages = self._get_active_pages()
         total_pages = len(pages)
 
-        # Check page advancement
-        if now - self._page_start_time >= self._page_duration_seconds:
-            self._current_page += 1
-            self._page_start_time = now
-
-            # All pages shown - signal completion
-            if self._current_page >= total_pages:
-                self._current_page = 0
-                return None
-
         # Clamp current page
         if self._current_page >= total_pages:
             self._current_page = 0
+
+        # Log on first render of a new page
+        if getattr(self, "_last_logged_page", -1) != self._current_page:
+            logger.info(
+                "[clock] Showing page %d/%d: '%s'",
+                self._current_page + 1,
+                total_pages,
+                pages[self._current_page],
+            )
+            self._last_logged_page = self._current_page
 
         # Get current datetime (with timezone offset if configured)
         dt = self._get_current_datetime()
@@ -811,9 +770,9 @@ class ClockDisplayPlugin(ClockPlugin):
         return frame
 
     async def cleanup(self) -> None:
-        """Reset page state for next activation."""
-        self._current_page = 0
-        self._page_start_time = time.time()
+        """Advance to next page for the next activation cycle."""
+        total_pages = len(self._get_active_pages())
+        self._current_page = (self._current_page + 1) % max(1, total_pages)
         self._cached_frame = None
         self._cached_key = ""
 

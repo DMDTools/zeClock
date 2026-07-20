@@ -327,13 +327,13 @@ class TestClockOnlyDuration:
         clock._plugin_manager.config.plugin_entries = []
 
         # Set state to CLOCK_ONLY with start time in the past
-        clock._state = ClockState.CLOCK_ONLY
-        clock._clock_only_start = time.time() - 3  # 3 seconds ago (> 2s config)
+        clock._state = ClockState.DEFAULT_PLUGIN
+        clock._default_plugin_start = time.time() - 3  # 3 seconds ago (> 2s config)
 
         # The state machine logic checks if duration has elapsed
         clock_display_seconds = clock._get_clock_display_seconds()
         now = time.time()
-        elapsed = now - clock._clock_only_start
+        elapsed = now - clock._default_plugin_start
 
         assert elapsed >= clock_display_seconds
         # This means the state machine would transition to PLUGIN_SELECT
@@ -350,19 +350,19 @@ class TestClockOnlyDuration:
         clock._plugin_manager.config.plugin_entries = []
 
         # Set state to CLOCK_ONLY with start time just now
-        clock._state = ClockState.CLOCK_ONLY
-        clock._clock_only_start = time.time()
+        clock._state = ClockState.DEFAULT_PLUGIN
+        clock._default_plugin_start = time.time()
 
         # Check that duration has NOT elapsed
         clock_display_seconds = clock._get_clock_display_seconds()
         now = time.time()
-        elapsed = now - clock._clock_only_start
+        elapsed = now - clock._default_plugin_start
 
         assert elapsed < clock_display_seconds
         # State machine would NOT transition yet
 
     @pytest.mark.asyncio
-    async def test_clock_only_start_reset_after_plugin_deactivation(self):
+    async def test_default_plugin_start_reset_after_plugin_deactivation(self):
         """After a plugin is deactivated, clock_only_start is reset."""
         mock_backend = MagicMock()
 
@@ -381,11 +381,11 @@ class TestClockOnlyDuration:
 
         # Simulate plugin completion and deactivation
         await clock._plugin_manager.deactivate_plugin()
-        clock._state = ClockState.CLOCK_ONLY
-        clock._clock_only_start = time.time()
+        clock._state = ClockState.DEFAULT_PLUGIN
+        clock._default_plugin_start = time.time()
 
         # Verify clock_only_start is recent (within last second)
-        assert time.time() - clock._clock_only_start < 1.0
+        assert time.time() - clock._default_plugin_start < 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -544,7 +544,7 @@ class TestStateTransitions:
         mock_backend = MagicMock()
 
         clock = ZeClock(backend=mock_backend, test_mode=True)
-        assert clock._state == ClockState.CLOCK_ONLY
+        assert clock._state == ClockState.DEFAULT_PLUGIN
 
     @pytest.mark.asyncio
     async def test_plugin_active_to_clock_only_on_completion(self):
@@ -575,10 +575,10 @@ class TestStateTransitions:
 
         # Deactivate and transition
         await clock._plugin_manager.deactivate_plugin()
-        clock._state = ClockState.CLOCK_ONLY
-        clock._clock_only_start = time.time()
+        clock._state = ClockState.DEFAULT_PLUGIN
+        clock._default_plugin_start = time.time()
 
-        assert clock._state == ClockState.CLOCK_ONLY
+        assert clock._state == ClockState.DEFAULT_PLUGIN
 
     @pytest.mark.asyncio
     async def test_plugin_select_to_clock_only_when_no_plugins(self):
