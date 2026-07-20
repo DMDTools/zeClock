@@ -509,6 +509,48 @@ In this example:
 
 Fields with `required=False` are never validated regardless of their default value.
 
+#### ConfigField Attributes
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `name` | `str` | (required) | Key in `plugins.yaml` settings dict |
+| `label` | `str` | (required) | Human-readable label for Web UI (max 50 chars) |
+| `field_type` | `str` | (required) | Widget type (see table below) |
+| `required` | `bool` | `True` | Whether the field must be present in config |
+| `description` | `str` | `""` | Help text shown in the Web UI (max 200 chars) |
+| `default` | `Any` | `None` | Default value when not provided by user |
+| `options` | `List[Dict[str, str]]` | `[]` | Choices for `"select"` fields (list of `{"value": "...", "label": "..."}` dicts) |
+
+#### Supported Field Types
+
+| `field_type` | Web UI Widget | Notes |
+|--------------|---------------|-------|
+| `"text"` | Free-text input | General string values |
+| `"number"` | Numeric input | Integer or float values |
+| `"boolean"` | Toggle switch | Stored as `"yes"`/`"no"` in config |
+| `"city"` | City autocomplete | *Deprecated* — use `"location"` instead |
+| `"location"` | Location picker with autocomplete | Stores `{"display_name", "latitude", "longitude", "country"}` |
+| `"list"` | Free-text input | Comma-separated values |
+| `"select"` | Dropdown list | Requires `options` field with `{"value": "...", "label": "..."}` entries |
+
+**Example using `"select"`:**
+
+```python
+@property
+def config_schema(self) -> List[ConfigField]:
+    return [
+        ConfigField(
+            name="unit", label="Temperature Unit", field_type="select",
+            required=True, default="celsius",
+            description="Display unit for temperature values",
+            options=[
+                {"value": "celsius", "label": "Celsius (°C)"},
+                {"value": "fahrenheit", "label": "Fahrenheit (°F)"},
+            ],
+        ),
+    ]
+```
+
 ### Using the Upscaling API
 
 The pixel-art upscaling functions from `overlay.py` are re-exported from `zeclock.plugins`, so you can import them directly without reaching into internal modules:

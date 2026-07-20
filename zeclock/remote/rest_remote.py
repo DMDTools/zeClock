@@ -454,6 +454,7 @@ class RestRemote:
                             "required": field.required,
                             "description": field.description,
                             "default": field.default,
+                            "options": field.options if field.options else None,
                         }
                         for field in schema
                     ],

@@ -43,6 +43,8 @@ COLOR_DIM = (80, 80, 80)
 _DAY_NAMES_SHORT = {
     "en": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
     "fr": ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"],
+    "de": ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"],
+    "es": ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"],
 }
 
 
@@ -181,7 +183,7 @@ class ParaglidingPlugin(PagedPlugin):
 
         # Language
         self._language = config.get("language", "en")
-        if self._language not in ("en", "fr"):
+        if self._language not in _DAY_NAMES_SHORT:
             self._language = "en"
 
         # Spot filter (optional)

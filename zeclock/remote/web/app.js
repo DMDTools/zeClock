@@ -372,6 +372,9 @@ async function loadConfig() {
 
     // Initialize location autocomplete for global settings
     initLocationAutocomplete();
+
+    // Attach auto-save listeners to all settings inputs
+    attachAutoSaveListeners();
 }
 
 function renderPluginEntries(plugins) {
@@ -419,7 +422,6 @@ function removePluginEntry(index) {
 
 async function saveConfig() {
     const statusEl = document.getElementById('config-status');
-    statusEl.textContent = 'Saving...';
 
     // Build zeclock.ini structure
     const config = {};
@@ -470,7 +472,16 @@ async function saveConfig() {
         port: restPort,
     };
 
-    // Build plugins.yaml structure
+    // Build plugins.yaml structure — preserve existing per-plugin settings
+    const existingPluginsConfig = await api('/api/config/plugins');
+    const existingPlugins = (existingPluginsConfig?.data?.plugins) || [];
+    const existingSettingsMap = {};
+    existingPlugins.forEach(p => {
+        if (p.name && p.settings) {
+            existingSettingsMap[p.name] = p.settings;
+        }
+    });
+
     const pluginsConfig = {
         language: document.getElementById('cfg-language').value || 'en',
         default_plugin: document.getElementById('cfg-default-plugin').value || 'clock',
@@ -482,7 +493,9 @@ async function saveConfig() {
         const name = entry.querySelector('.plugin-name-input').value.trim();
         const freq = parseInt(entry.querySelector('.plugin-freq-input').value) || 20;
         if (name) {
-            pluginsConfig.plugins.push({ name, frequency: freq, settings: {} });
+            // Preserve existing settings for this plugin
+            const settings = existingSettingsMap[name] || {};
+            pluginsConfig.plugins.push({ name, frequency: freq, settings });
         }
     });
 
@@ -493,13 +506,78 @@ async function saveConfig() {
     ]);
 
     if (configResult?.success && pluginsResult?.success) {
-        statusEl.textContent = '✅ Configuration saved. Restart zeClock to apply.';
-        statusEl.style.color = '#4caf50';
+        statusEl.textContent = '✅ Saved';
+        statusEl.style.background = '#1a3a1a';
+        statusEl.style.color = '#6fcf6f';
+        setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
     } else {
         const msg = configResult?.message || pluginsResult?.message || 'Unknown error';
         statusEl.textContent = '❌ Error: ' + msg;
-        statusEl.style.color = '#f44336';
+        statusEl.style.background = '#5c1010';
+        statusEl.style.color = '#ff6b6b';
     }
+}
+
+// --- Auto-save on change ---
+
+let _autoSaveTimer = null;
+let _autoSaveListenersAttached = false;
+
+function attachAutoSaveListeners() {
+    if (_autoSaveListenersAttached) return;
+    _autoSaveListenersAttached = true;
+
+    const settingsSection = document.getElementById('tab-settings');
+    if (!settingsSection) return;
+
+    // Use event delegation on the entire settings section.
+    // 'change' fires on select, checkbox, and input blur.
+    // 'input' fires on every keystroke in text/number fields.
+    settingsSection.addEventListener('change', (e) => {
+        scheduleAutoSave(e.target);
+    });
+    settingsSection.addEventListener('input', (e) => {
+        const tag = e.target.tagName;
+        const type = e.target.type;
+        // Debounce text/number inputs; selects/checkboxes use 'change' above
+        if (tag === 'INPUT' && (type === 'text' || type === 'number' || type === 'range')) {
+            scheduleAutoSave(e.target);
+        }
+    });
+}
+
+function scheduleAutoSave(target) {
+    if (_autoSaveTimer) clearTimeout(_autoSaveTimer);
+
+    // Show saving status at the top of settings
+    const statusEl = document.getElementById('config-status');
+    if (statusEl) {
+        statusEl.textContent = '⏳ Saving...';
+        statusEl.style.background = '#444';
+        statusEl.style.color = '#fff';
+        statusEl.style.display = 'block';
+    }
+
+    // Determine if this is a plugin-specific field or a global setting
+    const pluginCard = target.closest('.plugin-config-card');
+
+    _autoSaveTimer = setTimeout(async () => {
+        try {
+            if (pluginCard) {
+                const pluginName = pluginCard.dataset.plugin;
+                await savePluginConfig(pluginName);
+            } else {
+                await saveConfig();
+            }
+        } catch (err) {
+            console.error('Auto-save error:', err);
+            if (statusEl) {
+                statusEl.textContent = '❌ Save failed';
+                statusEl.style.background = '#5c1010';
+                statusEl.style.color = '#ff6b6b';
+            }
+        }
+    }, 800);
 }
 
 // --- Plugin Configuration Forms (auto-generated from schema) ---
@@ -535,7 +613,6 @@ async function loadPluginConfigForms(currentPluginsConfig) {
                 <h2>${capitalize(plugin.name)}</h2>
                 <p class="plugin-description">${plugin.description || ''}</p>
                 ${fieldsHtml}
-                <button class="btn btn-accent btn-save-plugin" onclick="savePluginConfig('${plugin.name}')">Save ${capitalize(plugin.name)} Settings</button>
             </div>
         `;
     }).join('');
@@ -566,6 +643,14 @@ function renderPluginField(pluginName, field, settings) {
                     <span class="toggle-slider"></span>
                     <span class="toggle-label">${isChecked ? 'Oui' : 'Non'}</span>
                 </label>`;
+            break;
+        }
+        case 'select': {
+            const options = field.options || [];
+            const selectedValue = currentValue || field.default || '';
+            inputHtml = `<select id="${fieldId}" data-plugin="${pluginName}" data-field="${field.name}">
+                ${options.map(opt => `<option value="${opt.value}" ${opt.value === selectedValue ? 'selected' : ''}>${opt.label}</option>`).join('')}
+            </select>`;
             break;
         }
         case 'number':
@@ -1156,22 +1241,20 @@ function escapeHtml(text) {
 }
 
 function showPluginSaveStatus(pluginName, success, message) {
-    const card = document.querySelector(`.plugin-config-card[data-plugin="${pluginName}"]`);
-    if (!card) return;
+    const statusEl = document.getElementById('config-status');
+    if (!statusEl) return;
 
-    // Remove any existing status message
-    const existing = card.querySelector('.plugin-save-status');
-    if (existing) existing.remove();
-
-    const statusEl = document.createElement('div');
-    statusEl.className = 'plugin-save-status muted';
-    statusEl.style.marginTop = '0.5rem';
-    statusEl.style.color = success ? '#4caf50' : '#f44336';
-    statusEl.textContent = (success ? '✅ ' : '❌ ') + message;
-    card.appendChild(statusEl);
-
-    // Auto-remove after 5 seconds
-    setTimeout(() => statusEl.remove(), 5000);
+    statusEl.style.display = 'block';
+    if (success) {
+        statusEl.textContent = '✅ ' + message;
+        statusEl.style.background = '#1a3a1a';
+        statusEl.style.color = '#6fcf6f';
+        setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
+    } else {
+        statusEl.textContent = '❌ ' + message;
+        statusEl.style.background = '#5c1010';
+        statusEl.style.color = '#ff6b6b';
+    }
 }
 
 init();

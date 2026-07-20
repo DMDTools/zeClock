@@ -213,10 +213,19 @@ class ClockDisplayPlugin(ClockPlugin):
             ConfigField(
                 "date_format",
                 "Date Format",
-                "text",
+                "select",
                 required=False,
-                description="dmy, mdy, ymd, short_dmy, short_mdy, text_en, text_fr (default: short_dmy)",
+                description="How the date is displayed below the time",
                 default="short_dmy",
+                options=[
+                    {"value": "short_dmy", "label": "19/07 (DD/MM)"},
+                    {"value": "short_mdy", "label": "07/19 (MM/DD)"},
+                    {"value": "dmy", "label": "19/07/2026 (DD/MM/YYYY)"},
+                    {"value": "mdy", "label": "07/19/2026 (MM/DD/YYYY)"},
+                    {"value": "ymd", "label": "2026-07-19 (YYYY-MM-DD)"},
+                    {"value": "text_en", "label": "Jul 19"},
+                    {"value": "text_fr", "label": "19 Jul"},
+                ],
             ),
             ConfigField(
                 "show_day",
@@ -227,28 +236,12 @@ class ClockDisplayPlugin(ClockPlugin):
                 default="yes",
             ),
             ConfigField(
-                "language",
-                "Language",
-                "text",
-                required=False,
-                description="en, fr, de, es (default: en)",
-                default="en",
-            ),
-            ConfigField(
                 "color",
                 "Clock Color",
                 "text",
                 required=False,
                 description="orange, blue, red, purple, green, yellow, cyan, pink, white, auto (default: auto)",
                 default="auto",
-            ),
-            ConfigField(
-                "timezone_offset",
-                "Timezone Offset (hours)",
-                "number",
-                required=False,
-                description="UTC offset in hours, e.g. 2 for UTC+2, -5 for UTC-5 (default: local)",
-                default=None,
             ),
             ConfigField(
                 "page_duration_seconds",
@@ -285,7 +278,6 @@ class ClockDisplayPlugin(ClockPlugin):
         self._language: str = "en"
         self._color_mode: str = "auto"
         self._fixed_color: Tuple[int, int, int] = (255, 128, 0)
-        self._timezone_offset: Optional[float] = None  # None = local time
         self._page_duration_seconds: int = 5
         self._upscale_mode: str = "epx"
 
@@ -349,16 +341,6 @@ class ClockDisplayPlugin(ClockPlugin):
             self._color_mode = "auto"
             self._current_color = AUTO_COLORS[0]
             self._last_color_change = time.time()
-
-        # Timezone offset (in hours from UTC, None = local)
-        tz_offset = config.get("timezone_offset")
-        if tz_offset is not None:
-            try:
-                self._timezone_offset = float(tz_offset)
-            except (ValueError, TypeError):
-                self._timezone_offset = None
-        else:
-            self._timezone_offset = None
 
         # Page duration is no longer used internally — the main loop controls
         # display duration via clock_display_seconds. We keep the field for
@@ -437,12 +419,8 @@ class ClockDisplayPlugin(ClockPlugin):
         return pages
 
     def _get_current_datetime(self) -> datetime:
-        """Get current datetime, adjusted for timezone offset if configured."""
-        if self._timezone_offset is not None:
-            tz = timezone(timedelta(hours=self._timezone_offset))
-            return datetime.now(tz)
-        else:
-            return datetime.now()
+        """Get current local datetime."""
+        return datetime.now()
 
     def _render_page(
         self, page_type: str, dt: datetime, width: int, height: int
