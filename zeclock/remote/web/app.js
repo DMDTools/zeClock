@@ -634,6 +634,11 @@ function renderPluginField(pluginName, field, settings) {
         return renderGifDirsField(fieldId, currentValue, field);
     }
 
+    // Special handling for world_clocks field
+    if (field.field_type === 'world_clocks') {
+        return renderWorldClocksField(fieldId, currentValue, field, pluginName);
+    }
+
     switch (field.field_type) {
         case 'boolean': {
             const isChecked = parseBoolValue(currentValue);
@@ -792,6 +797,93 @@ function reindexGifDirEntries() {
         const fileInput = entry.querySelector('.gif-file-input');
         if (fileInput) fileInput.setAttribute('onchange', `handleGifFileSelect(event, ${i})`);
     });
+}
+
+// --- World Clocks Editor ---
+
+function renderWorldClocksField(fieldId, currentValue, field, pluginName) {
+    const clocks = Array.isArray(currentValue) ? currentValue : [];
+
+    return `
+        <div class="form-group world-clocks-editor" id="${fieldId}" data-plugin="${pluginName}" data-field="${field.name}" data-field-type="world_clocks">
+            <label>${field.label}</label>
+            <div class="field-description">${field.description || ''}</div>
+            <div id="world-clocks-list" class="world-clocks-list">
+                ${clocks.map((c, i) => renderWorldClockEntry(c, i)).join('')}
+            </div>
+            <div style="margin-top: 0.5rem;">
+                <div class="location-input-wrapper" style="display: inline-block; width: 70%;">
+                    <input type="text" id="world-clock-add-input" class="location-autocomplete-input" placeholder="Search city..." autocomplete="off">
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderWorldClockEntry(clock, index) {
+    const city = clock.city || '';
+    const tz = clock.timezone || '';
+    return `
+        <div class="world-clock-entry" data-index="${index}">
+            <span class="world-clock-city">${escapeHtml(city)}</span>
+            <span class="world-clock-tz muted">${escapeHtml(tz)}</span>
+            <button type="button" class="btn btn-danger btn-small" onclick="removeWorldClock(${index})">✕</button>
+        </div>
+    `;
+}
+
+async function addWorldClock(result) {
+    // Resolve timezone from coordinates via Open-Meteo
+    const tzResp = await api(`/api/timezone?lat=${result.latitude}&lon=${result.longitude}`);
+    if (!tzResp || !tzResp.success) {
+        console.error('Failed to resolve timezone for', result.display_name);
+        return;
+    }
+
+    // Extract short city name (first part before comma)
+    const cityName = result.display_name.split(',')[0].trim();
+
+    // Add to current list
+    const list = document.getElementById('world-clocks-list');
+    const index = list.children.length;
+    const clock = { city: cityName, timezone: tzResp.timezone };
+    const html = renderWorldClockEntry(clock, index);
+    list.insertAdjacentHTML('beforeend', html);
+
+    // Clear input
+    document.getElementById('world-clock-add-input').value = '';
+
+    // Trigger auto-save
+    const editor = document.querySelector('.world-clocks-editor');
+    if (editor) scheduleAutoSave(editor);
+}
+
+function removeWorldClock(index) {
+    const list = document.getElementById('world-clocks-list');
+    const entry = list.querySelector(`[data-index="${index}"]`);
+    if (entry) entry.remove();
+    // Re-index
+    list.querySelectorAll('.world-clock-entry').forEach((el, i) => {
+        el.dataset.index = i;
+        const btn = el.querySelector('.btn-danger');
+        if (btn) btn.setAttribute('onclick', `removeWorldClock(${i})`);
+    });
+    // Trigger auto-save
+    const editor = document.querySelector('.world-clocks-editor');
+    if (editor) scheduleAutoSave(editor);
+}
+
+function collectWorldClocksData() {
+    const entries = document.querySelectorAll('.world-clock-entry');
+    const result = [];
+    entries.forEach(entry => {
+        const city = entry.querySelector('.world-clock-city')?.textContent || '';
+        const tz = entry.querySelector('.world-clock-tz')?.textContent || '';
+        if (city && tz) {
+            result.push({ city, timezone: tz });
+        }
+    });
+    return result;
 }
 
 // --- GIF Upload handlers ---
@@ -1045,6 +1137,9 @@ async function savePluginConfig(pluginName) {
         if (fieldType === 'gif_dirs') {
             // gif_dirs is handled separately via collectGifDirsData()
             pluginEntry.settings[fieldName] = collectGifDirsData();
+        } else if (fieldType === 'world_clocks') {
+            // world_clocks is handled separately via collectWorldClocksData()
+            pluginEntry.settings[fieldName] = collectWorldClocksData();
         } else if (fieldType === 'boolean') {
             // Boolean toggle: store as "yes"/"no"
             pluginEntry.settings[fieldName] = input.checked ? 'yes' : 'no';
@@ -1197,6 +1292,13 @@ function showLocationDropdown(input, results) {
 }
 
 function selectLocation(input, result) {
+    // World clock input: add city with timezone resolution
+    if (input.id === 'world-clock-add-input') {
+        addWorldClock(result);
+        removeLocationDropdown(input);
+        return;
+    }
+
     input.value = result.display_name;
     const locationData = {
         display_name: result.display_name,

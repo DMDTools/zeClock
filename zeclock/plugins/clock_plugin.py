@@ -16,8 +16,9 @@ configurable plugin. Provides all the features of a modern digital clock:
 
 import logging
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 from PIL import Image
 
@@ -75,70 +76,6 @@ COLOR_PRESETS: Dict[str, Tuple[int, int, int]] = {
 
 # Color auto-rotate list (one per minute)
 AUTO_COLORS = list(COLOR_PRESETS.values())
-
-# Well-known city timezone offsets (UTC hours).
-# Used for quick lookup when user specifies a city name instead of offset.
-# These are standard offsets; DST is NOT automatically handled.
-CITY_TIMEZONES: Dict[str, float] = {
-    "new york": -5,
-    "nyc": -5,
-    "los angeles": -8,
-    "la": -8,
-    "san francisco": -8,
-    "sf": -8,
-    "chicago": -6,
-    "denver": -7,
-    "honolulu": -10,
-    "anchorage": -9,
-    "toronto": -5,
-    "vancouver": -8,
-    "mexico city": -6,
-    "sao paulo": -3,
-    "buenos aires": -3,
-    "london": 0,
-    "paris": 1,
-    "berlin": 1,
-    "madrid": 1,
-    "rome": 1,
-    "amsterdam": 1,
-    "brussels": 1,
-    "zurich": 1,
-    "geneva": 1,
-    "vienna": 1,
-    "prague": 1,
-    "warsaw": 1,
-    "stockholm": 1,
-    "oslo": 1,
-    "copenhagen": 1,
-    "helsinki": 2,
-    "athens": 2,
-    "istanbul": 3,
-    "moscow": 3,
-    "dubai": 4,
-    "mumbai": 5.5,
-    "delhi": 5.5,
-    "kolkata": 5.5,
-    "bangalore": 5.5,
-    "kathmandu": 5.75,
-    "dhaka": 6,
-    "bangkok": 7,
-    "jakarta": 7,
-    "singapore": 8,
-    "hong kong": 8,
-    "beijing": 8,
-    "shanghai": 8,
-    "taipei": 8,
-    "perth": 8,
-    "seoul": 9,
-    "tokyo": 9,
-    "osaka": 9,
-    "adelaide": 9.5,
-    "sydney": 10,
-    "melbourne": 10,
-    "brisbane": 10,
-    "auckland": 12,
-    "fiji": 12,
-}
 
 
 class ClockDisplayPlugin(ClockPlugin):
@@ -254,13 +191,9 @@ class ClockDisplayPlugin(ClockPlugin):
             ConfigField(
                 "world_clocks",
                 "World Clocks",
-                "list",
+                "world_clocks",
                 required=False,
-                description=(
-                    "Comma-separated list of city:offset pairs for world clock pages. "
-                    "Use city name (auto-resolved) or city:UTC_offset. "
-                    "Examples: Paris,Tokyo,New York or Paris:1,Tokyo:9,SF:-8"
-                ),
+                description="Add cities to display their local time as additional pages",
                 default=None,
             ),
         ]
@@ -291,8 +224,8 @@ class ClockDisplayPlugin(ClockPlugin):
         self._cached_frame: Optional[Image.Image] = None
         self._cached_key: str = ""
 
-        # World clocks: list of (display_name, utc_offset_hours) tuples
-        self._world_clocks: List[Tuple[str, float]] = []
+        # World clocks: list of (display_name, iana_timezone) tuples
+        self._world_clocks: List[Tuple[str, str]] = []
 
     async def initialize(self, config: dict) -> None:
         """Initialize the clock plugin with configuration.
@@ -394,7 +327,7 @@ class ClockDisplayPlugin(ClockPlugin):
             )
             self._last_logged_page = self._current_page
 
-        # Get current datetime (with timezone offset if configured)
+        # Get current datetime
         dt = self._get_current_datetime()
 
         # Render the appropriate page
@@ -449,8 +382,8 @@ class ClockDisplayPlugin(ClockPlugin):
             except (IndexError, ValueError):
                 return self._render_time_only(dt, width, height)
             if 0 <= idx < len(self._world_clocks):
-                city_name, utc_offset = self._world_clocks[idx]
-                return self._render_world_clock(city_name, utc_offset, width, height)
+                city_name, tz_name = self._world_clocks[idx]
+                return self._render_world_clock(city_name, tz_name, width, height)
             return self._render_time_only(dt, width, height)
         else:
             return self._render_time_only(dt, width, height)
@@ -657,7 +590,7 @@ class ClockDisplayPlugin(ClockPlugin):
         return frame
 
     def _render_world_clock(
-        self, city_name: str, utc_offset: float, width: int, height: int
+        self, city_name: str, tz_name: str, width: int, height: int
     ) -> Image.Image:
         """Render a world clock page for a specific city.
 
@@ -667,7 +600,8 @@ class ClockDisplayPlugin(ClockPlugin):
 
         Args:
             city_name: Display name for the city (e.g. "PARIS", "TOKYO").
-            utc_offset: UTC offset in hours.
+            tz_name: IANA timezone name (e.g. "Europe/Paris") or legacy
+                     UTC offset as string (e.g. "UTC+1").
             width: Display width in pixels.
             height: Display height in pixels.
 
@@ -684,8 +618,11 @@ class ClockDisplayPlugin(ClockPlugin):
         sy = height / 32
 
         # Compute time in the target timezone
-        tz = timezone(timedelta(hours=utc_offset))
-        city_dt = datetime.now(tz)
+        try:
+            city_dt = datetime.now(ZoneInfo(tz_name))
+        except (KeyError, Exception):
+            # Invalid timezone name — fall back to local time
+            city_dt = datetime.now()
 
         # Determine colon visibility based on blink state
         if self._blink_colon:
@@ -769,92 +706,36 @@ def _parse_bool(value: Any) -> bool:
     return False
 
 
-def _parse_world_clocks(value: Any) -> List[Tuple[str, float]]:
-    """Parse world_clocks configuration into a list of (name, utc_offset) tuples.
+def _parse_world_clocks(value: Any) -> List[Tuple[str, str]]:
+    """Parse world_clocks configuration into a list of (name, timezone) tuples.
 
-    Accepts multiple formats:
-    - String: comma-separated entries, each being either:
-        - A known city name: "Paris" → ("Paris", 1)
-        - A city:offset pair: "Paris:1" or "NYC:-5"
-    - List of strings: ["Paris", "Tokyo", "SF:-8"]
-    - List of dicts: [{"name": "Paris", "offset": 1}, ...]
+    Accepts:
+    - List of dicts: [{"city": "Paris", "timezone": "Europe/Paris"}, ...]
 
-    Unknown city names without an explicit offset are skipped with a warning.
+    The dict format with explicit timezone is the only supported format.
+    It is set by the Web UI using geocoder + Open-Meteo timezone resolution.
 
     Args:
         value: Raw value from plugins.yaml config.
 
     Returns:
-        List of (display_name, utc_offset_hours) tuples.
+        List of (display_name, iana_timezone) tuples.
     """
-    if value is None:
+    if not isinstance(value, list):
         return []
 
-    entries: List[str] = []
-
-    if isinstance(value, str):
-        # Comma-separated string: "Paris, Tokyo, New York"
-        entries = [e.strip() for e in value.split(",") if e.strip()]
-    elif isinstance(value, list):
-        for item in value:
-            if isinstance(item, str):
-                entries.append(item.strip())
-            elif isinstance(item, dict):
-                # Dict format: {"name": "Paris", "offset": 1}
-                name = item.get("name", "")
-                offset = item.get("offset")
-                if name and offset is not None:
-                    try:
-                        return_entry = (str(name).strip(), float(offset))
-                        # We can't append to entries here, handle inline
-                    except (ValueError, TypeError):
-                        pass
-                    else:
-                        entries.append(f"{name}:{offset}")
-                elif name:
-                    entries.append(str(name).strip())
-    else:
-        return []
-
-    # Parse each entry
-    result: List[Tuple[str, float]] = []
-    for entry in entries:
-        if not entry:
-            continue
-
-        # Check for explicit offset: "CityName:offset"
-        if ":" in entry:
-            parts = entry.rsplit(":", 1)
-            city_part = parts[0].strip()
-            offset_part = parts[1].strip()
-            try:
-                offset = float(offset_part)
-                display_name = _normalize_city_display_name(city_part)
-                result.append((display_name, offset))
-                continue
-            except ValueError:
-                # Not a valid offset, treat the whole thing as a city name
-                pass
-
-        # Try to resolve city name from the lookup table
-        city_key = entry.lower().strip()
-        if city_key in CITY_TIMEZONES:
-            display_name = _normalize_city_display_name(entry)
-            result.append((display_name, CITY_TIMEZONES[city_key]))
-        else:
-            # Try partial match (e.g., "san fran" → "san francisco")
-            matched = False
-            for known_city, offset in CITY_TIMEZONES.items():
-                if city_key in known_city or known_city.startswith(city_key):
-                    display_name = _normalize_city_display_name(entry)
-                    result.append((display_name, offset))
-                    matched = True
-                    break
-            if not matched:
+    result: List[Tuple[str, str]] = []
+    for item in value:
+        if isinstance(item, dict):
+            city = item.get("city", item.get("name", ""))
+            tz = item.get("timezone", "")
+            if city and tz:
+                result.append((_normalize_city_display_name(city), tz))
+            elif city:
                 logger.warning(
-                    "[clock] World clock city '%s' not recognized and no "
-                    "offset specified. Use 'CityName:UTC_offset' format. Skipping.",
-                    entry,
+                    "[clock] World clock '%s' has no timezone. "
+                    "Configure via the Web UI. Skipping.",
+                    city,
                 )
 
     return result

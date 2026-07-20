@@ -2,6 +2,8 @@
 
 Converts city names to geographic coordinates (latitude/longitude).
 Uses stdlib urllib.request — no additional dependencies required.
+
+Also provides timezone resolution via Open-Meteo API.
 """
 
 import json
@@ -157,3 +159,51 @@ def _extract_country(display_name: str) -> str:
         return ""
     parts = display_name.split(",")
     return parts[-1].strip() if parts else ""
+
+
+_OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+
+
+def resolve_timezone(latitude: float, longitude: float) -> Optional[str]:
+    """Resolve geographic coordinates to an IANA timezone name.
+
+    Uses the Open-Meteo API with timezone=auto to determine the timezone
+    for given coordinates. Returns timezone names like "Europe/Paris",
+    "America/Los_Angeles", etc.
+
+    Args:
+        latitude: Latitude coordinate.
+        longitude: Longitude coordinate.
+
+    Returns:
+        IANA timezone string (e.g. "Europe/Paris"), or None on error.
+    """
+    cache_key = f"tz:{latitude:.4f},{longitude:.4f}"
+    if cache_key in _cache:
+        return _cache[cache_key]
+
+    params = urllib.parse.urlencode(
+        {
+            "latitude": f"{latitude:.4f}",
+            "longitude": f"{longitude:.4f}",
+            "timezone": "auto",
+            "forecast_days": "1",
+        }
+    )
+    url = f"{_OPEN_METEO_URL}?{params}"
+
+    try:
+        req = urllib.request.Request(url)
+        req.add_header("User-Agent", _USER_AGENT)
+
+        with urllib.request.urlopen(req, timeout=_TIMEOUT) as response:
+            if response.status != 200:
+                return None
+            data = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, urllib.error.HTTPError, OSError, ValueError):
+        return None
+
+    tz = data.get("timezone")
+    if tz:
+        _cache[cache_key] = tz
+    return tz
