@@ -13,6 +13,7 @@ from PIL import Image, ImageChops
 from ..colors import COLOR_MAP
 from ..overlay import upscale_2x
 from ..readers.fnt_reader import BitmapFont, load_font
+from ..text_utils import transliterate
 
 
 def draw_staleness_indicator(
@@ -347,6 +348,8 @@ class PluginHelpers:
             PIL Image in RGB mode containing the rendered text on black background.
         """
         frame = Image.new("RGB", (self.width, self.height), (0, 0, 0))
+        # Transliterate accented characters to ASCII for bitmap font rendering
+        text = transliterate(text)
         font_name = self._resolve_font_name(font_name)
         font = self._get_font(font_name)
         if font is None or not text:
