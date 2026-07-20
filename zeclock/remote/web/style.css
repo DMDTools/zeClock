@@ -875,17 +875,25 @@ input:focus {
     cursor: pointer;
     user-select: none;
     padding: 0.4rem 0;
+    line-height: 1;
 }
 
 .toggle-switch input[type="checkbox"] {
-    display: none;
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
 }
 
 .toggle-slider {
     position: relative;
+    display: inline-block;
     width: 44px;
+    min-width: 44px;
     height: 24px;
     background: var(--secondary);
+    border: 1px solid var(--border);
     border-radius: 12px;
     transition: background 0.2s;
     flex-shrink: 0;
@@ -894,8 +902,8 @@ input:focus {
 .toggle-slider::after {
     content: '';
     position: absolute;
-    top: 3px;
-    left: 3px;
+    top: 2px;
+    left: 2px;
     width: 18px;
     height: 18px;
     background: var(--text);
@@ -905,6 +913,7 @@ input:focus {
 
 .toggle-switch input[type="checkbox"]:checked + .toggle-slider {
     background: var(--success);
+    border-color: var(--success);
 }
 
 .toggle-switch input[type="checkbox"]:checked + .toggle-slider::after {
