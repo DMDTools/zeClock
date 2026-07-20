@@ -136,7 +136,9 @@ class RestRemote:
         # Static files for web UI (must be last to avoid catching API routes)
         if WEB_UI_DIR.exists():
             self._app.router.add_get("/ui/", self._handle_ui_index)
-            self._app.router.add_static("/ui/", WEB_UI_DIR, name="webui")
+            self._app.router.add_static(
+                "/ui/", WEB_UI_DIR, name="webui", append_version=True
+            )
 
     async def run(self) -> None:
         """Start the HTTP server."""
@@ -377,10 +379,12 @@ class RestRemote:
         raise web.HTTPFound("/ui/")
 
     async def _handle_ui_index(self, request: web.Request) -> web.Response:
-        """GET /ui/ — Serve index.html."""
+        """GET /ui/ — Serve index.html with no-cache headers."""
         index_path = WEB_UI_DIR / "index.html"
         if index_path.exists():
-            return web.FileResponse(index_path)  # type: ignore[return-value]
+            resp = web.FileResponse(index_path)
+            resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            return resp  # type: ignore[return-value]
         return web.Response(text="Web UI not found", status=404)
 
     async def _handle_list_plugins(self, request: web.Request) -> web.Response:

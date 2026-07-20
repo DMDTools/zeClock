@@ -539,7 +539,7 @@ function renderPluginField(pluginName, field, settings) {
         case 'boolean': {
             const isChecked = parseBoolValue(currentValue);
             inputHtml = `
-                <label class="toggle-switch" for="${fieldId}">
+                <label class="toggle-switch">
                     <input type="checkbox" id="${fieldId}" ${isChecked ? 'checked' : ''} data-plugin="${pluginName}" data-field="${field.name}" data-field-type="boolean">
                     <span class="toggle-slider"></span>
                     <span class="toggle-label">${isChecked ? 'Oui' : 'Non'}</span>
