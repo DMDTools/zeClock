@@ -1112,6 +1112,7 @@ class RestRemote:
         pm = self._handler._clock._plugin_manager
         if pm:
             pm.config.reload()
+            pm._apply_config_frequencies()
 
         # Reconfigure affected plugins without restart
         reconfigured = []

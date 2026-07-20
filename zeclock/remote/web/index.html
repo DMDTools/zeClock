@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" id="html-root">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,11 +11,11 @@
 </head>
 <body>
     <header>
-        <h1>🕒 zeClock</h1>
-        <div id="connection-status" class="status-dot connected" title="Connected"></div>
+        <h1 data-i18n="header.title">🕒 zeClock</h1>
+        <div id="connection-status" class="status-dot connected" data-i18n-title="status.connected" title="Connected"></div>
         <div class="header-actions">
-            <button class="btn-icon" onclick="downloadSettings()" title="Download settings backup">⬇️</button>
-            <label class="btn-icon" title="Upload settings backup">⬆️
+            <button class="btn-icon" onclick="downloadSettings()" data-i18n-title="header.download_settings" title="Download settings backup">⬇️</button>
+            <label class="btn-icon" data-i18n-title="header.upload_settings" title="Upload settings backup">⬆️
                 <input type="file" id="upload-settings-input" accept=".json" onchange="uploadSettings(event)" style="display:none">
             </label>
         </div>
@@ -24,55 +24,55 @@
     <div id="backend-banner" class="backend-banner hidden">
         <span class="banner-icon">⏳</span>
         <div class="banner-content">
-            <span class="banner-text">Waiting for ZeDMD display connection...</span>
+            <span class="banner-text" data-i18n="banner.waiting">Waiting for ZeDMD display connection...</span>
             <div id="discovery-log" class="discovery-log"></div>
         </div>
     </div>
 
     <nav>
-        <button class="tab active" data-tab="dashboard">Dashboard</button>
-        <button class="tab" data-tab="speaker-timer">Speaker Timer</button>
-        <button class="tab" data-tab="message">Message</button>
-        <button class="tab" data-tab="settings">⚙️ Settings</button>
+        <button class="tab active" data-tab="dashboard" data-i18n="tab.dashboard">Dashboard</button>
+        <button class="tab" data-tab="speaker-timer" data-i18n="tab.speaker_timer">Speaker Timer</button>
+        <button class="tab" data-tab="message" data-i18n="tab.message">Message</button>
+        <button class="tab" data-tab="settings" data-i18n="tab.settings">⚙️ Settings</button>
     </nav>
 
     <main>
         <!-- Dashboard Tab -->
         <section id="tab-dashboard" class="tab-content active">
             <div class="card">
-                <h2>Screen</h2>
+                <h2 data-i18n="dashboard.screen">Screen</h2>
                 <div class="button-row">
-                    <button class="btn btn-success" onclick="api('/api/screen/on', 'POST')">Screen ON</button>
-                    <button class="btn btn-danger" onclick="api('/api/screen/off', 'POST')">Screen OFF</button>
+                    <button class="btn btn-success" onclick="api('/api/screen/on', 'POST')" data-i18n="dashboard.screen_on">Screen ON</button>
+                    <button class="btn btn-danger" onclick="api('/api/screen/off', 'POST')" data-i18n="dashboard.screen_off">Screen OFF</button>
                 </div>
             </div>
 
             <div class="card">
-                <h2>Brightness</h2>
+                <h2 data-i18n="dashboard.brightness">Brightness</h2>
                 <div class="brightness-control">
                     <input type="range" id="brightness-slider" min="0" max="15" value="10" oninput="updateBrightnessLabel(this.value)">
                     <span id="brightness-value">10</span>/15
                 </div>
                 <div class="button-row" style="margin-top: 0.75rem;">
-                    <button class="btn btn-accent" onclick="setBrightness()">Set</button>
-                    <button class="btn btn-secondary" onclick="setBrightnessAuto()">Auto</button>
+                    <button class="btn btn-accent" onclick="setBrightness()" data-i18n="dashboard.brightness_set">Set</button>
+                    <button class="btn btn-secondary" onclick="setBrightnessAuto()" data-i18n="dashboard.brightness_auto">Auto</button>
                 </div>
-                <div id="brightness-mode" class="muted" style="margin-top: 0.5rem;">Mode: auto</div>
+                <div id="brightness-mode" class="muted" style="margin-top: 0.5rem;" data-i18n="dashboard.brightness_mode_auto">Mode: auto</div>
             </div>
 
             <div class="card">
-                <h2>Plugins</h2>
+                <h2 data-i18n="dashboard.plugins">Plugins</h2>
                 <div id="plugins-list" class="plugins-grid">
-                    <p class="muted">Loading...</p>
+                    <p class="muted" data-i18n="dashboard.plugins_loading">Loading...</p>
                 </div>
                 <div class="button-row" style="margin-top: 1rem;">
-                    <button class="btn btn-secondary" onclick="api('/api/plugin/resume', 'POST'); refreshPlugins();">Resume Rotation</button>
+                    <button class="btn btn-secondary" onclick="api('/api/plugin/resume', 'POST'); refreshPlugins();" data-i18n="dashboard.plugins_resume">Resume Rotation</button>
                 </div>
             </div>
 
             <div class="card">
-                <h2>Status</h2>
-                <pre id="status-display" class="status-box">Loading...</pre>
+                <h2 data-i18n="dashboard.status">Status</h2>
+                <pre id="status-display" class="status-box" data-i18n="dashboard.status_loading">Loading...</pre>
             </div>
         </section>
 
@@ -80,40 +80,40 @@
         <section id="tab-speaker-timer" class="tab-content">
             <div class="card timer-card">
                 <div id="timer-display" class="timer-display idle">00:00</div>
-                <div id="timer-state" class="timer-state">IDLE</div>
+                <div id="timer-state" class="timer-state" data-i18n="timer.idle">IDLE</div>
 
                 <div class="button-row timer-controls">
-                    <button class="btn btn-success btn-large" onclick="timerStart()">▶ Start</button>
-                    <button class="btn btn-warning btn-large" onclick="timerPause()">⏸ Pause</button>
-                    <button class="btn btn-danger btn-large" onclick="timerReset()">⏹ Reset</button>
+                    <button class="btn btn-success btn-large" onclick="timerStart()" data-i18n="timer.start">▶ Start</button>
+                    <button class="btn btn-warning btn-large" onclick="timerPause()" data-i18n="timer.pause">⏸ Pause</button>
+                    <button class="btn btn-danger btn-large" onclick="timerReset()" data-i18n="timer.reset">⏹ Reset</button>
                 </div>
 
-                <h3>Presets</h3>
+                <h3 data-i18n="timer.presets">Presets</h3>
                 <div id="timer-presets" class="button-row presets">
                     <button class="btn btn-secondary" onclick="timerSet(300)">5 min</button>
                     <button class="btn btn-secondary" onclick="timerSet(1200)">20 min</button>
                     <button class="btn btn-secondary" onclick="timerSet(2700)">45 min</button>
                 </div>
 
-                <h3>Custom Duration</h3>
+                <h3 data-i18n="timer.custom_duration">Custom Duration</h3>
                 <div class="custom-duration">
                     <input type="number" id="custom-minutes" min="1" max="480" value="20" placeholder="Minutes">
-                    <button class="btn btn-secondary" onclick="timerSetCustom()">Set</button>
+                    <button class="btn btn-secondary" onclick="timerSetCustom()" data-i18n="timer.set">Set</button>
                 </div>
             </div>
 
             <div class="card">
-                <h2>Message to Speaker</h2>
+                <h2 data-i18n="timer.message_to_speaker">Message to Speaker</h2>
                 <div class="message-form">
-                    <input type="text" id="speaker-message-text" placeholder="Message to speaker..." maxlength="64">
-                    <button class="btn btn-accent btn-large" onclick="sendSpeakerMessage()">Send</button>
+                    <input type="text" id="speaker-message-text" data-i18n-placeholder="timer.message_placeholder" placeholder="Message to speaker..." maxlength="64">
+                    <button class="btn btn-accent btn-large" onclick="sendSpeakerMessage()" data-i18n="timer.send">Send</button>
                 </div>
                 <div class="button-row quick-messages" style="margin-top: 0.75rem;">
-                    <button class="btn btn-secondary" onclick="quickSpeakerMessage('Wrap up')">Wrap up</button>
-                    <button class="btn btn-secondary" onclick="quickSpeakerMessage('Speak louder')">Speak louder</button>
-                    <button class="btn btn-secondary" onclick="quickSpeakerMessage('Q&A 5 min')">Q&A 5 min</button>
-                    <button class="btn btn-secondary" onclick="quickSpeakerMessage('Thank you!')">Thank you!</button>
-                    <button class="btn btn-secondary" onclick="quickSpeakerMessage('Slow down')">Slow down</button>
+                    <button class="btn btn-secondary" onclick="quickSpeakerMessage(t('timer.quick_wrap_up'))" data-i18n="timer.quick_wrap_up">Wrap up</button>
+                    <button class="btn btn-secondary" onclick="quickSpeakerMessage(t('timer.quick_louder'))" data-i18n="timer.quick_louder">Speak louder</button>
+                    <button class="btn btn-secondary" onclick="quickSpeakerMessage(t('timer.quick_qa'))" data-i18n="timer.quick_qa">Q&A 5 min</button>
+                    <button class="btn btn-secondary" onclick="quickSpeakerMessage(t('timer.quick_thanks'))" data-i18n="timer.quick_thanks">Thank you!</button>
+                    <button class="btn btn-secondary" onclick="quickSpeakerMessage(t('timer.quick_slow_down'))" data-i18n="timer.quick_slow_down">Slow down</button>
                 </div>
             </div>
         </section>
@@ -121,23 +121,23 @@
         <!-- Message Tab -->
         <section id="tab-message" class="tab-content">
             <div class="card">
-                <h2>Send Message to Display</h2>
-                <p class="muted">Display a message on the clock for a set duration. Useful for sending discreet messages to a speaker.</p>
+                <h2 data-i18n="message.title">Send Message to Display</h2>
+                <p class="muted" data-i18n="message.description">Display a message on the clock for a set duration. Useful for sending discreet messages to a speaker.</p>
                 <div class="message-form">
-                    <input type="text" id="message-text" placeholder="Your message..." maxlength="64">
+                    <input type="text" id="message-text" data-i18n-placeholder="message.placeholder" placeholder="Your message..." maxlength="64">
                     <div class="duration-row">
-                        <label for="message-duration">Duration (seconds):</label>
+                        <label for="message-duration" data-i18n="message.duration_label">Duration (seconds):</label>
                         <input type="number" id="message-duration" min="1" max="300" value="10">
                     </div>
-                    <button class="btn btn-success btn-large" onclick="sendMessage()">Send Message</button>
+                    <button class="btn btn-success btn-large" onclick="sendMessage()" data-i18n="message.send">Send Message</button>
                 </div>
 
-                <h3>Quick Messages</h3>
+                <h3 data-i18n="message.quick_title">Quick Messages</h3>
                 <div class="button-row quick-messages">
-                    <button class="btn btn-secondary" onclick="quickMessage('Wrap up')">Wrap up</button>
-                    <button class="btn btn-secondary" onclick="quickMessage('Speak louder')">Speak louder</button>
-                    <button class="btn btn-secondary" onclick="quickMessage('Q&A 5 min')">Q&A 5 min</button>
-                    <button class="btn btn-secondary" onclick="quickMessage('Thank you!')">Thank you!</button>
+                    <button class="btn btn-secondary" onclick="quickMessage(t('message.quick_wrap_up'))" data-i18n="message.quick_wrap_up">Wrap up</button>
+                    <button class="btn btn-secondary" onclick="quickMessage(t('message.quick_louder'))" data-i18n="message.quick_louder">Speak louder</button>
+                    <button class="btn btn-secondary" onclick="quickMessage(t('message.quick_qa'))" data-i18n="message.quick_qa">Q&A 5 min</button>
+                    <button class="btn btn-secondary" onclick="quickMessage(t('message.quick_thanks'))" data-i18n="message.quick_thanks">Thank you!</button>
                 </div>
             </div>
         </section>
@@ -145,118 +145,151 @@
         <!-- Settings Tab -->
         <section id="tab-settings" class="tab-content">
             <div id="config-status" style="position: sticky; top: 0; z-index: 10; padding: 0.5rem 1rem; text-align: center; font-weight: bold; border-radius: 4px; display: none;"></div>
-            <div class="card">
-                <h2>ZeDMD Backend</h2>
-                <div class="form-group">
-                    <label for="cfg-wifi-addr">ZeDMD WiFi Address</label>
-                    <input type="text" id="cfg-wifi-addr" placeholder="192.168.0.35">
-                </div>
-                <div class="form-group">
-                    <label for="cfg-brightness">Default Brightness (0-15)</label>
-                    <input type="number" id="cfg-brightness" min="0" max="15" value="10">
-                </div>
-            </div>
 
+            <!-- General & Display -->
             <div class="card">
-                <h2>Display</h2>
-                <div class="form-group">
-                    <label for="cfg-font">Font</label>
-                    <select id="cfg-font">
-                        <option value="STANDARD">STANDARD</option>
-                        <option value="BOLD">BOLD</option>
-                        <option value="NARROW">NARROW</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="card">
-                <h2>Location</h2>
-                <div class="form-group">
-                    <label for="cfg-location-search">Search city or address</label>
-                    <div class="location-input-wrapper">
-                        <input type="text" id="cfg-location-search" class="location-autocomplete-input" placeholder="Start typing a city or address..." autocomplete="off">
-                        <div class="location-coords" id="cfg-location-search-coords"></div>
+                <h2 data-i18n="settings.general">General</h2>
+                <div class="settings-grid">
+                    <div class="form-group">
+                        <label for="cfg-language" data-i18n="settings.language">Language</label>
+                        <select id="cfg-language">
+                            <option value="en">English</option>
+                            <option value="fr">Français</option>
+                            <option value="de">Deutsch</option>
+                            <option value="es">Español</option>
+                        </select>
+                        <p class="field-description" data-i18n="settings.language_desc">Language for the interface and all plugins (day names, weather, etc.)</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="cfg-font" data-i18n="settings.font">Font</label>
+                        <select id="cfg-font">
+                            <option value="STANDARD">STANDARD</option>
+                            <option value="BOLD">BOLD</option>
+                            <option value="NARROW">NARROW</option>
+                        </select>
                     </div>
                 </div>
-                <div class="form-group">
-                    <label for="cfg-latitude">Latitude</label>
-                    <input type="number" id="cfg-latitude" step="0.0001" placeholder="45.1885" readonly>
-                </div>
-                <div class="form-group">
-                    <label for="cfg-longitude">Longitude</label>
-                    <input type="number" id="cfg-longitude" step="0.0001" placeholder="5.7245" readonly>
-                </div>
-                <div class="form-group">
-                    <label for="cfg-city">City Name</label>
-                    <input type="text" id="cfg-city" placeholder="Grenoble" readonly>
-                </div>
-                <p class="field-description">Coordinates and city name are auto-filled when you select a location above.</p>
             </div>
 
-            <div class="card">
-                <h2>Brightness Schedule</h2>
-                <div class="form-group">
-                    <label for="cfg-max-brightness">Max Brightness (0-15)</label>
-                    <input type="number" id="cfg-max-brightness" min="0" max="15" value="7">
+            <!-- Location -->
+            <details class="card collapsible">
+                <summary><h2 data-i18n="settings.location">📍 Location</h2></summary>
+                <div class="collapsible-content">
+                    <div class="form-group">
+                        <label for="cfg-location-search" data-i18n="settings.location_search">Search city or address</label>
+                        <div class="location-input-wrapper">
+                            <input type="text" id="cfg-location-search" class="location-autocomplete-input" data-i18n-placeholder="settings.location_search_placeholder" placeholder="Start typing a city or address..." autocomplete="off">
+                            <div class="location-coords" id="cfg-location-search-coords"></div>
+                        </div>
+                    </div>
+                    <div class="settings-grid">
+                        <div class="form-group">
+                            <label for="cfg-latitude" data-i18n="settings.latitude">Latitude</label>
+                            <input type="number" id="cfg-latitude" step="0.0001" placeholder="45.1885" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label for="cfg-longitude" data-i18n="settings.longitude">Longitude</label>
+                            <input type="number" id="cfg-longitude" step="0.0001" placeholder="5.7245" readonly>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="cfg-city" data-i18n="settings.city_name">City Name</label>
+                        <input type="text" id="cfg-city" placeholder="Grenoble" readonly>
+                    </div>
+                    <p class="field-description" data-i18n="settings.location_hint">Coordinates and city name are auto-filled when you select a location above.</p>
                 </div>
-                <div class="form-group">
-                    <label for="cfg-schedule-default">Default Schedule (e.g. 22:00-08:00 20%)</label>
-                    <input type="text" id="cfg-schedule-default" placeholder="22:00-08:00 20%">
-                </div>
-                <div class="form-group">
-                    <label for="cfg-sunrise-brightness">Sunrise Brightness %</label>
-                    <input type="text" id="cfg-sunrise-brightness" placeholder="100%">
-                </div>
-                <div class="form-group">
-                    <label for="cfg-sunset-brightness">Sunset Brightness %</label>
-                    <input type="text" id="cfg-sunset-brightness" placeholder="10%">
-                </div>
-            </div>
+            </details>
 
-            <div class="card">
-                <h2>REST API</h2>
-                <div class="form-group">
-                    <label><input type="checkbox" id="cfg-rest-enabled" checked> Enabled</label>
+            <!-- Hardware: ZeDMD + Brightness -->
+            <details class="card collapsible">
+                <summary><h2 data-i18n="settings.hardware">🖥️ Hardware</h2></summary>
+                <div class="collapsible-content">
+                    <div class="settings-section">
+                        <h3 data-i18n="settings.zedmd_backend">ZeDMD Backend</h3>
+                        <div class="settings-grid">
+                            <div class="form-group">
+                                <label for="cfg-wifi-addr" data-i18n="settings.wifi_addr">ZeDMD WiFi Address</label>
+                                <input type="text" id="cfg-wifi-addr" placeholder="192.168.0.35">
+                            </div>
+                            <div class="form-group">
+                                <label for="cfg-brightness" data-i18n="settings.default_brightness">Default Brightness (0-15)</label>
+                                <input type="number" id="cfg-brightness" min="0" max="15" value="10">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-divider"></div>
+                    <div class="settings-section">
+                        <h3 data-i18n="settings.brightness_schedule">Brightness Schedule</h3>
+                        <div class="settings-grid">
+                            <div class="form-group">
+                                <label for="cfg-max-brightness" data-i18n="settings.max_brightness">Max Brightness (0-15)</label>
+                                <input type="number" id="cfg-max-brightness" min="0" max="15" value="7">
+                            </div>
+                            <div class="form-group">
+                                <label for="cfg-schedule-default" data-i18n="settings.schedule_default">Default Schedule (e.g. 22:00-08:00 20%)</label>
+                                <input type="text" id="cfg-schedule-default" placeholder="22:00-08:00 20%">
+                            </div>
+                            <div class="form-group">
+                                <label for="cfg-sunrise-brightness" data-i18n="settings.sunrise_brightness">Sunrise Brightness %</label>
+                                <input type="text" id="cfg-sunrise-brightness" placeholder="100%">
+                            </div>
+                            <div class="form-group">
+                                <label for="cfg-sunset-brightness" data-i18n="settings.sunset_brightness">Sunset Brightness %</label>
+                                <input type="text" id="cfg-sunset-brightness" placeholder="10%">
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="cfg-rest-port">Port</label>
-                    <input type="number" id="cfg-rest-port" min="1" max="65535" value="8080">
-                </div>
-            </div>
+            </details>
 
+            <!-- Connectivity -->
+            <details class="card collapsible">
+                <summary><h2 data-i18n="settings.connectivity">🔌 Connectivity</h2></summary>
+                <div class="collapsible-content">
+                    <h3 data-i18n="settings.rest_api">REST API</h3>
+                    <div class="settings-grid">
+                        <div class="form-group">
+                            <label><input type="checkbox" id="cfg-rest-enabled" checked> <span data-i18n="settings.rest_enabled">Enabled</span></label>
+                        </div>
+                        <div class="form-group">
+                            <label for="cfg-rest-port" data-i18n="settings.rest_port">Port</label>
+                            <input type="number" id="cfg-rest-port" min="1" max="65535" value="8080">
+                        </div>
+                    </div>
+                </div>
+            </details>
+
+            <!-- Plugins -->
             <div class="card">
-                <h2>Plugins</h2>
-                <div class="form-group">
-                    <label for="cfg-language">Language</label>
-                    <select id="cfg-language">
-                        <option value="en">English</option>
-                        <option value="fr">Français</option>
-                        <option value="de">Deutsch</option>
-                        <option value="es">Español</option>
-                    </select>
-                    <p class="field-description">Global language for all plugins (day names, weather conditions, etc.)</p>
-                </div>
-                <div class="form-group">
-                    <label for="cfg-default-plugin">Default Plugin (displayed between rotations)</label>
-                    <select id="cfg-default-plugin">
-                        <option value="clock">clock</option>
-                    </select>
-                    <p class="field-description">The plugin displayed between each rotation plugin (e.g. the clock between weather, pinball, etc.)</p>
-                </div>
-                <div class="form-group">
-                    <label for="cfg-clock-seconds">Display Duration (seconds between rotations)</label>
-                    <input type="number" id="cfg-clock-seconds" min="1" max="300" value="5">
+                <h2 data-i18n="settings.plugins">🧩 Plugins</h2>
+                <div class="settings-grid">
+                    <div class="form-group">
+                        <label for="cfg-default-plugin" data-i18n="settings.default_plugin">Default Plugin (displayed between rotations)</label>
+                        <select id="cfg-default-plugin">
+                            <option value="clock">clock</option>
+                        </select>
+                        <p class="field-description" data-i18n="settings.default_plugin_desc">The plugin displayed between each rotation plugin (e.g. the clock between weather, pinball, etc.)</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="cfg-clock-seconds" data-i18n="settings.display_duration">Display Duration (seconds between rotations)</label>
+                        <input type="number" id="cfg-clock-seconds" min="1" max="300" value="5">
+                    </div>
                 </div>
                 <div id="cfg-plugins-list"></div>
-                <button class="btn btn-secondary" onclick="addPluginEntry()" style="margin-top: 0.75rem;">+ Add Plugin</button>
+                <p class="field-description" data-i18n="settings.plugin_weight_desc">Higher weight = more likely to be selected. Set to 0 to disable a plugin.</p>
             </div>
 
             <!-- Auto-generated plugin configuration forms -->
-            <div id="plugin-config-forms"></div>
+            <div class="card" id="plugin-config-section" style="display: none;">
+                <h2 data-i18n="settings.plugin_config">🔧 Plugin Configuration</h2>
+                <nav class="plugin-tabs" id="plugin-config-tabs"></nav>
+                <div id="plugin-config-forms"></div>
+            </div>
 
         </section>
     </main>
 
+    <script src="i18n.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

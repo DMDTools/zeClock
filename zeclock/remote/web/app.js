@@ -48,7 +48,7 @@ async function api(endpoint, method = 'GET', body = null) {
 function updateConnectionStatus(connected) {
     const dot = document.getElementById('connection-status');
     dot.classList.toggle('connected', connected);
-    dot.title = connected ? 'Connected' : 'Disconnected';
+    dot.title = connected ? t('status.connected') : t('status.disconnected');
 }
 
 // --- Dashboard ---
@@ -140,14 +140,14 @@ async function refreshPlugins() {
     const forcedPlugin = data.data.forced_plugin;
 
     if (!plugins.length) {
-        container.innerHTML = '<p class="muted">No plugins available</p>';
+        container.innerHTML = `<p class="muted">${t('dashboard.plugins_none')}</p>`;
         return;
     }
 
     container.innerHTML = plugins.map(p => {
         const isActive = p.name === activePlugin || p.name === forcedPlugin;
         const isDefault = p.is_default;
-        const defaultBadge = isDefault ? '<span class="plugin-default-badge">default</span>' : '';
+        const defaultBadge = isDefault ? `<span class="plugin-default-badge">${t('plugin.default_badge')}</span>` : '';
         return `
             <div class="plugin-btn ${isActive ? 'active' : ''} ${isDefault ? 'default' : ''}" onclick="forcePlugin('${p.name}')">
                 <span class="plugin-name">${p.name}</span>
@@ -249,7 +249,7 @@ async function sendMessage() {
     const duration = parseInt(document.getElementById('message-duration').value) || 10;
 
     if (!text) {
-        alert('Please enter a message');
+        alert(t('alert.enter_message'));
         return;
     }
 
@@ -278,6 +278,12 @@ async function quickSpeakerMessage(text) {
 // --- Initialization ---
 
 async function init() {
+    // Load language from server config before rendering anything
+    const langResp = await api('/api/config/plugins');
+    if (langResp && langResp.data && langResp.data.language) {
+        setLanguage(langResp.data.language);
+    }
+
     await refreshStatus();
     await refreshPlugins();
 
@@ -294,6 +300,11 @@ document.getElementById('message-text').addEventListener('keydown', (e) => {
 });
 document.getElementById('speaker-message-text').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') sendSpeakerMessage();
+});
+
+// Live language switch when the user changes the language dropdown
+document.getElementById('cfg-language').addEventListener('change', (e) => {
+    setLanguage(e.target.value);
 });
 
 // --- Configuration ---
@@ -349,8 +360,11 @@ async function loadConfig() {
 
         // Global language
         const langSelect = document.getElementById('cfg-language');
-        const currentLang = pCfg.language || 'en';
-        langSelect.value = currentLang;
+        const currentLang_cfg = pCfg.language || 'en';
+        langSelect.value = currentLang_cfg;
+
+        // Apply language to UI when config is loaded
+        setLanguage(currentLang_cfg);
 
         renderPluginEntries(pCfg.plugins || []);
 
@@ -379,45 +393,50 @@ async function loadConfig() {
 
 function renderPluginEntries(plugins) {
     const container = document.getElementById('cfg-plugins-list');
-    container.innerHTML = plugins.map((p, i) => `
-        <div class="plugin-config-entry" data-index="${i}">
-            <div class="form-row">
-                <select class="plugin-name-input">
-                    ${window._availablePlugins.map(ap =>
-                        `<option value="${ap}" ${ap === p.name ? 'selected' : ''}>${ap}</option>`
-                    ).join('')}
-                </select>
-                <input type="number" class="plugin-freq-input" value="${p.frequency || 20}" min="0" max="100" title="Frequency %">
-                <button class="btn btn-danger btn-small" onclick="removePluginEntry(${i})">✕</button>
+
+    // Build a map of configured weights
+    const weightMap = {};
+    plugins.forEach(p => { weightMap[p.name] = p.frequency; });
+
+    // List all available plugins, using configured weight or 0 (disabled)
+    const allPlugins = (window._availablePlugins || []).length > 0
+        ? window._availablePlugins
+        : plugins.map(p => p.name);
+
+    if (!allPlugins.length) {
+        container.innerHTML = `<p class="muted">${t('dashboard.plugins_none')}</p>`;
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="plugin-list-header">
+            <span class="plugin-list-col-name" data-i18n="settings.plugin_name">Plugin</span>
+            <span class="plugin-list-col-freq" data-i18n="settings.plugin_weight">Weight</span>
+        </div>
+    ` + allPlugins.map((name, i) => {
+        const weight = weightMap[name] !== undefined ? weightMap[name] : 0;
+        const isDisabled = weight === 0;
+        return `
+        <div class="plugin-config-entry ${isDisabled ? 'plugin-disabled' : ''}" data-index="${i}">
+            <span class="plugin-entry-name">${capitalize(name)}</span>
+            <div class="plugin-freq-wrapper">
+                <input type="range" class="plugin-freq-slider" value="${weight}" min="0" max="100" oninput="updatePluginWeight(this)">
+                <span class="plugin-freq-label">${weight}</span>
+                <input type="hidden" class="plugin-name-input" value="${name}">
+                <input type="hidden" class="plugin-freq-input" value="${weight}">
             </div>
         </div>
-    `).join('');
+    `}).join('');
 }
 
-function addPluginEntry() {
-    const container = document.getElementById('cfg-plugins-list');
-    const i = container.children.length;
-    const div = document.createElement('div');
-    div.className = 'plugin-config-entry';
-    div.dataset.index = i;
-    div.innerHTML = `
-        <div class="form-row">
-            <select class="plugin-name-input">
-                ${window._availablePlugins.map(ap =>
-                    `<option value="${ap}">${ap}</option>`
-                ).join('')}
-            </select>
-            <input type="number" class="plugin-freq-input" value="20" min="0" max="100" title="Frequency %">
-            <button class="btn btn-danger btn-small" onclick="removePluginEntry(${i})">✕</button>
-        </div>
-    `;
-    container.appendChild(div);
-}
-
-function removePluginEntry(index) {
-    const container = document.getElementById('cfg-plugins-list');
-    const entry = container.querySelector(`[data-index="${index}"]`);
-    if (entry) entry.remove();
+function updatePluginWeight(slider) {
+    const entry = slider.closest('.plugin-config-entry');
+    const label = entry.querySelector('.plugin-freq-label');
+    const hidden = entry.querySelector('.plugin-freq-input');
+    label.textContent = slider.value;
+    hidden.value = slider.value;
+    // Toggle disabled visual state
+    entry.classList.toggle('plugin-disabled', slider.value === '0');
 }
 
 async function saveConfig() {
@@ -491,7 +510,8 @@ async function saveConfig() {
 
     document.querySelectorAll('.plugin-config-entry').forEach(entry => {
         const name = entry.querySelector('.plugin-name-input').value.trim();
-        const freq = parseInt(entry.querySelector('.plugin-freq-input').value) || 20;
+        const freqRaw = parseInt(entry.querySelector('.plugin-freq-input').value);
+        const freq = isNaN(freqRaw) ? 0 : freqRaw;
         if (name) {
             // Preserve existing settings for this plugin
             const settings = existingSettingsMap[name] || {};
@@ -506,13 +526,19 @@ async function saveConfig() {
     ]);
 
     if (configResult?.success && pluginsResult?.success) {
-        statusEl.textContent = '✅ Saved';
+        statusEl.textContent = t('config.saved');
         statusEl.style.background = '#1a3a1a';
         statusEl.style.color = '#6fcf6f';
         setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
+
+        // If language changed, apply it immediately
+        const newLang = document.getElementById('cfg-language').value || 'en';
+        if (newLang !== currentLang) {
+            setLanguage(newLang);
+        }
     } else {
         const msg = configResult?.message || pluginsResult?.message || 'Unknown error';
-        statusEl.textContent = '❌ Error: ' + msg;
+        statusEl.textContent = t('config.error') + msg;
         statusEl.style.background = '#5c1010';
         statusEl.style.color = '#ff6b6b';
     }
@@ -552,7 +578,7 @@ function scheduleAutoSave(target) {
     // Show saving status at the top of settings
     const statusEl = document.getElementById('config-status');
     if (statusEl) {
-        statusEl.textContent = '⏳ Saving...';
+        statusEl.textContent = t('config.saving');
         statusEl.style.background = '#444';
         statusEl.style.color = '#fff';
         statusEl.style.display = 'block';
@@ -572,7 +598,7 @@ function scheduleAutoSave(target) {
         } catch (err) {
             console.error('Auto-save error:', err);
             if (statusEl) {
-                statusEl.textContent = '❌ Save failed';
+                statusEl.textContent = t('config.save_failed');
                 statusEl.style.background = '#5c1010';
                 statusEl.style.color = '#ff6b6b';
             }
@@ -586,13 +612,19 @@ async function loadPluginConfigForms(currentPluginsConfig) {
     const schemaResp = await api('/api/plugins/config-schema');
     if (!schemaResp || !schemaResp.plugins) return;
 
-    const container = document.getElementById('plugin-config-forms');
+    const section = document.getElementById('plugin-config-section');
+    const tabsContainer = document.getElementById('plugin-config-tabs');
+    const formsContainer = document.getElementById('plugin-config-forms');
     const plugins = schemaResp.plugins.filter(p => p.schema && p.schema.length > 0);
 
     if (plugins.length === 0) {
-        container.innerHTML = '';
+        section.style.display = 'none';
+        tabsContainer.innerHTML = '';
+        formsContainer.innerHTML = '';
         return;
     }
+
+    section.style.display = '';
 
     // Get current settings from plugins.yaml for pre-filling form values
     const currentSettings = {};
@@ -604,15 +636,22 @@ async function loadPluginConfigForms(currentPluginsConfig) {
         });
     }
 
-    container.innerHTML = plugins.map(plugin => {
+    // Render tabs
+    tabsContainer.innerHTML = plugins.map((plugin, i) =>
+        `<button class="plugin-tab ${i === 0 ? 'active' : ''}" data-plugin-tab="${plugin.name}" onclick="switchPluginTab('${plugin.name}')">${capitalize(plugin.name)}</button>`
+    ).join('');
+
+    // Render panels
+    formsContainer.innerHTML = plugins.map((plugin, i) => {
         const settings = currentSettings[plugin.name] || {};
         const fieldsHtml = plugin.schema.map(field => renderPluginField(plugin.name, field, settings)).join('');
 
         return `
-            <div class="plugin-config-card" data-plugin="${plugin.name}">
-                <h2>${capitalize(plugin.name)}</h2>
-                <p class="plugin-description">${plugin.description || ''}</p>
-                ${fieldsHtml}
+            <div class="plugin-config-panel ${i === 0 ? 'active' : ''}" data-plugin-panel="${plugin.name}">
+                <div class="plugin-config-card" data-plugin="${plugin.name}">
+                    <p class="plugin-description">${plugin.description || ''}</p>
+                    ${fieldsHtml}
+                </div>
             </div>
         `;
     }).join('');
@@ -620,6 +659,17 @@ async function loadPluginConfigForms(currentPluginsConfig) {
     // Initialize location autocomplete handlers after forms are rendered
     initLocationAutocomplete();
     initBooleanToggles();
+}
+
+function switchPluginTab(pluginName) {
+    // Update tab buttons
+    document.querySelectorAll('.plugin-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.pluginTab === pluginName);
+    });
+    // Update panels
+    document.querySelectorAll('.plugin-config-panel').forEach(panel => {
+        panel.classList.toggle('active', panel.dataset.pluginPanel === pluginName);
+    });
 }
 
 function renderPluginField(pluginName, field, settings) {
@@ -646,7 +696,7 @@ function renderPluginField(pluginName, field, settings) {
                 <label class="toggle-switch">
                     <input type="checkbox" id="${fieldId}" ${isChecked ? 'checked' : ''} data-plugin="${pluginName}" data-field="${field.name}" data-field-type="boolean">
                     <span class="toggle-slider"></span>
-                    <span class="toggle-label">${isChecked ? 'Oui' : 'Non'}</span>
+                    <span class="toggle-label">${isChecked ? t('bool.yes') : t('bool.no')}</span>
                 </label>`;
             break;
         }
@@ -944,12 +994,12 @@ async function uploadGifFiles(files, index) {
     }
 
     if (gifCount === 0) {
-        progressEl.innerHTML = '<span style="color: var(--danger);">No valid GIF files selected</span>';
+        progressEl.innerHTML = `<span style="color: var(--danger);">${t('gif.no_valid')}</span>`;
         setTimeout(() => progressEl.innerHTML = '', 3000);
         return;
     }
 
-    progressEl.innerHTML = `<span style="color: var(--accent);">Uploading ${gifCount} file(s)...</span>`;
+    progressEl.innerHTML = `<span style="color: var(--accent);">${t('gif.uploading', {count: gifCount})}</span>`;
 
     try {
         const resp = await fetch(API_BASE + '/api/gif/upload', {
@@ -995,7 +1045,7 @@ async function browseGifDirs(index) {
     const pathInput = entry.querySelector('.gif-dir-path');
 
     if (dirs.length === 0) {
-        showGifDirsStatus('No existing directories found. Upload some GIFs first!');
+        showGifDirsStatus(t('gif.no_dirs'));
         return;
     }
 
@@ -1040,7 +1090,7 @@ async function refreshGifDirs() {
 }
 
 async function showNewDirDialog() {
-    const name = prompt('Enter a name for the new GIF directory:');
+    const name = prompt(t('gif.new_dir_prompt'));
     if (!name || !name.trim()) return;
 
     const result = await api('/api/gif/directories/create', 'POST', { name: name.trim() });
@@ -1181,7 +1231,7 @@ function initBooleanToggles() {
         input.addEventListener('change', function() {
             const label = this.closest('.toggle-switch').querySelector('.toggle-label');
             if (label) {
-                label.textContent = this.checked ? 'Oui' : 'Non';
+                label.textContent = this.checked ? t('bool.yes') : t('bool.no');
             }
         });
     });
@@ -1270,7 +1320,7 @@ function showLocationDropdown(input, results) {
     dropdown.className = 'location-autocomplete-dropdown';
 
     if (results.length === 0) {
-        dropdown.innerHTML = '<div class="location-autocomplete-no-results">No results found</div>';
+        dropdown.innerHTML = `<div class="location-autocomplete-no-results">${t('location.no_results')}</div>`;
     } else {
         const items = results.slice(0, 5);
         dropdown.innerHTML = items.map((result, index) => `
@@ -1348,12 +1398,12 @@ function showPluginSaveStatus(pluginName, success, message) {
 
     statusEl.style.display = 'block';
     if (success) {
-        statusEl.textContent = '✅ ' + message;
+        statusEl.textContent = t('config.saved');
         statusEl.style.background = '#1a3a1a';
         statusEl.style.color = '#6fcf6f';
         setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
     } else {
-        statusEl.textContent = '❌ ' + message;
+        statusEl.textContent = t('config.error') + message;
         statusEl.style.background = '#5c1010';
         statusEl.style.color = '#ff6b6b';
     }
@@ -1364,7 +1414,7 @@ function showPluginSaveStatus(pluginName, success, message) {
 async function downloadSettings() {
     const resp = await api('/api/config/export');
     if (!resp || !resp.success) {
-        alert('Failed to export settings: ' + (resp?.message || 'Unknown error'));
+        alert(t('alert.export_failed') + (resp?.message || 'Unknown error'));
         return;
     }
 
@@ -1387,7 +1437,7 @@ async function uploadSettings(event) {
     // Reset the input so the same file can be re-selected
     event.target.value = '';
 
-    if (!confirm('Restore settings from this backup?\nThis will overwrite your current configuration.')) {
+    if (!confirm(t('alert.restore_confirm'))) {
         return;
     }
 
@@ -1396,17 +1446,17 @@ async function uploadSettings(event) {
         const text = await file.text();
         data = JSON.parse(text);
     } catch (err) {
-        alert('Invalid settings file: ' + err.message);
+        alert(t('alert.invalid_file') + err.message);
         return;
     }
 
     const resp = await api('/api/config/import', 'POST', data);
     if (resp && resp.success) {
-        alert('✅ Settings restored successfully. Reloading...');
+        alert(t('alert.restore_success'));
         // Refresh the settings tab if open
         loadConfig();
     } else {
-        alert('❌ Failed to restore settings: ' + (resp?.message || 'Unknown error'));
+        alert(t('alert.restore_failed') + (resp?.message || 'Unknown error'));
     }
 }
 
