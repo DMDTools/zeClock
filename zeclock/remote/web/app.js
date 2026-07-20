@@ -1359,4 +1359,55 @@ function showPluginSaveStatus(pluginName, success, message) {
     }
 }
 
+// --- Settings Backup: Download / Upload ---
+
+async function downloadSettings() {
+    const resp = await api('/api/config/export');
+    if (!resp || !resp.success) {
+        alert('Failed to export settings: ' + (resp?.message || 'Unknown error'));
+        return;
+    }
+
+    const blob = new Blob([JSON.stringify(resp.data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const date = new Date().toISOString().slice(0, 10);
+    a.download = `zeclock-settings-${date}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+async function uploadSettings(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Reset the input so the same file can be re-selected
+    event.target.value = '';
+
+    if (!confirm('Restore settings from this backup?\nThis will overwrite your current configuration.')) {
+        return;
+    }
+
+    let data;
+    try {
+        const text = await file.text();
+        data = JSON.parse(text);
+    } catch (err) {
+        alert('Invalid settings file: ' + err.message);
+        return;
+    }
+
+    const resp = await api('/api/config/import', 'POST', data);
+    if (resp && resp.success) {
+        alert('✅ Settings restored successfully. Reloading...');
+        // Refresh the settings tab if open
+        loadConfig();
+    } else {
+        alert('❌ Failed to restore settings: ' + (resp?.message || 'Unknown error'));
+    }
+}
+
 init();
