@@ -92,14 +92,17 @@ class ConfigField:
                      extract coordinates directly — no manual lat/lon entry
                      needed.
         "list"     — Comma-separated values.
+        "select"   — Dropdown list. Use the ``options`` field to provide
+                     choices as a list of {"value": "...", "label": "..."} dicts.
     """
 
     name: str  # Key in plugins.yaml settings dict
     label: str  # Human-readable label for Web UI (max 50 chars)
-    field_type: str  # "text" | "number" | "city" | "location" | "list"
+    field_type: str  # "text" | "number" | "city" | "location" | "list" | "select"
     required: bool = True
     description: str = ""  # max 200 chars
     default: Any = None
+    options: List[Dict[str, str]] = field(default_factory=list)
 
 
 @dataclass

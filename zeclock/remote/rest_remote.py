@@ -120,6 +120,7 @@ class RestRemote:
             "/api/plugins/config-schema", self._handle_plugins_config_schema
         )
         self._app.router.add_get("/api/geocode/search", self._handle_geocode_search)
+        self._app.router.add_get("/api/timezone", self._handle_resolve_timezone)
 
         # GIF directory management routes
         self._app.router.add_get(
@@ -454,6 +455,7 @@ class RestRemote:
                             "required": field.required,
                             "description": field.description,
                             "default": field.default,
+                            "options": field.options if field.options else None,
                         }
                         for field in schema
                     ],
@@ -489,6 +491,33 @@ class RestRemote:
                 ]
             }
         )
+
+    async def _handle_resolve_timezone(self, request: web.Request) -> web.Response:
+        """GET /api/timezone?lat=X&lon=Y — Resolve coordinates to IANA timezone."""
+        from ..geocoder import resolve_timezone
+
+        lat_str = request.query.get("lat", "")
+        lon_str = request.query.get("lon", "")
+
+        try:
+            lat = float(lat_str)
+            lon = float(lon_str)
+        except (ValueError, TypeError):
+            return web.json_response(
+                {"success": False, "message": "lat and lon must be numbers"},
+                status=400,
+            )
+
+        loop = asyncio.get_event_loop()
+        tz_name = await loop.run_in_executor(None, resolve_timezone, lat, lon)
+
+        if tz_name is None:
+            return web.json_response(
+                {"success": False, "message": "Could not resolve timezone"},
+                status=404,
+            )
+
+        return web.json_response({"success": True, "timezone": tz_name})
 
     # --- GIF Directory Management handlers ---
 

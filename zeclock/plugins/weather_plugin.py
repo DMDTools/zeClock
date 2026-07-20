@@ -31,18 +31,24 @@ OPEN_METEO_API_URL = "https://api.open-meteo.com/v1/forecast"
 _LABELS = {
     "en": {"tomorrow": "TOMORROW"},
     "fr": {"tomorrow": "DEMAIN"},
+    "de": {"tomorrow": "MORGEN"},
+    "es": {"tomorrow": "MANANA"},
 }
 
 # Short day names (3 chars) for the 3-day outlook
 _DAY_NAMES = {
     "en": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
     "fr": ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"],
+    "de": ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"],
+    "es": ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"],
 }
 
 # Single-letter day names for the 7-day view
 _DAY_LETTERS = {
     "en": ["M", "T", "W", "T", "F", "S", "S"],
     "fr": ["L", "M", "M", "J", "V", "S", "D"],
+    "de": ["M", "D", "M", "D", "F", "S", "S"],
+    "es": ["L", "M", "X", "J", "V", "S", "D"],
 }
 
 # WMO weather code to short description mapping (max 12 chars)
@@ -107,6 +113,66 @@ WMO_DESCRIPTIONS = {
         95: "Orage",
         96: "Orage grele",
         99: "Orage grele",
+    },
+    "de": {
+        0: "Klar",
+        1: "Heiter",
+        2: "Teilw. bew.",
+        3: "Bedeckt",
+        45: "Nebel",
+        48: "Reifnebel",
+        51: "Nieseln lt.",
+        53: "Nieseln",
+        55: "Nieseln stk.",
+        56: "Gefr. Nies.",
+        57: "Gefr. Nies.",
+        61: "Regen lt.",
+        63: "Regen",
+        65: "Starkregen",
+        66: "Gefr. Reg.",
+        67: "Gefr. Reg.",
+        71: "Schnee lt.",
+        73: "Schnee",
+        75: "Starker Schn",
+        77: "Schneekorn",
+        80: "Schauer lt.",
+        81: "Schauer",
+        82: "Schauer stk.",
+        85: "Schneesch.",
+        86: "Schneesch.st",
+        95: "Gewitter",
+        96: "Gew. Hagel",
+        99: "Gew. Hagel",
+    },
+    "es": {
+        0: "Despejado",
+        1: "Mayorm. desp",
+        2: "Parcialm nub",
+        3: "Nublado",
+        45: "Niebla",
+        48: "Niebla helad",
+        51: "Llovizna lev",
+        53: "Llovizna",
+        55: "Llovizna int",
+        56: "Llov. helada",
+        57: "Llov. helada",
+        61: "Lluvia leve",
+        63: "Lluvia",
+        65: "Lluvia fuert",
+        66: "Lluv. helada",
+        67: "Lluv. helada",
+        71: "Nieve leve",
+        73: "Nieve",
+        75: "Nieve fuerte",
+        77: "Granizo fino",
+        80: "Chubasco lev",
+        81: "Chubasco",
+        82: "Chubasco int",
+        85: "Chub. nieve",
+        86: "Chub. niev.f",
+        95: "Tormenta",
+        96: "Torm. graniz",
+        99: "Torm. graniz",
     },
 }
 
