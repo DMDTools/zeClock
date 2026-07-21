@@ -17,7 +17,7 @@ env:
 
 jobs:
   build-image:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     permissions:
       contents: write
@@ -33,8 +33,7 @@ jobs:
 
       - name: Free disk space
         run: |
-          # Free up space on the runner for the ~3GB image build
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc 2>/dev/null || true
           df -h /
 
       - name: Prepare export directory
@@ -58,7 +57,7 @@ jobs:
               "http://ftp.debian.org/debian/pool/main/libg/libgpiod/libgpiod2_1.6.3-1+b3_arm64.deb"
           echo "Debs: $(ls "${DEBS_DIR}"/*.deb | wc -l) files"
 
-          # Pre-download Python wheels for aarch64
+          # Pre-download Python wheels for aarch64 (native on this runner)
           WHEELS_DIR="${EXPORT_DIR}/.wheels"
           mkdir -p "${WHEELS_DIR}"
           pip download \
@@ -90,7 +89,7 @@ jobs:
 
           echo "Total export: $(du -sh "${EXPORT_DIR}" | cut -f1)"
 
-      - name: Build image with Packer (Docker)
+      - name: Build image with Packer (native ARM64)
         run: |
           docker run --rm \
               --privileged \
@@ -105,9 +104,8 @@ jobs:
         run: |
           cd deploy/rpi
           ls -lh "${OUTPUT_IMG}"
-          # Fix ownership (Docker creates files as root)
           sudo chown "$(id -u):$(id -g)" "${OUTPUT_IMG}"
-          xz -9 --threads=0 "${OUTPUT_IMG}"
+          xz -3 --threads=0 "${OUTPUT_IMG}"
           ls -lh "${OUTPUT_IMG}.xz"
           echo "IMAGE_FILE=${OUTPUT_IMG}.xz" >> $GITHUB_ENV
           echo "IMAGE_PATH=deploy/rpi/${OUTPUT_IMG}.xz" >> $GITHUB_ENV

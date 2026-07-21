@@ -385,14 +385,15 @@ sudo systemctl restart zeclock           # apply changes
 
 #### Building the Image Yourself
 
-See [`deploy/rpi/`](deploy/rpi/) for the full Packer-based build system:
+The image is built automatically via GitHub Actions on a native ARM64 runner (~2 min). See the [Releases page](https://github.com/DMDTools/zeClock/releases).
+
+To add your GIF collection to the image locally (WSL2 or Linux):
 
 ```bash
-cd deploy/rpi
-./build.sh   # Requires Docker with privileged mode
+make rpi-inject-gifs   # Downloads CI image + injects GIFs from ~/.zeclock/plugins/gif
 ```
 
-The image is also built automatically via GitHub Actions on every merge to `main` and on git tags (e.g. `v1.0.0`). See the [Releases page](https://github.com/DMDTools/zeClock/releases).
+See [`deploy/rpi/`](deploy/rpi/) for the full Packer build system and architecture details.
 
 ## Development
 
