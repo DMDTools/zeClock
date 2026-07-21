@@ -152,6 +152,10 @@ class RestRemote:
             "/api/gif/directories/create", self._handle_create_gif_directory
         )
 
+        # Debug / Logs API routes
+        self._app.router.add_get("/api/logs/stream", self._handle_logs_stream)
+        self._app.router.add_get("/api/debug/info", self._handle_debug_info)
+
         # Static files for web UI (must be last to avoid catching API routes)
         if WEB_UI_DIR.exists():
             self._app.router.add_get("/ui/", self._handle_ui_index)
@@ -1144,3 +1148,313 @@ class RestRemote:
             msg = "Configuration saved."
 
         return web.json_response({"success": True, "message": msg})
+
+    # --- Debug & Logs ---
+
+    async def _handle_logs_stream(self, request: web.Request) -> web.StreamResponse:
+        """GET /api/logs/stream — SSE endpoint for real-time log streaming."""
+        response = web.StreamResponse(
+            status=200,
+            reason="OK",
+            headers={
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+        await response.prepare(request)
+
+        queue: asyncio.Queue = asyncio.Queue(maxsize=200)
+
+        class SSEHandler(logging.Handler):
+            def emit(self, record: logging.LogRecord) -> None:
+                try:
+                    msg = self.format(record)
+                    queue.put_nowait(msg)
+                except asyncio.QueueFull:
+                    pass  # drop oldest if consumer is slow
+
+        handler = SSEHandler()
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+        )
+        handler.setLevel(logging.DEBUG)
+
+        # Attach to root logger to capture all log output
+        root_logger = logging.getLogger()
+        root_logger.addHandler(handler)
+
+        try:
+            while True:
+                try:
+                    msg = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    await response.write(f"data: {msg}\n\n".encode("utf-8"))
+                except asyncio.TimeoutError:
+                    # Send keepalive comment
+                    await response.write(b": keepalive\n\n")
+                except ConnectionResetError:
+                    break
+        except asyncio.CancelledError:
+            pass
+        finally:
+            root_logger.removeHandler(handler)
+
+        return response
+
+    async def _handle_debug_info(self, request: web.Request) -> web.Response:
+        """GET /api/debug/info — Return system and clock debug information."""
+        import platform
+        import shutil
+        import sys
+        import os
+
+        try:
+            clock = self._handler._clock
+
+            # Gather plugin info
+            plugins_info = []
+            pm = getattr(clock, "_plugin_manager", None)
+            if pm:
+                registry = getattr(pm, "registry", None)
+                if registry:
+                    for entry in registry.get_all_plugins():
+                        plugins_info.append(
+                            {
+                                "name": entry.name,
+                                "state": entry.state,
+                                "source": entry.source,
+                                "frequency": entry.frequency,
+                                "active": (
+                                    pm._current_plugin_name == entry.name
+                                    if hasattr(pm, "_current_plugin_name")
+                                    else False
+                                ),
+                            }
+                        )
+
+            # Backend info
+            backend_info = {}
+            backend = getattr(clock, "_backend", None)
+            if backend:
+                backend_info = {
+                    "type": type(backend).__name__,
+                    "connected": getattr(backend, "_connected", False),
+                }
+
+            info = {
+                "system": {
+                    "platform": platform.platform(),
+                    "python": sys.version.split()[0],
+                    "arch": platform.machine(),
+                    "pid": os.getpid(),
+                    "cwd": os.getcwd(),
+                },
+                "clock": {
+                    "running": True,
+                    "state": (
+                        clock._state.value if hasattr(clock, "_state") else "unknown"
+                    ),
+                    "backend": backend_info,
+                    "plugins_loaded": len(plugins_info),
+                    "plugins": plugins_info,
+                },
+                "memory": {},
+                "storage": {},
+            }
+
+            # Memory info — cross-platform (Windows + Linux + macOS)
+            try:
+                # Try psutil first (most accurate, cross-platform)
+                import psutil
+
+                proc = psutil.Process(os.getpid())
+                mem = proc.memory_info()
+                sys_mem = psutil.virtual_memory()
+                info["memory"] = {
+                    "process_rss_mb": round(mem.rss / (1024 * 1024), 1),
+                    "system_total_mb": round(sys_mem.total / (1024 * 1024), 0),
+                    "system_available_mb": round(sys_mem.available / (1024 * 1024), 0),
+                    "system_percent_used": sys_mem.percent,
+                }
+            except ImportError:
+                # Fallback: resource module (Linux/macOS only)
+                try:
+                    import resource
+
+                    rusage = resource.getrusage(resource.RUSAGE_SELF)
+                    # On Linux ru_maxrss is in KB, on macOS in bytes
+                    rss_kb = rusage.ru_maxrss
+                    if platform.system() == "Darwin":
+                        rss_kb = rss_kb // 1024
+                    info["memory"] = {
+                        "process_rss_mb": round(rss_kb / 1024, 1),
+                    }
+                except (ImportError, Exception):
+                    pass
+
+            # Storage info — cross-platform via shutil.disk_usage
+            try:
+                # Disk where zeClock data lives
+                data_path = os.getcwd()
+                usage = shutil.disk_usage(data_path)
+                info["storage"] = {
+                    "path": data_path,
+                    "total_gb": round(usage.total / (1024**3), 1),
+                    "used_gb": round(usage.used / (1024**3), 1),
+                    "free_gb": round(usage.free / (1024**3), 1),
+                    "percent_used": round((usage.used / usage.total) * 100, 1),
+                }
+            except (OSError, Exception):
+                pass
+
+            # Network info — cross-platform
+            import socket
+
+            network_info: dict = {}
+            try:
+                # Get hostname
+                hostname = socket.gethostname()
+                network_info["hostname"] = hostname
+
+                # Get primary IP (cross-platform trick: connect to external addr)
+                ip_addr = "127.0.0.1"
+                try:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    s.settimeout(0.5)
+                    s.connect(("8.8.8.8", 80))
+                    ip_addr = s.getsockname()[0]
+                    s.close()
+                except Exception:
+                    pass
+                network_info["ip"] = ip_addr
+
+                # Detect interface type and SSID
+                interface_type = "unknown"
+                ssid = None
+                try:
+                    import subprocess
+
+                    if platform.system() == "Linux":
+                        # Check if connected via WiFi
+                        try:
+                            result = subprocess.run(
+                                ["iwgetid", "-r"],
+                                capture_output=True,
+                                text=True,
+                                timeout=2,
+                            )
+                            if result.returncode == 0 and result.stdout.strip():
+                                interface_type = "wifi"
+                                ssid = result.stdout.strip()
+                            else:
+                                interface_type = "ethernet"
+                        except FileNotFoundError:
+                            # iwgetid not installed, try nmcli
+                            try:
+                                result = subprocess.run(
+                                    [
+                                        "nmcli",
+                                        "-t",
+                                        "-f",
+                                        "ACTIVE,SSID,TYPE",
+                                        "connection",
+                                        "show",
+                                        "--active",
+                                    ],
+                                    capture_output=True,
+                                    text=True,
+                                    timeout=2,
+                                )
+                                if result.returncode == 0:
+                                    for line in result.stdout.strip().split("\n"):
+                                        parts = line.split(":")
+                                        if (
+                                            len(parts) >= 3
+                                            and "wireless" in parts[2].lower()
+                                        ):
+                                            interface_type = "wifi"
+                                            ssid = parts[1]
+                                            break
+                                    else:
+                                        interface_type = "ethernet"
+                            except FileNotFoundError:
+                                interface_type = "ethernet"
+                    elif platform.system() == "Windows":
+                        result = subprocess.run(
+                            ["netsh", "wlan", "show", "interfaces"],
+                            capture_output=True,
+                            text=True,
+                            timeout=3,
+                        )
+                        if result.returncode == 0 and "SSID" in result.stdout:
+                            interface_type = "wifi"
+                            for line in result.stdout.split("\n"):
+                                stripped = line.strip()
+                                if (
+                                    stripped.startswith("SSID")
+                                    and "BSSID" not in stripped
+                                ):
+                                    ssid = stripped.split(":", 1)[1].strip()
+                                    break
+                        else:
+                            interface_type = "ethernet"
+                    elif platform.system() == "Darwin":
+                        result = subprocess.run(
+                            [
+                                "/System/Library/PrivateFrameworks/"
+                                "Apple80211.framework/Versions/Current/"
+                                "Resources/airport",
+                                "-I",
+                            ],
+                            capture_output=True,
+                            text=True,
+                            timeout=2,
+                        )
+                        if result.returncode == 0 and "SSID" in result.stdout:
+                            interface_type = "wifi"
+                            for line in result.stdout.split("\n"):
+                                if "SSID" in line and "BSSID" not in line:
+                                    ssid = line.split(":", 1)[1].strip()
+                                    break
+                        else:
+                            interface_type = "ethernet"
+                except Exception:
+                    pass
+
+                network_info["interface"] = interface_type
+                if ssid:
+                    network_info["ssid"] = ssid
+
+                # Service URLs
+                rest_port = self._config.port
+                network_info["urls"] = {
+                    "webui": f"http://{ip_addr}:{rest_port}/ui/",
+                    "api": f"http://{ip_addr}:{rest_port}/api/",
+                }
+
+                # SSH info only on Raspberry Pi (ARM Linux)
+                if platform.system() == "Linux" and platform.machine().startswith(
+                    ("arm", "aarch64")
+                ):
+                    network_info["urls"][
+                        "ssh"
+                    ] = f"ssh zeclock@{ip_addr}  (pwd: zeclock)"
+
+                # MQTT info
+                mqtt_config = getattr(clock, "_mqtt_config", None)
+                if mqtt_config and getattr(mqtt_config, "enabled", False):
+                    mqtt_host = getattr(mqtt_config, "host", "localhost")
+                    mqtt_port = getattr(mqtt_config, "port", 1883)
+                    network_info["urls"]["mqtt"] = f"mqtt://{mqtt_host}:{mqtt_port}"
+                else:
+                    network_info["urls"]["mqtt"] = "disabled"
+
+            except Exception:
+                pass
+
+            info["network"] = network_info
+
+            return web.json_response({"success": True, "data": info})
+        except Exception as e:
+            return web.json_response({"success": False, "message": str(e)}, status=500)

@@ -14,6 +14,9 @@
         <h1 data-i18n="header.title">🕒 zeClock</h1>
         <div id="connection-status" class="status-dot connected" data-i18n-title="status.connected" title="Connected"></div>
         <div class="header-actions">
+            <button class="btn-icon theme-toggle" id="theme-toggle" data-i18n-title="settings.theme_toggle" title="Toggle theme">
+                <span class="theme-icon">🌙</span>
+            </button>
             <button class="btn-icon" onclick="downloadSettings()" data-i18n-title="header.download_settings" title="Download settings backup">⬇️</button>
             <label class="btn-icon" data-i18n-title="header.upload_settings" title="Upload settings backup">⬆️
                 <input type="file" id="upload-settings-input" accept=".json" onchange="uploadSettings(event)" style="display:none">
@@ -144,152 +147,214 @@
 
         <!-- Settings Tab -->
         <section id="tab-settings" class="tab-content">
-            <div id="config-status" style="position: sticky; top: 0; z-index: 10; padding: 0.5rem 1rem; text-align: center; font-weight: bold; border-radius: 4px; display: none;"></div>
-
-            <!-- General & Display -->
-            <div class="card">
-                <h2 data-i18n="settings.general">General</h2>
-                <div class="settings-grid">
-                    <div class="form-group">
-                        <label for="cfg-language" data-i18n="settings.language">Language</label>
-                        <select id="cfg-language">
-                            <option value="en">English</option>
-                            <option value="fr">Français</option>
-                            <option value="de">Deutsch</option>
-                            <option value="es">Español</option>
-                        </select>
-                        <p class="field-description" data-i18n="settings.language_desc">Language for the interface and all plugins (day names, weather, etc.)</p>
-                    </div>
-                    <div class="form-group">
-                        <label for="cfg-font" data-i18n="settings.font">Font</label>
-                        <select id="cfg-font">
-                            <option value="STANDARD">STANDARD</option>
-                            <option value="BOLD">BOLD</option>
-                            <option value="NARROW">NARROW</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Location -->
-            <details class="card collapsible">
-                <summary><h2 data-i18n="settings.location">📍 Location</h2></summary>
-                <div class="collapsible-content">
-                    <div class="form-group">
-                        <label for="cfg-location-search" data-i18n="settings.location_search">Search city or address</label>
-                        <div class="location-input-wrapper">
-                            <input type="text" id="cfg-location-search" class="location-autocomplete-input" data-i18n-placeholder="settings.location_search_placeholder" placeholder="Start typing a city or address..." autocomplete="off">
-                            <div class="location-coords" id="cfg-location-search-coords"></div>
-                        </div>
-                    </div>
-                    <div class="settings-grid">
-                        <div class="form-group">
-                            <label for="cfg-latitude" data-i18n="settings.latitude">Latitude</label>
-                            <input type="number" id="cfg-latitude" step="0.0001" placeholder="45.1885" readonly>
-                        </div>
-                        <div class="form-group">
-                            <label for="cfg-longitude" data-i18n="settings.longitude">Longitude</label>
-                            <input type="number" id="cfg-longitude" step="0.0001" placeholder="5.7245" readonly>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="cfg-city" data-i18n="settings.city_name">City Name</label>
-                        <input type="text" id="cfg-city" placeholder="Grenoble" readonly>
-                    </div>
-                    <p class="field-description" data-i18n="settings.location_hint">Coordinates and city name are auto-filled when you select a location above.</p>
-                </div>
-            </details>
-
-            <!-- Hardware: ZeDMD + Brightness -->
-            <details class="card collapsible">
-                <summary><h2 data-i18n="settings.hardware">🖥️ Hardware</h2></summary>
-                <div class="collapsible-content">
-                    <div class="settings-section">
-                        <h3 data-i18n="settings.zedmd_backend">ZeDMD Backend</h3>
+            <div class="settings-layout">
+                <button class="sidebar-hamburger" id="sidebar-hamburger" aria-label="Menu">☰</button>
+                <div class="sidebar-overlay" id="sidebar-overlay"></div>
+                <nav class="settings-sidebar" id="settings-sidebar">
+                    <button class="sidebar-item active" data-category="general">
+                        <span class="sidebar-icon">⚙️</span>
+                        <span class="sidebar-label" data-i18n="settings.cat_general">General</span>
+                    </button>
+                    <button class="sidebar-item" data-category="location">
+                        <span class="sidebar-icon">📍</span>
+                        <span class="sidebar-label" data-i18n="settings.cat_location">Location</span>
+                    </button>
+                    <button class="sidebar-item" data-category="hardware">
+                        <span class="sidebar-icon">🖥️</span>
+                        <span class="sidebar-label" data-i18n="settings.cat_hardware">Hardware</span>
+                    </button>
+                    <button class="sidebar-item" data-category="connectivity">
+                        <span class="sidebar-icon">🔌</span>
+                        <span class="sidebar-label" data-i18n="settings.cat_connectivity">Connectivity</span>
+                    </button>
+                    <button class="sidebar-item" data-category="plugins">
+                        <span class="sidebar-icon">🧩</span>
+                        <span class="sidebar-label" data-i18n="settings.cat_plugins">Plugins</span>
+                    </button>
+                    <button class="sidebar-item" data-category="plugin-config">
+                        <span class="sidebar-icon">🔧</span>
+                        <span class="sidebar-label" data-i18n="settings.cat_plugin_config">Plugin Configuration</span>
+                    </button>
+                    <div id="plugin-config-subitems" class="sidebar-subitems"></div>
+                    <button class="sidebar-item" data-category="debug">
+                        <span class="sidebar-icon">🐛</span>
+                        <span class="sidebar-label" data-i18n="settings.cat_debug">Debug</span>
+                    </button>
+                </nav>
+                <div class="settings-content" id="settings-content">
+                    <!-- General Panel -->
+                    <div class="settings-panel active" data-panel="general">
+                        <h2 data-i18n="settings.general">General</h2>
                         <div class="settings-grid">
                             <div class="form-group">
-                                <label for="cfg-wifi-addr" data-i18n="settings.wifi_addr">ZeDMD WiFi Address</label>
-                                <input type="text" id="cfg-wifi-addr" placeholder="192.168.0.35">
+                                <label for="cfg-language" data-i18n="settings.language">Language</label>
+                                <select id="cfg-language">
+                                    <option value="en">English</option>
+                                    <option value="fr">Français</option>
+                                    <option value="de">Deutsch</option>
+                                    <option value="es">Español</option>
+                                </select>
+                                <p class="field-description" data-i18n="settings.language_desc">Language for the interface and all plugins (day names, weather, etc.)</p>
                             </div>
                             <div class="form-group">
-                                <label for="cfg-brightness" data-i18n="settings.default_brightness">Default Brightness (0-15)</label>
-                                <input type="number" id="cfg-brightness" min="0" max="15" value="10">
+                                <label for="cfg-font" data-i18n="settings.font">Font</label>
+                                <select id="cfg-font">
+                                    <option value="STANDARD">STANDARD</option>
+                                    <option value="BOLD">BOLD</option>
+                                    <option value="NARROW">NARROW</option>
+                                </select>
                             </div>
                         </div>
+                        <div class="settings-actions" style="margin-top: 1.5rem;">
+                            <button class="btn btn-secondary" onclick="downloadSettings()">
+                                <span>⬇️</span> <span data-i18n="settings.backup_download">Download Backup</span>
+                            </button>
+                            <label class="btn btn-secondary">
+                                <span>⬆️</span> <span data-i18n="settings.backup_restore">Restore Backup</span>
+                                <input type="file" accept=".json" onchange="uploadSettings(event)" hidden>
+                            </label>
+                        </div>
                     </div>
-                    <div class="settings-divider"></div>
-                    <div class="settings-section">
-                        <h3 data-i18n="settings.brightness_schedule">Brightness Schedule</h3>
+
+                    <!-- Location Panel -->
+                    <div class="settings-panel" data-panel="location">
+                        <h2 data-i18n="settings.location">📍 Location</h2>
+                        <div class="form-group">
+                            <label for="cfg-location-search" data-i18n="settings.location_search">Search city or address</label>
+                            <div class="location-input-wrapper">
+                                <input type="text" id="cfg-location-search" class="location-autocomplete-input" data-i18n-placeholder="settings.location_search_placeholder" placeholder="Start typing a city or address..." autocomplete="off">
+                                <div class="location-coords" id="cfg-location-search-coords"></div>
+                            </div>
+                        </div>
                         <div class="settings-grid">
                             <div class="form-group">
-                                <label for="cfg-max-brightness" data-i18n="settings.max_brightness">Max Brightness (0-15)</label>
-                                <input type="number" id="cfg-max-brightness" min="0" max="15" value="7">
+                                <label for="cfg-latitude" data-i18n="settings.latitude">Latitude</label>
+                                <input type="number" id="cfg-latitude" step="0.0001" placeholder="45.1885" readonly>
                             </div>
                             <div class="form-group">
-                                <label for="cfg-schedule-default" data-i18n="settings.schedule_default">Default Schedule (e.g. 22:00-08:00 20%)</label>
-                                <input type="text" id="cfg-schedule-default" placeholder="22:00-08:00 20%">
+                                <label for="cfg-longitude" data-i18n="settings.longitude">Longitude</label>
+                                <input type="number" id="cfg-longitude" step="0.0001" placeholder="5.7245" readonly>
                             </div>
-                            <div class="form-group">
-                                <label for="cfg-sunrise-brightness" data-i18n="settings.sunrise_brightness">Sunrise Brightness %</label>
-                                <input type="text" id="cfg-sunrise-brightness" placeholder="100%">
-                            </div>
-                            <div class="form-group">
-                                <label for="cfg-sunset-brightness" data-i18n="settings.sunset_brightness">Sunset Brightness %</label>
-                                <input type="text" id="cfg-sunset-brightness" placeholder="10%">
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </details>
-
-            <!-- Connectivity -->
-            <details class="card collapsible">
-                <summary><h2 data-i18n="settings.connectivity">🔌 Connectivity</h2></summary>
-                <div class="collapsible-content">
-                    <h3 data-i18n="settings.rest_api">REST API</h3>
-                    <div class="settings-grid">
-                        <div class="form-group">
-                            <label><input type="checkbox" id="cfg-rest-enabled" checked> <span data-i18n="settings.rest_enabled">Enabled</span></label>
                         </div>
                         <div class="form-group">
-                            <label for="cfg-rest-port" data-i18n="settings.rest_port">Port</label>
-                            <input type="number" id="cfg-rest-port" min="1" max="65535" value="8080">
+                            <label for="cfg-city" data-i18n="settings.city_name">City Name</label>
+                            <input type="text" id="cfg-city" placeholder="Grenoble" readonly>
+                        </div>
+                        <p class="field-description" data-i18n="settings.location_hint">Coordinates and city name are auto-filled when you select a location above.</p>
+                    </div>
+
+                    <!-- Hardware Panel -->
+                    <div class="settings-panel" data-panel="hardware">
+                        <h2 data-i18n="settings.hardware">🖥️ Hardware</h2>
+                        <div class="settings-section">
+                            <h3 data-i18n="settings.zedmd_backend">ZeDMD Backend</h3>
+                            <div class="settings-grid">
+                                <div class="form-group">
+                                    <label for="cfg-wifi-addr" data-i18n="settings.wifi_addr">ZeDMD WiFi Address</label>
+                                    <input type="text" id="cfg-wifi-addr" placeholder="192.168.0.35">
+                                </div>
+                                <div class="form-group">
+                                    <label for="cfg-brightness" data-i18n="settings.default_brightness">Default Brightness (0-15)</label>
+                                    <input type="number" id="cfg-brightness" min="0" max="15" value="10">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="settings-divider"></div>
+                        <div class="settings-section">
+                            <h3 data-i18n="settings.brightness_schedule">Brightness Schedule</h3>
+                            <div class="settings-grid">
+                                <div class="form-group">
+                                    <label for="cfg-max-brightness" data-i18n="settings.max_brightness">Max Brightness (0-15)</label>
+                                    <input type="number" id="cfg-max-brightness" min="0" max="15" value="7">
+                                </div>
+                                <div class="form-group">
+                                    <label for="cfg-schedule-default" data-i18n="settings.schedule_default">Default Schedule (e.g. 22:00-08:00 20%)</label>
+                                    <input type="text" id="cfg-schedule-default" placeholder="22:00-08:00 20%">
+                                </div>
+                                <div class="form-group">
+                                    <label for="cfg-sunrise-brightness" data-i18n="settings.sunrise_brightness">Sunrise Brightness %</label>
+                                    <input type="text" id="cfg-sunrise-brightness" placeholder="100%">
+                                </div>
+                                <div class="form-group">
+                                    <label for="cfg-sunset-brightness" data-i18n="settings.sunset_brightness">Sunset Brightness %</label>
+                                    <input type="text" id="cfg-sunset-brightness" placeholder="10%">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Connectivity Panel -->
+                    <div class="settings-panel" data-panel="connectivity">
+                        <h2 data-i18n="settings.connectivity">🔌 Connectivity</h2>
+                        <h3 data-i18n="settings.rest_api">REST API</h3>
+                        <div class="settings-grid">
+                            <div class="form-group">
+                                <label><input type="checkbox" id="cfg-rest-enabled" checked> <span data-i18n="settings.rest_enabled">Enabled</span></label>
+                            </div>
+                            <div class="form-group">
+                                <label for="cfg-rest-port" data-i18n="settings.rest_port">Port</label>
+                                <input type="number" id="cfg-rest-port" min="1" max="65535" value="8080">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Plugins Panel -->
+                    <div class="settings-panel" data-panel="plugins">
+                        <h2 data-i18n="settings.plugins">🧩 Plugins</h2>
+                        <div class="settings-grid">
+                            <div class="form-group">
+                                <label for="cfg-default-plugin" data-i18n="settings.default_plugin">Default Plugin (displayed between rotations)</label>
+                                <select id="cfg-default-plugin">
+                                    <option value="clock">clock</option>
+                                </select>
+                                <p class="field-description" data-i18n="settings.default_plugin_desc">The plugin displayed between each rotation plugin (e.g. the clock between weather, pinball, etc.)</p>
+                            </div>
+                            <div class="form-group">
+                                <label for="cfg-clock-seconds" data-i18n="settings.display_duration">Display Duration (seconds between rotations)</label>
+                                <input type="number" id="cfg-clock-seconds" min="1" max="300" value="5">
+                            </div>
+                        </div>
+                        <div id="cfg-plugins-list"></div>
+                        <p class="field-description" data-i18n="settings.plugin_weight_desc">Higher weight = more likely to be selected. Set to 0 to disable a plugin.</p>
+                    </div>
+
+                    <!-- Plugin Configuration Panel -->
+                    <div class="settings-panel" data-panel="plugin-config">
+                        <div id="plugin-config-section">
+                            <h2 data-i18n="settings.plugin_config">🔧 Plugin Configuration</h2>
+                            <div id="plugin-config-forms"></div>
+                        </div>
+                    </div>
+
+                    <!-- Debug Panel -->
+                    <div class="settings-panel" data-panel="debug">
+                        <h2 data-i18n="settings.cat_debug">🐛 Debug</h2>
+
+                        <div class="debug-info-section">
+                            <h3 data-i18n="settings.debug_system">System Info</h3>
+                            <pre id="debug-info" class="status-box">Loading...</pre>
+                            <button class="btn btn-secondary btn-small" onclick="loadDebugInfo()" style="margin-top: 0.5rem;" data-i18n="settings.debug_refresh">Refresh</button>
+                        </div>
+
+                        <div class="debug-logs-section" style="margin-top: 1.5rem;">
+                            <h3 data-i18n="settings.debug_logs">Live Logs</h3>
+                            <div class="debug-controls" style="margin-bottom: 0.5rem; display: flex; gap: 0.5rem; align-items: center;">
+                                <button class="btn btn-success btn-small" id="logs-toggle" onclick="toggleLogStream()">▶ Start</button>
+                                <button class="btn btn-secondary btn-small" onclick="clearLogs()">Clear</button>
+                                <label style="font-size: 0.8rem; color: var(--text-muted);">
+                                    <input type="checkbox" id="logs-autoscroll" checked> Auto-scroll
+                                </label>
+                            </div>
+                            <pre id="debug-logs" class="status-box debug-log-viewer"></pre>
                         </div>
                     </div>
                 </div>
-            </details>
-
-            <!-- Plugins -->
-            <div class="card">
-                <h2 data-i18n="settings.plugins">🧩 Plugins</h2>
-                <div class="settings-grid">
-                    <div class="form-group">
-                        <label for="cfg-default-plugin" data-i18n="settings.default_plugin">Default Plugin (displayed between rotations)</label>
-                        <select id="cfg-default-plugin">
-                            <option value="clock">clock</option>
-                        </select>
-                        <p class="field-description" data-i18n="settings.default_plugin_desc">The plugin displayed between each rotation plugin (e.g. the clock between weather, pinball, etc.)</p>
-                    </div>
-                    <div class="form-group">
-                        <label for="cfg-clock-seconds" data-i18n="settings.display_duration">Display Duration (seconds between rotations)</label>
-                        <input type="number" id="cfg-clock-seconds" min="1" max="300" value="5">
-                    </div>
-                </div>
-                <div id="cfg-plugins-list"></div>
-                <p class="field-description" data-i18n="settings.plugin_weight_desc">Higher weight = more likely to be selected. Set to 0 to disable a plugin.</p>
             </div>
-
-            <!-- Auto-generated plugin configuration forms -->
-            <div class="card" id="plugin-config-section" style="display: none;">
-                <h2 data-i18n="settings.plugin_config">🔧 Plugin Configuration</h2>
-                <nav class="plugin-tabs" id="plugin-config-tabs"></nav>
-                <div id="plugin-config-forms"></div>
-            </div>
-
         </section>
     </main>
 
     <script src="i18n.js"></script>
     <script src="app.js"></script>
+    <div id="toast-container" class="toast-container" aria-live="polite"></div>
 </body>
 </html>

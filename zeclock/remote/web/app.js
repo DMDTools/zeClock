@@ -4,6 +4,112 @@ const API_BASE = window.location.origin;
 let timerInterval = null;
 let statusInterval = null;
 
+// --- Settings Sidebar Categories ---
+
+const SETTINGS_CATEGORIES = [
+  { id: 'general', icon: '⚙️', i18nKey: 'settings.cat_general' },
+  { id: 'location', icon: '📍', i18nKey: 'settings.cat_location' },
+  { id: 'hardware', icon: '🖥️', i18nKey: 'settings.cat_hardware' },
+  { id: 'connectivity', icon: '🔌', i18nKey: 'settings.cat_connectivity' },
+  { id: 'plugins', icon: '🧩', i18nKey: 'settings.cat_plugins' },
+  { id: 'plugin-config', icon: '🔧', i18nKey: 'settings.cat_plugin_config' },
+];
+
+// --- Toast Notification API ---
+
+let _toastId = 0;
+
+function showToast(message, type = 'success', duration) {
+    // Default duration: 5000ms for error, 3000ms for success/info
+    if (duration === undefined) {
+        duration = type === 'error' ? 5000 : 3000;
+    }
+
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const id = ++_toastId;
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    toast.dataset.toastId = id;
+
+    // Respect prefers-reduced-motion
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reducedMotion) {
+        toast.style.animation = 'none';
+        toast.style.opacity = '1';
+    }
+
+    // Append to container (newest at bottom)
+    container.appendChild(toast);
+
+    // Auto-remove after duration
+    setTimeout(() => {
+        if (toast.parentNode) {
+            toast.remove();
+        }
+    }, duration);
+
+    return id;
+}
+
+// --- Settings Sidebar Navigation ---
+
+function initSettingsSidebar() {
+    const sidebar = document.getElementById('settings-sidebar');
+    const sidebarItems = document.querySelectorAll('.sidebar-item');
+    const panels = document.querySelectorAll('.settings-panel');
+    const hamburger = document.getElementById('sidebar-hamburger');
+    const overlay = document.getElementById('sidebar-overlay');
+
+    // Hamburger menu toggle
+    if (hamburger) {
+        hamburger.addEventListener('click', () => {
+            sidebar.classList.toggle('open');
+            overlay.classList.toggle('open');
+        });
+    }
+    if (overlay) {
+        overlay.addEventListener('click', () => {
+            sidebar.classList.remove('open');
+            overlay.classList.remove('open');
+        });
+    }
+
+    sidebarItems.forEach(item => {
+        item.addEventListener('click', () => {
+            // Remove active class from all sidebar items
+            sidebarItems.forEach(si => si.classList.remove('active'));
+            // Add active class to clicked item
+            item.classList.add('active');
+            // Hide all panels
+            panels.forEach(panel => panel.classList.remove('active'));
+            // Show the panel matching the clicked button's data-category
+            const category = item.dataset.category;
+            const targetPanel = document.querySelector(`.settings-panel[data-panel="${category}"]`);
+            if (targetPanel) {
+                targetPanel.classList.add('active');
+            }
+            // Load debug info when debug panel is selected
+            if (category === 'debug') {
+                loadDebugInfo();
+            }
+            // Close hamburger menu on mobile after selection
+            sidebar.classList.remove('open');
+            if (overlay) overlay.classList.remove('open');
+        });
+    });
+
+    // Set "General" as the default active category
+    sidebarItems.forEach(si => si.classList.remove('active'));
+    panels.forEach(panel => panel.classList.remove('active'));
+    const generalButton = document.querySelector('.sidebar-item[data-category="general"]');
+    const generalPanel = document.querySelector('.settings-panel[data-panel="general"]');
+    if (generalButton) generalButton.classList.add('active');
+    if (generalPanel) generalPanel.classList.add('active');
+}
+
 // --- Tab navigation ---
 
 document.querySelectorAll('.tab').forEach(tab => {
@@ -20,6 +126,7 @@ document.querySelectorAll('.tab').forEach(tab => {
             stopTimerPolling();
         }
         if (tab.dataset.tab === 'settings') {
+            initSettingsSidebar();
             loadConfig();
         }
     });
@@ -275,6 +382,66 @@ async function quickSpeakerMessage(text) {
     await api('/api/text', 'POST', { text, duration: 10 });
 }
 
+// --- Theme Toggle ---
+
+function initTheme() {
+    let theme = null;
+
+    // Try to read stored preference from localStorage
+    try {
+        theme = localStorage.getItem('zeclock-theme');
+    } catch (e) {
+        // localStorage unavailable (private browsing) — ignore
+    }
+
+    // If no stored value, check OS preference
+    if (!theme) {
+        const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+        theme = prefersLight ? 'light' : 'dark';
+    }
+
+    // Validate stored value; default to dark if corrupted
+    if (theme !== 'light' && theme !== 'dark') {
+        theme = 'dark';
+    }
+
+    applyTheme(theme);
+}
+
+function applyTheme(theme) {
+    if (theme === 'light') {
+        document.documentElement.setAttribute('data-theme', 'light');
+    } else {
+        document.documentElement.removeAttribute('data-theme');
+    }
+
+    // Update the toggle icon
+    const iconEl = document.querySelector('#theme-toggle .theme-icon');
+    if (iconEl) {
+        iconEl.textContent = theme === 'light' ? '☀️' : '🌙';
+    }
+}
+
+function toggleTheme() {
+    const currentTheme = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+    const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+
+    applyTheme(newTheme);
+
+    // Persist to localStorage (gracefully handle private browsing)
+    try {
+        localStorage.setItem('zeclock-theme', newTheme);
+    } catch (e) {
+        // localStorage unavailable — theme still applied for current session
+    }
+}
+
+// Attach theme toggle click handler
+document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+
+// Initialize theme immediately (before async init)
+initTheme();
+
 // --- Initialization ---
 
 async function init() {
@@ -440,8 +607,6 @@ function updatePluginWeight(slider) {
 }
 
 async function saveConfig() {
-    const statusEl = document.getElementById('config-status');
-
     // Build zeclock.ini structure
     const config = {};
 
@@ -526,11 +691,6 @@ async function saveConfig() {
     ]);
 
     if (configResult?.success && pluginsResult?.success) {
-        statusEl.textContent = t('config.saved');
-        statusEl.style.background = '#1a3a1a';
-        statusEl.style.color = '#6fcf6f';
-        setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
-
         // If language changed, apply it immediately
         const newLang = document.getElementById('cfg-language').value || 'en';
         if (newLang !== currentLang) {
@@ -538,9 +698,7 @@ async function saveConfig() {
         }
     } else {
         const msg = configResult?.message || pluginsResult?.message || 'Unknown error';
-        statusEl.textContent = t('config.error') + msg;
-        statusEl.style.background = '#5c1010';
-        statusEl.style.color = '#ff6b6b';
+        throw new Error(msg);
     }
 }
 
@@ -572,37 +730,62 @@ function attachAutoSaveListeners() {
     });
 }
 
+function showSavingIndicator(target) {
+    // Don't duplicate if already showing
+    if (target.parentNode && target.parentNode.querySelector('.saving-indicator')) return;
+    const indicator = document.createElement('span');
+    indicator.className = 'saving-indicator';
+    indicator.setAttribute('aria-label', t('config.saving'));
+    // Insert after the target field
+    target.parentNode.insertBefore(indicator, target.nextSibling);
+}
+
+function hideSavingIndicator(target) {
+    if (!target.parentNode) return;
+    const indicator = target.parentNode.querySelector('.saving-indicator');
+    if (indicator) indicator.remove();
+}
+
 function scheduleAutoSave(target) {
     if (_autoSaveTimer) clearTimeout(_autoSaveTimer);
-
-    // Show saving status at the top of settings
-    const statusEl = document.getElementById('config-status');
-    if (statusEl) {
-        statusEl.textContent = t('config.saving');
-        statusEl.style.background = '#444';
-        statusEl.style.color = '#fff';
-        statusEl.style.display = 'block';
-    }
 
     // Determine if this is a plugin-specific field or a global setting
     const pluginCard = target.closest('.plugin-config-card');
 
     _autoSaveTimer = setTimeout(async () => {
-        try {
-            if (pluginCard) {
-                const pluginName = pluginCard.dataset.plugin;
-                await savePluginConfig(pluginName);
-            } else {
-                await saveConfig();
-            }
-        } catch (err) {
-            console.error('Auto-save error:', err);
-            if (statusEl) {
-                statusEl.textContent = t('config.save_failed');
-                statusEl.style.background = '#5c1010';
-                statusEl.style.color = '#ff6b6b';
+        showSavingIndicator(target);
+
+        const maxRetries = 2;
+        let attempt = 0;
+        let lastError = null;
+
+        while (attempt <= maxRetries) {
+            try {
+                if (pluginCard) {
+                    const pluginName = pluginCard.dataset.plugin;
+                    await savePluginConfig(pluginName);
+                } else {
+                    await saveConfig();
+                }
+                // Success
+                hideSavingIndicator(target);
+                showToast(t('config.saved'), 'success');
+                return;
+            } catch (err) {
+                lastError = err;
+                attempt++;
+                console.error(`Auto-save attempt ${attempt} failed:`, err);
+                if (attempt <= maxRetries) {
+                    // Brief pause before retry
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                }
             }
         }
+
+        // All retries exhausted
+        hideSavingIndicator(target);
+        showToast(t('config.save_failed_final'), 'error');
+        // User's value is retained in the field (no reset)
     }, 800);
 }
 
@@ -613,18 +796,23 @@ async function loadPluginConfigForms(currentPluginsConfig) {
     if (!schemaResp || !schemaResp.plugins) return;
 
     const section = document.getElementById('plugin-config-section');
-    const tabsContainer = document.getElementById('plugin-config-tabs');
     const formsContainer = document.getElementById('plugin-config-forms');
+    const subitemsContainer = document.getElementById('plugin-config-subitems');
     const plugins = schemaResp.plugins.filter(p => p.schema && p.schema.length > 0);
+
+    // Hide or show the "Plugin Configuration" sidebar item based on configurable plugins
+    const pluginConfigSidebarItem = document.querySelector('.sidebar-item[data-category="plugin-config"]');
 
     if (plugins.length === 0) {
         section.style.display = 'none';
-        tabsContainer.innerHTML = '';
         formsContainer.innerHTML = '';
+        if (subitemsContainer) subitemsContainer.innerHTML = '';
+        if (pluginConfigSidebarItem) pluginConfigSidebarItem.style.display = 'none';
         return;
     }
 
     section.style.display = '';
+    if (pluginConfigSidebarItem) pluginConfigSidebarItem.style.display = '';
 
     // Get current settings from plugins.yaml for pre-filling form values
     const currentSettings = {};
@@ -636,10 +824,12 @@ async function loadPluginConfigForms(currentPluginsConfig) {
         });
     }
 
-    // Render tabs
-    tabsContainer.innerHTML = plugins.map((plugin, i) =>
-        `<button class="plugin-tab ${i === 0 ? 'active' : ''}" data-plugin-tab="${plugin.name}" onclick="switchPluginTab('${plugin.name}')">${capitalize(plugin.name)}</button>`
-    ).join('');
+    // Render sidebar sub-items for each plugin (replaces tabs)
+    if (subitemsContainer) {
+        subitemsContainer.innerHTML = plugins.map((plugin, i) =>
+            `<button class="sidebar-subitem ${i === 0 ? 'active' : ''}" data-plugin-tab="${plugin.name}" onclick="switchPluginTab('${plugin.name}')">${capitalize(plugin.name)}</button>`
+        ).join('');
+    }
 
     // Render panels
     formsContainer.innerHTML = plugins.map((plugin, i) => {
@@ -662,14 +852,29 @@ async function loadPluginConfigForms(currentPluginsConfig) {
 }
 
 function switchPluginTab(pluginName) {
-    // Update tab buttons
-    document.querySelectorAll('.plugin-tab').forEach(tab => {
-        tab.classList.toggle('active', tab.dataset.pluginTab === pluginName);
+    // Update sidebar sub-item buttons
+    document.querySelectorAll('.sidebar-subitem[data-plugin-tab]').forEach(item => {
+        item.classList.toggle('active', item.dataset.pluginTab === pluginName);
     });
     // Update panels
     document.querySelectorAll('.plugin-config-panel').forEach(panel => {
         panel.classList.toggle('active', panel.dataset.pluginPanel === pluginName);
     });
+    // Ensure the plugin-config panel is visible
+    const pluginConfigPanel = document.querySelector('.settings-panel[data-panel="plugin-config"]');
+    if (pluginConfigPanel && !pluginConfigPanel.classList.contains('active')) {
+        document.querySelectorAll('.settings-panel').forEach(p => p.classList.remove('active'));
+        pluginConfigPanel.classList.add('active');
+        // Also update main sidebar active state
+        document.querySelectorAll('.sidebar-item').forEach(si => si.classList.remove('active'));
+        const pluginConfigBtn = document.querySelector('.sidebar-item[data-category="plugin-config"]');
+        if (pluginConfigBtn) pluginConfigBtn.classList.add('active');
+    }
+    // Close hamburger menu on mobile
+    const sidebar = document.getElementById('settings-sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    if (sidebar) sidebar.classList.remove('open');
+    if (overlay) overlay.classList.remove('open');
 }
 
 function renderPluginField(pluginName, field, settings) {
@@ -1158,8 +1363,7 @@ async function savePluginConfig(pluginName) {
     // First, get the current plugins.yaml content
     const pluginsResp = await api('/api/config/plugins');
     if (!pluginsResp || !pluginsResp.data) {
-        showPluginSaveStatus(pluginName, false, 'Failed to load current config');
-        return;
+        throw new Error('Failed to load current config');
     }
 
     const pluginsConfig = pluginsResp.data;
@@ -1222,10 +1426,10 @@ async function savePluginConfig(pluginName) {
     const result = await api('/api/config/plugins', 'POST', pluginsConfig);
 
     if (result && result.success) {
-        showPluginSaveStatus(pluginName, true, 'Settings saved and applied.');
+        // Success — no need to call showPluginSaveStatus; caller handles feedback
     } else {
         const msg = result?.message || 'Unknown error';
-        showPluginSaveStatus(pluginName, false, msg);
+        throw new Error(msg);
     }
 }
 
@@ -1400,19 +1604,10 @@ function escapeHtml(text) {
 }
 
 function showPluginSaveStatus(pluginName, success, message) {
-    const statusEl = document.getElementById('config-status');
-    if (!statusEl) return;
-
-    statusEl.style.display = 'block';
     if (success) {
-        statusEl.textContent = t('config.saved');
-        statusEl.style.background = '#1a3a1a';
-        statusEl.style.color = '#6fcf6f';
-        setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
+        showToast(t('config.saved'), 'success');
     } else {
-        statusEl.textContent = t('config.error') + message;
-        statusEl.style.background = '#5c1010';
-        statusEl.style.color = '#ff6b6b';
+        showToast(t('config.error') + message, 'error');
     }
 }
 
@@ -1421,7 +1616,7 @@ function showPluginSaveStatus(pluginName, success, message) {
 async function downloadSettings() {
     const resp = await api('/api/config/export');
     if (!resp || !resp.success) {
-        alert(t('alert.export_failed') + (resp?.message || 'Unknown error'));
+        showToast(t('alert.export_failed') + (resp?.message || 'Unknown error'), 'error');
         return;
     }
 
@@ -1444,6 +1639,19 @@ async function uploadSettings(event) {
     // Reset the input so the same file can be re-selected
     event.target.value = '';
 
+    // Validate file extension
+    if (!file.name.endsWith('.json')) {
+        showToast(t('settings.invalid_json'), 'error');
+        return;
+    }
+
+    // Validate file size (max 1MB)
+    if (file.size > 1024 * 1024) {
+        showToast(t('settings.file_too_large'), 'error');
+        return;
+    }
+
+    // Confirmation dialog before overwrite
     if (!confirm(t('alert.restore_confirm'))) {
         return;
     }
@@ -1453,18 +1661,171 @@ async function uploadSettings(event) {
         const text = await file.text();
         data = JSON.parse(text);
     } catch (err) {
-        alert(t('alert.invalid_file') + err.message);
+        showToast(t('settings.invalid_json'), 'error');
         return;
     }
 
     const resp = await api('/api/config/import', 'POST', data);
     if (resp && resp.success) {
-        alert(t('alert.restore_success'));
-        // Refresh the settings tab if open
+        showToast(t('alert.restore_success'), 'success');
         loadConfig();
     } else {
-        alert(t('alert.restore_failed') + (resp?.message || 'Unknown error'));
+        showToast(t('alert.restore_failed') + (resp?.message || 'Unknown error'), 'error');
     }
+}
+
+// --- Debug Panel: Log streaming & system info ---
+
+let _logEventSource = null;
+let _logStreamActive = false;
+
+async function loadDebugInfo() {
+    const infoEl = document.getElementById('debug-info');
+    if (!infoEl) return;
+
+    const resp = await api('/api/debug/info');
+    if (!resp || !resp.data) {
+        infoEl.textContent = resp && resp.message ? resp.message : 'Failed to load debug info.';
+        return;
+    }
+
+    const d = resp.data;
+    let text = '';
+    if (d.system) {
+        text += `Platform:  ${d.system.platform}\n`;
+        text += `Arch:      ${d.system.arch || 'N/A'}\n`;
+        text += `Python:    ${d.system.python}\n`;
+        text += `PID:       ${d.system.pid}\n`;
+        text += `CWD:       ${d.system.cwd}\n`;
+    }
+    if (d.memory) {
+        text += `\n--- Memory ---\n`;
+        if (d.memory.process_rss_mb) {
+            text += `Process RSS:      ${d.memory.process_rss_mb} MB\n`;
+        }
+        if (d.memory.system_total_mb) {
+            text += `System total:     ${d.memory.system_total_mb} MB\n`;
+            text += `System available: ${d.memory.system_available_mb} MB\n`;
+            text += `System used:      ${d.memory.system_percent_used}%\n`;
+        }
+    }
+    if (d.storage && d.storage.total_gb) {
+        text += `\n--- Storage ---\n`;
+        text += `Path:      ${d.storage.path}\n`;
+        text += `Total:     ${d.storage.total_gb} GB\n`;
+        text += `Used:      ${d.storage.used_gb} GB (${d.storage.percent_used}%)\n`;
+        text += `Free:      ${d.storage.free_gb} GB\n`;
+    }
+    if (d.network) {
+        text += `\n--- Network ---\n`;
+        if (d.network.hostname) text += `Hostname:  ${d.network.hostname}\n`;
+        if (d.network.ip) text += `IP:        ${d.network.ip}\n`;
+        if (d.network.interface) {
+            let iface = d.network.interface;
+            if (d.network.ssid) iface += ` (${d.network.ssid})`;
+            text += `Interface: ${iface}\n`;
+        }
+        if (d.network.urls) {
+            text += `\n--- URLs ---\n`;
+            if (d.network.urls.webui) text += `Web UI:    ${d.network.urls.webui}\n`;
+            if (d.network.urls.api) text += `REST API:  ${d.network.urls.api}\n`;
+            if (d.network.urls.mqtt) text += `MQTT:      ${d.network.urls.mqtt}\n`;
+            if (d.network.urls.ssh) text += `SSH:       ${d.network.urls.ssh}\n`;
+        }
+    }
+    if (d.clock) {
+        text += `\n--- Clock ---\n`;
+        text += `Running: ${d.clock.running}\n`;
+        if (d.clock.backend && d.clock.backend.type) {
+            text += `Backend: ${d.clock.backend.type} (connected: ${d.clock.backend.connected})\n`;
+        }
+        text += `Plugins loaded: ${d.clock.plugins_loaded}\n`;
+        if (d.clock.plugins && d.clock.plugins.length > 0) {
+            const active = d.clock.plugins.find(p => p.active);
+            if (active) text += `Active plugin: ${active.name}\n`;
+        }
+    }
+    infoEl.textContent = text;
+}
+
+function toggleLogStream() {
+    if (_logStreamActive) {
+        stopLogStream();
+    } else {
+        startLogStream();
+    }
+}
+
+function startLogStream() {
+    if (_logEventSource) return;
+
+    const logsEl = document.getElementById('debug-logs');
+    const toggleBtn = document.getElementById('logs-toggle');
+    if (!logsEl) return;
+
+    _logEventSource = new EventSource(API_BASE + '/api/logs/stream');
+    _logStreamActive = true;
+    if (toggleBtn) {
+        toggleBtn.textContent = '⏹ Stop';
+        toggleBtn.className = 'btn btn-danger btn-small';
+    }
+
+    _logEventSource.onmessage = (event) => {
+        const line = document.createElement('div');
+        line.className = 'log-line';
+
+        // Color-code by level
+        const msg = event.data;
+        if (msg.includes('[ERROR]')) {
+            line.classList.add('log-error');
+        } else if (msg.includes('[WARNING]')) {
+            line.classList.add('log-warning');
+        } else if (msg.includes('[DEBUG]')) {
+            line.classList.add('log-debug');
+        } else {
+            line.classList.add('log-info');
+        }
+
+        line.textContent = msg;
+        logsEl.appendChild(line);
+
+        // Limit to 500 lines
+        while (logsEl.childElementCount > 500) {
+            logsEl.removeChild(logsEl.firstChild);
+        }
+
+        // Auto-scroll
+        const autoScroll = document.getElementById('logs-autoscroll');
+        if (autoScroll && autoScroll.checked) {
+            logsEl.scrollTop = logsEl.scrollHeight;
+        }
+    };
+
+    _logEventSource.onerror = () => {
+        // SSE reconnects automatically, but update UI if closed
+        if (_logEventSource && _logEventSource.readyState === 2) {
+            stopLogStream();
+            showToast('Log stream disconnected', 'error');
+        }
+    };
+}
+
+function stopLogStream() {
+    if (_logEventSource) {
+        _logEventSource.close();
+        _logEventSource = null;
+    }
+    _logStreamActive = false;
+    const toggleBtn = document.getElementById('logs-toggle');
+    if (toggleBtn) {
+        toggleBtn.textContent = '▶ Start';
+        toggleBtn.className = 'btn btn-success btn-small';
+    }
+}
+
+function clearLogs() {
+    const logsEl = document.getElementById('debug-logs');
+    if (logsEl) logsEl.innerHTML = '';
 }
 
 init();

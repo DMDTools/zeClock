@@ -131,6 +131,27 @@ const translations = {
 
         // Misc
         "plugin.default_badge": "default",
+
+        // Settings sidebar & theme
+        "settings.cat_general": "General",
+        "settings.cat_location": "Location",
+        "settings.cat_hardware": "Hardware",
+        "settings.cat_connectivity": "Connectivity",
+        "settings.cat_plugins": "Plugins",
+        "settings.cat_plugin_config": "Plugin Configuration",
+        "settings.theme_toggle": "Toggle theme",
+        "settings.theme_dark": "Dark",
+        "settings.theme_light": "Light",
+        "config.save_failed_final": "Save failed after retries. Change not applied.",
+        "config.retry_failed": "Retry failed",
+        "settings.backup_download": "Download Backup",
+        "settings.backup_restore": "Restore Backup",
+        "settings.file_too_large": "File too large (max 1MB)",
+        "settings.invalid_json": "Invalid JSON file",
+        "settings.cat_debug": "Debug",
+        "settings.debug_system": "System Info",
+        "settings.debug_logs": "Live Logs",
+        "settings.debug_refresh": "Refresh",
     },
 
     fr: {
@@ -262,6 +283,27 @@ const translations = {
 
         // Misc
         "plugin.default_badge": "défaut",
+
+        // Settings sidebar & theme
+        "settings.cat_general": "Général",
+        "settings.cat_location": "Localisation",
+        "settings.cat_hardware": "Matériel",
+        "settings.cat_connectivity": "Connectivité",
+        "settings.cat_plugins": "Plugins",
+        "settings.cat_plugin_config": "Configuration des plugins",
+        "settings.theme_toggle": "Basculer le thème",
+        "settings.theme_dark": "Sombre",
+        "settings.theme_light": "Clair",
+        "config.save_failed_final": "Échec de la sauvegarde après plusieurs tentatives. Modification non appliquée.",
+        "config.retry_failed": "Nouvelle tentative échouée",
+        "settings.backup_download": "Télécharger la sauvegarde",
+        "settings.backup_restore": "Restaurer la sauvegarde",
+        "settings.file_too_large": "Fichier trop volumineux (max 1 Mo)",
+        "settings.invalid_json": "Fichier JSON invalide",
+        "settings.cat_debug": "Debug",
+        "settings.debug_system": "Infos système",
+        "settings.debug_logs": "Logs en direct",
+        "settings.debug_refresh": "Rafraîchir",
     },
 
     de: {
@@ -393,6 +435,27 @@ const translations = {
 
         // Misc
         "plugin.default_badge": "Standard",
+
+        // Settings sidebar & theme
+        "settings.cat_general": "Allgemein",
+        "settings.cat_location": "Standort",
+        "settings.cat_hardware": "Hardware",
+        "settings.cat_connectivity": "Konnektivität",
+        "settings.cat_plugins": "Plugins",
+        "settings.cat_plugin_config": "Plugin-Konfiguration",
+        "settings.theme_toggle": "Design umschalten",
+        "settings.theme_dark": "Dunkel",
+        "settings.theme_light": "Hell",
+        "config.save_failed_final": "Speichern nach Wiederholungen fehlgeschlagen. Änderung nicht übernommen.",
+        "config.retry_failed": "Wiederholung fehlgeschlagen",
+        "settings.backup_download": "Sicherung herunterladen",
+        "settings.backup_restore": "Sicherung wiederherstellen",
+        "settings.file_too_large": "Datei zu groß (max. 1 MB)",
+        "settings.invalid_json": "Ungültige JSON-Datei",
+        "settings.cat_debug": "Debug",
+        "settings.debug_system": "Systeminfo",
+        "settings.debug_logs": "Live-Logs",
+        "settings.debug_refresh": "Aktualisieren",
     },
 
     es: {
@@ -524,6 +587,27 @@ const translations = {
 
         // Misc
         "plugin.default_badge": "predeterminado",
+
+        // Settings sidebar & theme
+        "settings.cat_general": "General",
+        "settings.cat_location": "Ubicación",
+        "settings.cat_hardware": "Hardware",
+        "settings.cat_connectivity": "Conectividad",
+        "settings.cat_plugins": "Plugins",
+        "settings.cat_plugin_config": "Configuración de plugins",
+        "settings.theme_toggle": "Cambiar tema",
+        "settings.theme_dark": "Oscuro",
+        "settings.theme_light": "Claro",
+        "config.save_failed_final": "Error al guardar tras reintentos. Cambio no aplicado.",
+        "config.retry_failed": "Reintento fallido",
+        "settings.backup_download": "Descargar copia de seguridad",
+        "settings.backup_restore": "Restaurar copia de seguridad",
+        "settings.file_too_large": "Archivo demasiado grande (máx. 1 MB)",
+        "settings.invalid_json": "Archivo JSON inválido",
+        "settings.cat_debug": "Debug",
+        "settings.debug_system": "Info del sistema",
+        "settings.debug_logs": "Logs en vivo",
+        "settings.debug_refresh": "Actualizar",
     },
 };
 
