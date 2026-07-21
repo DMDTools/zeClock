@@ -60,9 +60,23 @@ class RestRemote:
     def __init__(self, config: RestConfig, handler: CommandHandler) -> None:
         self._config = config
         self._handler = handler
-        self._app: web.Application = web.Application()
+        self._app: web.Application = web.Application(
+            middlewares=[self._no_cache_ui_middleware]
+        )
         self._runner: Any = None
         self._setup_routes()
+
+    @web.middleware
+    async def _no_cache_ui_middleware(
+        self, request: web.Request, handler: Any
+    ) -> web.StreamResponse:
+        """Add no-cache headers to all /ui/ responses (JS, CSS, HTML)."""
+        response = await handler(request)
+        if request.path.startswith("/ui/"):
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
 
     def _setup_routes(self) -> None:
         """Register API routes and web UI static file serving."""
