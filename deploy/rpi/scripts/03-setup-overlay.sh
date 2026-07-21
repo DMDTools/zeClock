@@ -155,6 +155,17 @@ sed -i 's/overlayroot=tmpfs //' /boot/firmware/cmdline.txt 2>/dev/null || true
 sed -i 's| fsck.repair=yes||' /boot/firmware/cmdline.txt 2>/dev/null || true
 sed -i 's| resize||' /boot/firmware/cmdline.txt 2>/dev/null || true
 
+# Add fsck.mode=skip and noswap to cmdline.txt (recommended for RO root)
+# fsck.mode=skip prevents any filesystem check writes on boot
+# noswap ensures no swap is ever activated
+if ! grep -q 'fsck.mode=skip' /boot/firmware/cmdline.txt; then
+    sed -i 's/$/ fsck.mode=skip noswap/' /boot/firmware/cmdline.txt
+fi
+
+# Mark /boot/firmware as read-only in fstab (prevents accidental writes)
+# Raspberry Pi OS mounts it rw by default; we only need it during updates
+sed -i '/\/boot\/firmware/s/defaults/defaults,ro/' /etc/fstab 2>/dev/null || true
+
 # ==========================================================================
 # 3. First-boot service: create and format /data partition
 # ==========================================================================
@@ -434,7 +445,29 @@ EOF
 systemctl enable bind-persistent-dirs.service
 
 # ==========================================================================
-# 6. Bash helpers
+# 6. Protect /boot/firmware (FAT32) as read-only after boot
+# ==========================================================================
+
+cat > /etc/systemd/system/boot-firmware-ro.service << 'EOF'
+[Unit]
+Description=Remount /boot/firmware read-only to protect against corruption
+After=local-fs.target
+# Run after any service that may need to write to /boot (e.g., rpi-eeprom-update)
+After=rpi-eeprom-update.service
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+ExecStart=/bin/mount -o remount,ro /boot/firmware
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl enable boot-firmware-ro.service
+
+# ==========================================================================
+# 7. Bash helpers
 # ==========================================================================
 
 cat >> /etc/bash.bashrc << 'BASHRC'
