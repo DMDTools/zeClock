@@ -28,7 +28,14 @@ fi
 
 echo ">>> Copying ${GIF_COUNT} GIFs into image (chroot: ${CHROOT})..."
 mkdir -p "${CHROOT}/home/zeclock/.zeclock/plugins/gif"
-cp -r "${GIF_SRC}/"* "${CHROOT}/home/zeclock/.zeclock/plugins/gif/"
+# Copy GIFs but exclude Windows Zone.Identifier metadata files
+find "${GIF_SRC}" -mindepth 1 -maxdepth 1 -type d -exec cp -r {} "${CHROOT}/home/zeclock/.zeclock/plugins/gif/" \;
+# Copy top-level GIFs if any
+find "${GIF_SRC}" -maxdepth 1 -name '*.gif' -o -name '*.GIF' | while read -r f; do
+    cp "$f" "${CHROOT}/home/zeclock/.zeclock/plugins/gif/"
+done
+# Remove Zone.Identifier files (Windows NTFS metadata)
+find "${CHROOT}/home/zeclock/.zeclock/plugins/gif" -name '*:Zone.Identifier' -delete 2>/dev/null || true
 chown -R 1000:1000 "${CHROOT}/home/zeclock/.zeclock/plugins"
 FINAL_COUNT=$(find "${CHROOT}/home/zeclock/.zeclock/plugins/gif" -name '*.gif' -o -name '*.GIF' | wc -l)
 FINAL_SIZE=$(du -sh "${CHROOT}/home/zeclock/.zeclock/plugins/gif" | cut -f1)

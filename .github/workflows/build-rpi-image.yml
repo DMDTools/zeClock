@@ -105,7 +105,7 @@ jobs:
           cd deploy/rpi
           ls -lh "${OUTPUT_IMG}"
           sudo chown "$(id -u):$(id -g)" "${OUTPUT_IMG}"
-          xz -9 --threads=0 "${OUTPUT_IMG}"
+          xz -3 --threads=0 "${OUTPUT_IMG}"
           ls -lh "${OUTPUT_IMG}.xz"
           echo "IMAGE_FILE=${OUTPUT_IMG}.xz" >> $GITHUB_ENV
           echo "IMAGE_PATH=deploy/rpi/${OUTPUT_IMG}.xz" >> $GITHUB_ENV
