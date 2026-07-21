@@ -105,17 +105,17 @@ jobs:
           cd deploy/rpi
           ls -lh "${OUTPUT_IMG}"
           sudo chown "$(id -u):$(id -g)" "${OUTPUT_IMG}"
-          xz -3 --threads=0 "${OUTPUT_IMG}"
-          ls -lh "${OUTPUT_IMG}.xz"
-          echo "IMAGE_FILE=${OUTPUT_IMG}.xz" >> $GITHUB_ENV
-          echo "IMAGE_PATH=deploy/rpi/${OUTPUT_IMG}.xz" >> $GITHUB_ENV
+          gzip -6 "${OUTPUT_IMG}"
+          ls -lh "${OUTPUT_IMG}.gz"
+          echo "IMAGE_FILE=${OUTPUT_IMG}.gz" >> $GITHUB_ENV
+          echo "IMAGE_PATH=deploy/rpi/${OUTPUT_IMG}.gz" >> $GITHUB_ENV
 
       - name: Upload artifact (PR and feature branch builds)
         if: github.event_name == 'pull_request' || (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/') && github.ref != 'refs/heads/main')
         uses: actions/upload-artifact@v4
         with:
           name: zeclock-rpi-image
-          path: deploy/rpi/${{ env.OUTPUT_IMG }}.xz
+          path: deploy/rpi/${{ env.OUTPUT_IMG }}.gz
           retention-days: 5
 
       - name: Determine release tag
@@ -150,10 +150,10 @@ jobs:
             ### Flash to SD card
 
             ```bash
-            xzcat zeclock-rpi.img.xz | sudo dd of=/dev/sdX bs=4M status=progress
+            gunzip -c zeclock-rpi.img.gz | sudo dd of=/dev/sdX bs=4M status=progress
             ```
 
-            Or use [Raspberry Pi Imager](https://www.raspberrypi.com/software/) / [balenaEtcher](https://etcher.balena.io/).
+            Or use [Raspberry Pi Imager](https://www.raspberrypi.com/software/) / [balenaEtcher](https://etcher.balena.io/) — both support `.img.gz` natively.
 
             ### First boot
 
