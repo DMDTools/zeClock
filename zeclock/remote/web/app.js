@@ -1020,6 +1020,7 @@ async function uploadGifFiles(files, index) {
                 pathInput.value = dir;
                 // Update title
                 entry.querySelector('.gif-dir-title').textContent = dir.split('/').pop();
+                scheduleAutoSave(pathInput);
             }
         } else {
             progressEl.innerHTML = `<span style="color: var(--danger);">❌ ${result.message}</span>`;
@@ -1070,6 +1071,7 @@ async function browseGifDirs(index) {
             pathInput.value = item.dataset.path;
             entry.querySelector('.gif-dir-title').textContent = item.querySelector('.dir-name').textContent;
             dropdown.remove();
+            scheduleAutoSave(pathInput);
         });
     });
 
@@ -1104,6 +1106,7 @@ async function showNewDirDialog() {
         const index = list.children.length;
         const html = renderGifDirEntry({ path: result.data.path, weight: 50, recursive: true }, index);
         list.insertAdjacentHTML('beforeend', html);
+        scheduleAutoSave(list);
     } else {
         showGifDirsStatus(`❌ ${result?.message || 'Failed to create directory'}`);
     }
@@ -1376,6 +1379,7 @@ function selectLocation(input, result) {
     }
 
     removeLocationDropdown(input);
+    scheduleAutoSave(input);
 }
 
 function removeLocationDropdown(input) {
