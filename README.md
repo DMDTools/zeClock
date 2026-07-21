@@ -8,7 +8,7 @@ zeClock can drive ZeDMD hardware directly via `libzedmd`, or output to **any dev
 
 It comes with a **web interface** for easy configuration, and a **browser-based virtual renderer** so you can try everything before buying [ZeDMD-compatible hardware](https://github.com/PPUC/ZeDMD#which-led-panels-are-lcd-screens-are-supported).
 
-For an autonomous setup, install zeClock on a **Raspberry Pi** connected to ZeDMD via USB — just power the Pi and get going with a 24/7 clock.
+For an autonomous setup, install zeClock on a **Raspberry Pi** — ZeDMD is auto-detected via USB or WiFi. Just power the Pi and get going with a 24/7 clock.
 
 ![Demo](docs/zeclock-demo.gif)
 
@@ -89,6 +89,7 @@ AI-based paragliding flyability forecast from [Paraglidable](https://paraglidabl
 Plugins are configured in `~/.zeclock/config/plugins.yaml`:
 
 ```yaml
+language: fr
 clock_display_seconds: 10
 plugins:
   - name: pinball
@@ -101,7 +102,6 @@ plugins:
       city_name: Grenoble
       latitude: 45.19
       longitude: 5.72
-      language: fr
   - name: eyes
     frequency: 10
   - name: stock
@@ -128,16 +128,55 @@ plugins:
     frequency: 15
     settings:
       api_key: YOUR_PARAGLIDABLE_API_KEY
-      language: fr
       # Optional: filter to specific spots (comma-separated substrings)
       # spots: "St Hilaire,Chamrousse"
       page_duration_seconds: 5
 ```
 
+- **language**: Global language for the UI and all plugins (en, fr, de, es)
 - **clock_display_seconds**: How long the clock is shown between plugins (default: 5)
-- **frequency**: Relative probability of selecting each plugin (higher = more often). Set to 0 for plugins activated only via API (like speaker-timer).
+- **frequency**: Relative weight for plugin selection (higher = more often). Set to 0 to disable a plugin without removing it.
 
 Override from CLI: `zeclock --plugins pinball,pong`
+
+## Create Your Own Plugin
+
+zeClock's plugin system is designed for extensibility. Create a single Python file, drop it in `~/.zeclock/plugins/`, and it's automatically discovered at startup.
+
+A minimal plugin is ~30 lines of code:
+
+```python
+from PIL import Image
+from zeclock.plugins.base import ClockPlugin
+
+class MyPlugin(ClockPlugin):
+    @property
+    def name(self) -> str:
+        return "my-plugin"
+
+    @property
+    def description(self) -> str:
+        return "My custom plugin"
+
+    @property
+    def frame_delay_ms(self) -> int:
+        return 100  # 10 FPS
+
+    async def initialize(self, config: dict) -> None:
+        pass
+
+    async def render_frame(self, width: int, height: int):
+        img = Image.new("RGB", (width, height), (0, 0, 0))
+        # Draw your content on img using Pillow
+        return img
+
+    async def cleanup(self) -> None:
+        pass
+```
+
+The full guide covers multi-page plugins, config schemas (auto-generated web UI forms), confetti animations, upscaling helpers, error handling, and testing:
+
+👉 **[Plugin Authoring Guide](docs/plugin_authoring.md)**
 
 ### Per-Plugin Settings
 
@@ -145,7 +184,6 @@ Override from CLI: `zeclock --plugins pinball,pong`
 |--------|---------|-------------|
 | **weather** | `city_name` | City name (triggers geocoding if no lat/lon) |
 | | `latitude` / `longitude` | Coordinates for weather data |
-| | `language` | Language for conditions (e.g. `fr`, `en`) |
 | | `temperature_unit` | `celsius` (default) or `fahrenheit` |
 | | `page_duration_seconds` | Duration per weather page (default: 4) |
 | **stock** | `symbols` | Comma-separated tickers (e.g. `AAPL,MSFT,^FCHI`) |
@@ -161,7 +199,6 @@ Override from CLI: `zeclock --plugins pinball,pong`
 | **pong** | `color` | Game color name (default: `orange`) |
 | **eyes** | `color` | Eyes color name (default: `cyan`) |
 | **paragliding** | `api_key` | Paraglidable API key (required, free from paraglidable.com) |
-| | `language` | `en` or `fr` (default: `en`) |
 | | `spots` | Comma-separated spot name filters (optional) |
 | | `page_duration_seconds` | Duration per page (default: 5) |
 
@@ -324,7 +361,7 @@ ZeDMD hardware optional — browser emulation at `http://localhost:3000`.
 
 ### 🍓 Autonomous (Raspberry Pi)
 
-Plug in a Raspberry Pi, connect ZeDMD via USB, power on — zeClock runs 24/7 unattended.
+Plug in a Raspberry Pi, power on — zeClock auto-detects ZeDMD (USB or WiFi) and runs 24/7 unattended.
 
 #### What You Need
 
