@@ -330,7 +330,7 @@ Plug in a Raspberry Pi, connect ZeDMD via USB, power on — zeClock runs 24/7 un
 
 - Raspberry Pi 4 (or 5) with WiFi
 - microSD card (8 GB+)
-- ZeDMD display connected via USB
+- ZeDMD display (USB or WiFi — auto-detected)
 - Power supply for the Pi and ZeDMD
 
 #### Step 1 — Flash the SD Card
