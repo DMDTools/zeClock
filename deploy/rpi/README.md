@@ -16,18 +16,39 @@ Headless Raspberry Pi OS Lite (64-bit) image built with Packer for running zeClo
 
 - [Packer](https://www.packer.io/) >= 1.9
 - [packer-builder-arm](https://github.com/mkaczanowski/packer-builder-arm) plugin
-- Linux host (or WSL2) with `qemu-user-static` for ARM64 chroot
-- ~4 GB disk space for the build
+- Linux host (or Docker) — the CI uses a native ARM64 runner (no QEMU needed)
 
 ## Build
 
-```bash
-# Install the packer-builder-arm plugin
-packer plugins install github.com/mkaczanowski/packer-builder-arm
+### CI (GitHub Actions)
 
-# Build the image (requires root for loop mounting)
-sudo packer build rpi-zeclock.pkr.hcl
+The image is built automatically on every push to `main` using a native ARM64 runner (`ubuntu-24.04-arm`). No QEMU emulation — fast and reliable (~2 min).
+
+Download the latest image from [GitHub Releases](https://github.com/DMDTools/zeClock/releases).
+
+### Local (with Docker)
+
+```bash
+docker run --rm --privileged \
+    -v /dev:/dev \
+    -v $(pwd)/deploy/rpi:/build \
+    -v /tmp/zeclock-export:/tmp/zeclock-export:ro \
+    -w /build \
+    mkaczanowski/packer-builder-arm:latest \
+    build rpi-zeclock.pkr.hcl
 ```
+
+> Note: On x86 hosts, this uses QEMU user-mode emulation and can be slow/unstable.
+
+### Adding GIFs to the image
+
+The CI-built image doesn't include GIF files. To inject your local GIFs collection (requires WSL2 or Linux):
+
+```bash
+make rpi-inject-gifs
+```
+
+This downloads the latest CI image, expands the partition, injects GIFs from `~/.zeclock/plugins/gif/`, and recompresses. No QEMU needed — uses native loopback mount.
 
 The output is `zeclock-rpi.img` — flash it to an SD card:
 
