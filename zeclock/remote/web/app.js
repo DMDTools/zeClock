@@ -1709,6 +1709,36 @@ async function loadDebugInfo() {
             text += `System used:      ${d.memory.system_percent_used}%\n`;
         }
     }
+    if (d.health && Object.keys(d.health).length > 0) {
+        text += `\n--- Health ---\n`;
+        if (d.health.uptime_human) text += `Uptime:    ${d.health.uptime_human}\n`;
+        if (d.health.cpu_percent !== undefined) {
+            const cpuIcon = d.health.cpu_percent > 80 ? '🔴' : d.health.cpu_percent > 50 ? '🟡' : '🟢';
+            text += `CPU:       ${cpuIcon} ${d.health.cpu_percent}%\n`;
+        }
+        if (d.health.cpu_temp_c !== undefined) {
+            const tempIcon = d.health.cpu_temp_c > 80 ? '🔴' : d.health.cpu_temp_c > 70 ? '🟡' : '🟢';
+            text += `Temp:      ${tempIcon} ${d.health.cpu_temp_c}°C\n`;
+            if (d.health.cpu_temp_c > 80) text += `           ⚠️  CRITICAL — throttling likely\n`;
+            else if (d.health.cpu_temp_c > 70) text += `           ⚠️  High — consider adding heatsink\n`;
+        }
+        if (d.health.throttle_raw !== undefined) {
+            const throttleIcon = d.health.throttle_ok ? '🟢' : '🔴';
+            text += `Throttle:  ${throttleIcon} ${d.health.throttle_raw}`;
+            text += d.health.throttle_ok ? ' (OK)\n' : ' (ISSUES DETECTED)\n';
+            if (!d.health.throttle_ok && d.health.throttle_flags) {
+                const flags = d.health.throttle_flags;
+                if (flags.under_voltage_now) text += `           🔴 Under-voltage NOW\n`;
+                if (flags.throttled_now) text += `           🔴 Throttled NOW\n`;
+                if (flags.freq_capped_now) text += `           🟡 Frequency capped NOW\n`;
+                if (flags.soft_temp_limit_now) text += `           🟡 Soft temp limit NOW\n`;
+                if (flags.under_voltage_occurred) text += `           ⚡ Under-voltage occurred since boot\n`;
+                if (flags.throttled_occurred) text += `           ⚡ Throttled since boot\n`;
+                if (flags.freq_capped_occurred) text += `           ⚡ Freq capped since boot\n`;
+                if (flags.soft_temp_limit_occurred) text += `           ⚡ Soft temp limit since boot\n`;
+            }
+        }
+    }
     if (d.storage && d.storage.total_gb) {
         text += `\n--- Storage ---\n`;
         text += `Path:      ${d.storage.path}\n`;

@@ -1206,6 +1206,7 @@ class RestRemote:
         """GET /api/debug/info — Return system and clock debug information."""
         import platform
         import shutil
+        import subprocess
         import sys
         import os
 
@@ -1261,7 +1262,110 @@ class RestRemote:
                 },
                 "memory": {},
                 "storage": {},
+                "health": {},
             }
+
+            # --- Health: CPU, temperature, throttle, uptime (Raspberry Pi) ---
+            health: dict = {}
+            try:
+                # CPU usage (1-second sample via /proc/stat)
+                try:
+                    with open("/proc/stat") as f:
+                        line1 = f.readline()
+                    import asyncio
+
+                    await asyncio.sleep(0.5)
+                    with open("/proc/stat") as f:
+                        line2 = f.readline()
+
+                    def _parse_cpu(line: str) -> tuple:
+                        parts = line.split()[1:]
+                        idle = int(parts[3]) + int(parts[4])
+                        total = sum(int(p) for p in parts)
+                        return idle, total
+
+                    idle1, total1 = _parse_cpu(line1)
+                    idle2, total2 = _parse_cpu(line2)
+                    delta_total = total2 - total1
+                    delta_idle = idle2 - idle1
+                    if delta_total > 0:
+                        cpu_percent = round((1.0 - delta_idle / delta_total) * 100, 1)
+                        health["cpu_percent"] = cpu_percent
+                except (OSError, IndexError, ValueError):
+                    pass
+
+                # CPU temperature
+                try:
+                    with open("/sys/class/thermal/thermal_zone0/temp") as f:
+                        temp_milli = int(f.read().strip())
+                    health["cpu_temp_c"] = round(temp_milli / 1000.0, 1)
+                except (OSError, ValueError):
+                    # Fallback: vcgencmd (Raspberry Pi specific)
+                    try:
+                        result = subprocess.run(
+                            ["vcgencmd", "measure_temp"],
+                            capture_output=True,
+                            text=True,
+                            timeout=2,
+                        )
+                        if result.returncode == 0:
+                            # Output: temp=42.8'C
+                            temp_str = result.stdout.strip()
+                            temp_val = float(temp_str.split("=")[1].split("'")[0])
+                            health["cpu_temp_c"] = temp_val
+                    except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+                        pass
+
+                # Throttle status (Raspberry Pi specific — vcgencmd)
+                try:
+                    result = subprocess.run(
+                        ["vcgencmd", "get_throttled"],
+                        capture_output=True,
+                        text=True,
+                        timeout=2,
+                    )
+                    if result.returncode == 0:
+                        # Output: throttled=0x0
+                        hex_str = result.stdout.strip().split("=")[1]
+                        throttle_val = int(hex_str, 16)
+                        health["throttle_raw"] = hex_str
+                        # Decode throttle bits
+                        health["throttle_flags"] = {
+                            "under_voltage_now": bool(throttle_val & 0x1),
+                            "freq_capped_now": bool(throttle_val & 0x2),
+                            "throttled_now": bool(throttle_val & 0x4),
+                            "soft_temp_limit_now": bool(throttle_val & 0x8),
+                            "under_voltage_occurred": bool(throttle_val & 0x10000),
+                            "freq_capped_occurred": bool(throttle_val & 0x20000),
+                            "throttled_occurred": bool(throttle_val & 0x40000),
+                            "soft_temp_limit_occurred": bool(throttle_val & 0x80000),
+                        }
+                        health["throttle_ok"] = throttle_val == 0
+                except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+                    pass
+
+                # Uptime
+                try:
+                    with open("/proc/uptime") as f:
+                        uptime_secs = float(f.read().split()[0])
+                    health["uptime_seconds"] = round(uptime_secs)
+                    # Human-readable
+                    days = int(uptime_secs // 86400)
+                    hours = int((uptime_secs % 86400) // 3600)
+                    mins = int((uptime_secs % 3600) // 60)
+                    if days > 0:
+                        health["uptime_human"] = f"{days}d {hours}h {mins}m"
+                    elif hours > 0:
+                        health["uptime_human"] = f"{hours}h {mins}m"
+                    else:
+                        health["uptime_human"] = f"{mins}m"
+                except (OSError, ValueError):
+                    pass
+
+            except Exception:
+                pass
+
+            info["health"] = health
 
             # Memory info — cross-platform (Windows + Linux + macOS)
             try:
