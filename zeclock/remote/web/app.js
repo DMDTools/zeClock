@@ -820,6 +820,7 @@ function addGifDirEntry() {
     const index = list.children.length;
     const html = renderGifDirEntry({ path: '', weight: 50, recursive: true }, index);
     list.insertAdjacentHTML('beforeend', html);
+    scheduleAutoSave(list);
 }
 
 function removeGifDirEntry(index) {
@@ -827,6 +828,8 @@ function removeGifDirEntry(index) {
     if (entry) entry.remove();
     // Re-index remaining entries
     reindexGifDirEntries();
+    const list = document.getElementById('gif-dirs-list');
+    scheduleAutoSave(list);
 }
 
 function reindexGifDirEntries() {
