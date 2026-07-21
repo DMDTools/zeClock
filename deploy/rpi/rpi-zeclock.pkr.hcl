@@ -127,6 +127,13 @@ build {
     script = "scripts/02-install-zeclock.sh"
   }
 
+  # Bundle GIF files if available (mounted at /tmp/zeclock-gifs by local builds)
+  # Uses shell-local which runs in the Docker container (not in chroot),
+  # with direct access to the mounted image filesystem.
+  provisioner "shell-local" {
+    script = "scripts/bundle-gifs.sh"
+  }
+
   # Install zeClock app from copied source
   provisioner "shell" {
     inline = [

@@ -262,6 +262,15 @@ if [ ! -f "${DATA}/zeclock/config/zeclock.ini" ]; then
     cp /home/zeclock/.zeclock/config/zeclock.ini "${DATA}/zeclock/config/" 2>/dev/null || true
 fi
 
+# Copy bundled GIFs to /data if available (local builds include these)
+BUNDLED_GIFS="/overlay/lower/home/zeclock/.zeclock/plugins/gif"
+[ ! -d "${BUNDLED_GIFS}" ] && BUNDLED_GIFS="/home/zeclock/.zeclock/plugins/gif"
+if [ -d "${BUNDLED_GIFS}" ] && [ "$(ls "${BUNDLED_GIFS}" 2>/dev/null)" ]; then
+    echo "init-data: copying bundled GIFs to /data..."
+    cp -r "${BUNDLED_GIFS}/"* "${DATA}/zeclock/plugins/gif/" 2>/dev/null || true
+    echo "init-data: GIFs copied ($(find "${DATA}/zeclock/plugins/gif" -name '*.gif' -o -name '*.GIF' | wc -l) files)"
+fi
+
 # Extract DotClk resources (fonts + animations) from bundled zip to /data
 if [ ! -d "${DATA}/zeclock/resources/Fonts" ] || [ ! -d "${DATA}/zeclock/resources/animations" ]; then
     echo "init-data: extracting DotClk resources to /data..."
