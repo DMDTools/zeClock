@@ -244,7 +244,20 @@ if ! mountpoint -q "${DATA}" 2>/dev/null; then
     exit 0
 fi
 
-# Skip if already initialized
+# --- Asset sync: copy bundled GIFs if missing on /data (runs every boot) ---
+BUNDLED_GIFS="/overlay/lower/home/zeclock/.zeclock/plugins/gif"
+[ ! -d "${BUNDLED_GIFS}" ] && BUNDLED_GIFS="/home/zeclock/.zeclock/plugins/gif"
+if [ -d "${BUNDLED_GIFS}" ] && [ "$(ls "${BUNDLED_GIFS}" 2>/dev/null)" ]; then
+    mkdir -p "${DATA}/zeclock/plugins/gif"
+    if [ ! "$(ls "${DATA}/zeclock/plugins/gif" 2>/dev/null)" ]; then
+        echo "init-data: copying bundled GIFs to /data..."
+        cp -r "${BUNDLED_GIFS}/"* "${DATA}/zeclock/plugins/gif/" 2>/dev/null || true
+        chown -R zeclock:zeclock "${DATA}/zeclock/plugins/gif"
+        echo "init-data: GIFs copied ($(find "${DATA}/zeclock/plugins/gif" -name '*.gif' -o -name '*.GIF' 2>/dev/null | wc -l) files)"
+    fi
+fi
+
+# Skip the rest if already initialized
 [ -f "${DATA}/.initialized" ] && exit 0
 
 # Create structure
@@ -260,17 +273,6 @@ mkdir -p "${DATA}/ssh"
 if [ ! -f "${DATA}/zeclock/config/zeclock.ini" ]; then
     cp /overlay/lower/home/zeclock/.zeclock/config/zeclock.ini "${DATA}/zeclock/config/" 2>/dev/null || \
     cp /home/zeclock/.zeclock/config/zeclock.ini "${DATA}/zeclock/config/" 2>/dev/null || true
-fi
-
-# Copy bundled GIFs to /data if present in the image (injected by make rpi-inject-gifs)
-BUNDLED_GIFS="/overlay/lower/home/zeclock/.zeclock/plugins/gif"
-[ ! -d "${BUNDLED_GIFS}" ] && BUNDLED_GIFS="/home/zeclock/.zeclock/plugins/gif"
-if [ -d "${BUNDLED_GIFS}" ] && [ "$(ls "${BUNDLED_GIFS}" 2>/dev/null)" ]; then
-    if [ ! "$(ls "${DATA}/zeclock/plugins/gif" 2>/dev/null)" ]; then
-        echo "init-data: copying bundled GIFs to /data..."
-        cp -r "${BUNDLED_GIFS}/"* "${DATA}/zeclock/plugins/gif/" 2>/dev/null || true
-        echo "init-data: GIFs copied ($(find "${DATA}/zeclock/plugins/gif" -name '*.gif' -o -name '*.GIF' 2>/dev/null | wc -l) files)"
-    fi
 fi
 
 # Extract DotClk resources (fonts + animations) from bundled zip to /data
