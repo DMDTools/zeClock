@@ -501,6 +501,28 @@ input:focus {
     margin-right: 0.5rem;
 }
 
+.radio-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-right: 1.2rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.radio-label input[type="radio"] {
+    margin: 0;
+}
+
+.field-warning {
+    background: rgba(255, 160, 0, 0.15);
+    border: 1px solid rgba(255, 160, 0, 0.4);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+    color: #ffaa00;
+}
+
 .form-row {
     display: flex;
     gap: 0.5rem;

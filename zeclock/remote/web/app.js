@@ -237,6 +237,42 @@ async function setBrightnessAuto() {
     refreshStatus();
 }
 
+function toggleNightMode() {
+    const mode = document.querySelector('input[name="night-mode"]:checked').value;
+    document.getElementById('night-mode-schedule-fields').style.display = mode === 'schedule' ? '' : 'none';
+    document.getElementById('night-mode-sun-fields').style.display = mode === 'sun' ? '' : 'none';
+
+    // Show warning if sun mode selected without location
+    if (mode === 'sun') {
+        const hasLocation = !!(document.getElementById('cfg-latitude').value.trim());
+        document.getElementById('night-mode-sun-warning').style.display = hasLocation ? 'none' : '';
+    }
+
+    // Clear fields of the inactive mode to avoid saving both
+    if (mode !== 'schedule') {
+        document.getElementById('cfg-schedule-default').value = '';
+    } else {
+        // Pre-fill with a sensible default if empty
+        const field = document.getElementById('cfg-schedule-default');
+        if (!field.value.trim()) {
+            field.value = '22:00-07:00 20%';
+        }
+    }
+    if (mode !== 'sun') {
+        document.getElementById('cfg-sunrise-brightness').value = '';
+        document.getElementById('cfg-sunset-brightness').value = '';
+    } else {
+        // Pre-fill with sensible defaults if empty
+        const sr = document.getElementById('cfg-sunrise-brightness');
+        const ss = document.getElementById('cfg-sunset-brightness');
+        if (!sr.value.trim()) sr.value = '100%';
+        if (!ss.value.trim()) ss.value = '10%';
+    }
+
+    // Trigger save immediately so the mode change takes effect
+    scheduleAutoSave(document.getElementById('cfg-max-brightness'));
+}
+
 async function refreshPlugins() {
     const data = await api('/api/plugins');
     if (!data || !data.data) return;
@@ -495,7 +531,6 @@ async function loadConfig() {
         // ZeDMD
         if (cfg.zedmd) {
             document.getElementById('cfg-wifi-addr').value = cfg.zedmd.wifi_addr || '';
-            document.getElementById('cfg-brightness').value = cfg.zedmd.brightness || '10';
         }
         // Display
         if (cfg.display) {
@@ -509,10 +544,22 @@ async function loadConfig() {
         }
         // Brightness schedule
         if (cfg.brightness_schedule) {
-            document.getElementById('cfg-max-brightness').value = cfg.brightness_schedule.max_brightness || '7';
+            document.getElementById('cfg-max-brightness').value = cfg.brightness_schedule.max_brightness || cfg.zedmd?.brightness || '10';
             document.getElementById('cfg-schedule-default').value = cfg.brightness_schedule.default || '';
             document.getElementById('cfg-sunrise-brightness').value = cfg.brightness_schedule.sunrise_brightness || '';
             document.getElementById('cfg-sunset-brightness').value = cfg.brightness_schedule.sunset_brightness || '';
+
+            // Set night mode radio based on what's configured
+            const hasSchedule = !!(cfg.brightness_schedule.default);
+            const hasSun = !!(cfg.brightness_schedule.sunrise_brightness || cfg.brightness_schedule.sunset_brightness);
+            if (hasSchedule) {
+                document.getElementById('night-mode-schedule').checked = true;
+            } else if (hasSun) {
+                document.getElementById('night-mode-sun').checked = true;
+            } else {
+                document.getElementById('night-mode-none').checked = true;
+            }
+            toggleNightMode();
         }
         // REST API
         if (cfg.rest_api) {
@@ -612,7 +659,7 @@ async function saveConfig() {
 
     // ZeDMD section
     const wifiAddr = document.getElementById('cfg-wifi-addr').value.trim();
-    const brightness = document.getElementById('cfg-brightness').value;
+    const brightness = document.getElementById('cfg-max-brightness').value;
     if (wifiAddr || brightness) {
         config.zedmd = {};
         if (wifiAddr) config.zedmd.wifi_addr = wifiAddr;
@@ -718,6 +765,8 @@ function attachAutoSaveListeners() {
     // 'change' fires on select, checkbox, and input blur.
     // 'input' fires on every keystroke in text/number fields.
     settingsSection.addEventListener('change', (e) => {
+        // Skip night-mode radios — toggleNightMode() handles its own save
+        if (e.target.name === 'night-mode') return;
         scheduleAutoSave(e.target);
     });
     settingsSection.addEventListener('input', (e) => {
@@ -1856,6 +1905,24 @@ function stopLogStream() {
 function clearLogs() {
     const logsEl = document.getElementById('debug-logs');
     if (logsEl) logsEl.innerHTML = '';
+}
+
+async function restartService() {
+    if (!confirm('Restart zeClock service?')) return;
+    await api('/api/restart', 'POST');
+    // Show reconnecting state and poll until service is back
+    updateConnectionStatus(false);
+    setTimeout(async () => {
+        for (let i = 0; i < 30; i++) {
+            await new Promise(r => setTimeout(r, 2000));
+            const resp = await api('/api/status');
+            if (resp && resp.success) {
+                updateConnectionStatus(true);
+                refreshStatus();
+                return;
+            }
+        }
+    }, 3000);
 }
 
 init();

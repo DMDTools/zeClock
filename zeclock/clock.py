@@ -793,6 +793,15 @@ class ZeClock:
             self._command_handler
             and self._command_handler.brightness_override is not None
         ):
+            # Log override state once per minute (same rate as scheduler)
+            now_mono = time.monotonic()
+            if now_mono - self._last_brightness_check < 60.0:
+                return
+            self._last_brightness_check = now_mono
+            logger.info(
+                "💡 Brightness: manual override %d/15",
+                self._command_handler.brightness_override,
+            )
             return
 
         now_mono = time.monotonic()

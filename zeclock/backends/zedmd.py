@@ -315,6 +315,7 @@ class ZeDMDBackend(DMDBackend):
         self._lib.ZeDMD_SetFrameSize(self._instance, self._width, self._height)
         self._lib.ZeDMD_EnableUpscaling(self._instance)
         self._lib.ZeDMD_SetBrightness(self._instance, self._brightness)
+        logger.info("💡 Brightness: initial %d/15", self._brightness)
 
         self._connected = True
         logger.info("ZeDMD connected successfully (%dx%d)", self._width, self._height)
