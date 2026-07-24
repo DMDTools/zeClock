@@ -587,6 +587,48 @@ def _show_console_banner() -> None:
         pass  # No HDMI console available
 
 
+def _show_connected_banner() -> None:
+    """Display connection info on HDMI console (tty1) after WiFi is up."""
+    # Get the device IP address (prefer wlan0, fall back to any non-lo)
+    ip_addr = ""
+    try:
+        result = subprocess.run(
+            ["hostname", "-I"], capture_output=True, text=True, timeout=5
+        )
+        addrs = result.stdout.strip().split()
+        if addrs:
+            ip_addr = addrs[0]
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+
+    ip_line = f"  ║     http://{ip_addr}:8080" if ip_addr else ""
+    # Pad to fit the box
+    ip_display = f"\033[1;32m{ip_line.ljust(42)}\033[1;36m║\n" if ip_addr else ""
+
+    banner = (
+        "\033[2J\033[H"
+        "\n"
+        "\033[1;36m"
+        "  ╔════════════════════════════════════════╗\n"
+        "  ║          🕒 zeClock Ready              ║\n"
+        "  ╠════════════════════════════════════════╣\n"
+        "  ║                                        ║\n"
+        "  ║  Connect to zeClock:                   ║\n"
+        "  ║                                        ║\n"
+        "  ║     \033[1;32mhttp://zeclock.local:8080\033[1;36m       ║\n"
+        "  ║                                        ║\n"
+        + (ip_display if ip_addr else "")
+        + "  ║                                        ║\n"
+        "  ╚════════════════════════════════════════╝\n"
+        "\033[0m\n"
+    )
+    try:
+        with open("/dev/tty1", "w") as tty:
+            tty.write(banner)
+    except (PermissionError, FileNotFoundError, OSError):
+        pass  # No HDMI console available
+
+
 def main() -> None:
     """Entry point for wifi-setup mode."""
     logging.basicConfig(
@@ -606,6 +648,7 @@ def main() -> None:
             ["iwgetid", "-r"], capture_output=True, text=True
         ).stdout.strip()
         print(f"✅ Already connected to '{ssid}' — nothing to do")
+        _show_connected_banner()
         sys.exit(0)
 
     print("📡 No WiFi connection — starting setup portal...")
@@ -633,6 +676,8 @@ def main() -> None:
     finally:
         teardown_hotspot()
 
+    # WiFi is now connected — show the connected banner
+    _show_connected_banner()
     print("✅ WiFi setup complete")
 
 
