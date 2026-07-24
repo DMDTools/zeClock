@@ -13,6 +13,7 @@ from PIL import Image
 
 from .backends import DMDBackend, create_backend
 from .brightness_scheduler import (
+    BrightnessResult,
     BrightnessScheduler,
     apply_sw_dimming,
 )
@@ -115,6 +116,7 @@ class ZeClock:
         self._last_brightness_check = 0.0
         self._current_sw_dimming = 0
         self._current_is_time_only = False
+        self._last_brightness_result: Optional[BrightnessResult] = None
 
         # Remote control
         self._mqtt_config = mqtt_config
@@ -824,6 +826,29 @@ class ZeClock:
             result.is_screen_off,
             result.is_time_only,
         )
+
+        # Log brightness transition when it changes
+        prev = self._last_brightness_result
+        if prev is not None and (
+            prev.hw_brightness != result.hw_brightness
+            or prev.sw_dimming_percent != result.sw_dimming_percent
+            or prev.is_screen_off != result.is_screen_off
+        ):
+            source_label = {
+                "schedule": "schedule rule",
+                "sun": "sunrise/sunset",
+                "default": "default (100%)",
+            }.get(result.source, result.source)
+            logger.info(
+                "💡 Brightness changed: HW %d→%d, SW dimming %d%%→%d%% "
+                "(trigger: %s)",
+                prev.hw_brightness,
+                result.hw_brightness,
+                prev.sw_dimming_percent,
+                result.sw_dimming_percent,
+                source_label,
+            )
+        self._last_brightness_result = result
 
         # Apply hardware brightness if backend supports it
         if hasattr(self.dmd_client, "_lib") and hasattr(self.dmd_client, "_instance"):
