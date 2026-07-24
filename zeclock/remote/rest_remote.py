@@ -156,6 +156,9 @@ class RestRemote:
         self._app.router.add_get("/api/logs/stream", self._handle_logs_stream)
         self._app.router.add_get("/api/debug/info", self._handle_debug_info)
 
+        # System management routes
+        self._app.router.add_post("/api/restart", self._handle_restart)
+
         # Static files for web UI (must be last to avoid catching API routes)
         if WEB_UI_DIR.exists():
             self._app.router.add_get("/ui/", self._handle_ui_index)
@@ -381,6 +384,10 @@ class RestRemote:
             type=CommandType.SET_BRIGHTNESS, params={"brightness": brightness}
         )
         result = await self._handler.execute(cmd)
+
+        # Persist brightness to zeclock.ini
+        self._persist_brightness(brightness)
+
         return self._json_response(result)
 
     async def _handle_brightness_auto(self, request: web.Request) -> web.Response:
@@ -390,6 +397,122 @@ class RestRemote:
         )
         result = await self._handler.execute(cmd)
         return self._json_response(result)
+
+    def _persist_brightness(self, brightness: int) -> None:
+        """Persist brightness value to zeclock.ini [zedmd] section."""
+        import configparser
+
+        from ..paths import get_config_dir
+
+        config_path = get_config_dir() / "zeclock.ini"
+        parser = configparser.RawConfigParser()
+        if config_path.exists():
+            parser.read(str(config_path))
+        if not parser.has_section("zedmd"):
+            parser.add_section("zedmd")
+        parser.set("zedmd", "brightness", str(brightness))
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(config_path, "w") as f:
+            parser.write(f)
+
+    def _reload_brightness_scheduler(self, config_body: dict) -> None:
+        """Rebuild the brightness scheduler from saved config without restart."""
+        from ..brightness_scheduler import BrightnessScheduler, parse_schedule_config
+
+        clock = self._handler._clock
+
+        bs_section = config_body.get("brightness_schedule", {})
+        loc_section = config_body.get("location", {})
+
+        # Parse max brightness
+        max_br = 7
+        try:
+            max_br = max(1, min(15, int(bs_section.get("max_brightness", 7))))
+        except (ValueError, TypeError):
+            pass
+
+        # Parse schedule lines (exclude non-schedule keys)
+        schedule_lines = {
+            k: v
+            for k, v in bs_section.items()
+            if k not in ("max_brightness", "sunrise_brightness", "sunset_brightness")
+        }
+        schedule = parse_schedule_config(schedule_lines)
+
+        # Parse location
+        lat = None
+        lng = None
+        try:
+            lat_str = loc_section.get("latitude", "")
+            lng_str = loc_section.get("longitude", "")
+            if lat_str:
+                lat = float(lat_str)
+            if lng_str:
+                lng = float(lng_str)
+        except (ValueError, TypeError):
+            pass
+
+        # Parse sunrise/sunset brightness
+        sunrise_br = None
+        sunset_br = None
+        try:
+            sr = bs_section.get("sunrise_brightness", "").rstrip("%")
+            if sr:
+                sunrise_br = max(0, min(100, int(sr)))
+        except (ValueError, TypeError):
+            pass
+        try:
+            ss = bs_section.get("sunset_brightness", "").rstrip("%")
+            if ss:
+                sunset_br = max(0, min(100, int(ss)))
+        except (ValueError, TypeError):
+            pass
+
+        # Rebuild scheduler
+        clock._brightness_scheduler = BrightnessScheduler(
+            max_brightness=max_br,
+            schedule=schedule,
+            latitude=lat,
+            longitude=lng,
+            sunrise_brightness=sunrise_br,
+            sunset_brightness=sunset_br,
+        )
+        # Reset check timer so it applies immediately
+        clock._last_brightness_check = 0.0
+
+        # Clear any manual override so scheduler takes over
+        if self._handler._brightness_override is not None:
+            self._handler._brightness_override = None
+
+        logger.info("Brightness scheduler reloaded from config")
+
+    # --- System management handlers ---
+
+    async def _handle_restart(self, request: web.Request) -> web.Response:
+        """POST /api/restart — Restart the zeClock service."""
+        import subprocess
+
+        logger.info("Restart requested via REST API")
+
+        # Send response before restarting
+        resp = web.json_response({"success": True, "message": "Restarting zeClock..."})
+        await resp.prepare(request)
+        await resp.write_eof()
+
+        # Schedule restart after a short delay to let the response be sent
+        async def _do_restart() -> None:
+            await asyncio.sleep(1)
+            try:
+                subprocess.Popen(
+                    ["sudo", "systemctl", "restart", "zeclock.service"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except (FileNotFoundError, OSError) as e:
+                logger.warning(f"Could not restart service: {e}")
+
+        asyncio.ensure_future(_do_restart())
+        return resp
 
     # --- Web UI handlers ---
 
@@ -1069,10 +1192,14 @@ class RestRemote:
             parser.write(f)
 
         logger.info("Configuration saved to %s", config_path)
+
+        # Hot-reload brightness scheduler from the new config
+        self._reload_brightness_scheduler(body)
+
         return web.json_response(
             {
                 "success": True,
-                "message": "Configuration saved. Restart zeClock to apply changes.",
+                "message": "Configuration saved and applied.",
             }
         )
 
