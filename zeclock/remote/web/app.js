@@ -773,7 +773,7 @@ function attachAutoSaveListeners() {
         const tag = e.target.tagName;
         const type = e.target.type;
         // Debounce text/number inputs; selects/checkboxes use 'change' above
-        if (tag === 'INPUT' && (type === 'text' || type === 'number' || type === 'range')) {
+        if (tag === 'INPUT' && (type === 'text' || type === 'number' || type === 'range' || type === 'password')) {
             scheduleAutoSave(e.target);
         }
     });
@@ -964,6 +964,9 @@ function renderPluginField(pluginName, field, settings) {
         }
         case 'number':
             inputHtml = `<input type="number" id="${fieldId}" value="${currentValue}" ${requiredAttr} data-plugin="${pluginName}" data-field="${field.name}">`;
+            break;
+        case 'password':
+            inputHtml = `<input type="password" id="${fieldId}" value="${currentValue}" ${requiredAttr} data-plugin="${pluginName}" data-field="${field.name}" autocomplete="off">`;
             break;
         case 'list':
             inputHtml = `<input type="text" id="${fieldId}" value="${Array.isArray(currentValue) ? currentValue.join(', ') : currentValue}" ${requiredAttr} data-plugin="${pluginName}" data-field="${field.name}">`;

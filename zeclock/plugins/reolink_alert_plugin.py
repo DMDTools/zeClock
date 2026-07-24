@@ -150,7 +150,7 @@ class ReolinkAlertPlugin(ClockPlugin):
             ConfigField(
                 "camera_password",
                 "Password",
-                "text",
+                "password",
                 required=True,
                 description="Camera login password",
             ),
