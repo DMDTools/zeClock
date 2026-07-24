@@ -78,6 +78,9 @@ class BrightnessResult:
     sw_dimming_percent: int  # Software dimming 0-100 (0 = no dimming)
     is_screen_off: bool  # True if brightness is 0% (all black)
     is_time_only: bool  # True if in "time only" mode (no plugins)
+    source: str = (
+        "default"  # What triggered the brightness: "schedule", "sun", "default"
+    )
 
 
 @dataclass
@@ -183,12 +186,14 @@ class BrightnessScheduler:
 
         # Determine brightness percentage from schedule
         brightness_percent: Optional[int] = None
+        source = "default"
 
         # Check day-specific schedule first
         if day_name in self._schedule:
             for time_range in self._schedule[day_name]:
                 if time_range.contains(hour, minute):
                     brightness_percent = time_range.brightness_percent
+                    source = "schedule"
                     break
 
         # Fall back to "default" schedule
@@ -196,11 +201,14 @@ class BrightnessScheduler:
             for time_range in self._schedule["default"]:
                 if time_range.contains(hour, minute):
                     brightness_percent = time_range.brightness_percent
+                    source = "schedule"
                     break
 
         # Fall back to sunrise/sunset if configured and no schedule matched
         if brightness_percent is None and self._has_sun_config and self._sun_data:
             brightness_percent = self._compute_sun_brightness(hour, minute)
+            if brightness_percent is not None:
+                source = "sun"
 
         # If still no match, use 100%
         if brightness_percent is None:
@@ -222,6 +230,7 @@ class BrightnessScheduler:
             sw_dimming_percent=sw_dimming,
             is_screen_off=(brightness_percent == 0),
             is_time_only=is_time_only,
+            source=source,
         )
 
     def _percent_to_hw_sw(self, percent: int) -> Tuple[int, int]:
