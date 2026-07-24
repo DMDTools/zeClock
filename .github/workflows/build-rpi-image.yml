@@ -72,7 +72,7 @@ jobs:
               --abi cp313 \
               --abi none \
               --only-binary=:all: \
-              pillow colorama pyyaml aiohttp pyserial 2>/dev/null || true
+              pillow colorama pyyaml aiohttp pyserial reolink-aio 2>/dev/null || true
           echo "Wheels: $(ls "${WHEELS_DIR}" | wc -l) files"
 
           # Pre-download DotClk resources zip
