@@ -71,7 +71,7 @@ class MqttConfig:
 class RestApiConfig:
     """REST API remote control configuration."""
 
-    enabled: bool = False
+    enabled: bool = True
     host: str = "0.0.0.0"
     port: int = 8080
 

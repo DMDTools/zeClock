@@ -188,8 +188,11 @@ fi
 if [ -b "${DEVICE}" ]; then
     CURRENT_FS=$(blkid -s TYPE -o value "${DEVICE}" 2>/dev/null || echo "")
     if [ "${CURRENT_FS}" = "f2fs" ]; then
-        # Run fsck before mounting — use -f for thorough check after power loss
-        fsck.f2fs -a -f "${DEVICE}" 2>/dev/null || true
+        # Run fsck in preen mode — fix safe issues only, never delete files.
+        # The aggressive -a -f mode can unlink dentries (delete files like
+        # WiFi configs) which is worse than the corruption it fixes.
+        # If preen fails, mount anyway — f2fs journaling handles most issues.
+        fsck.f2fs -p "${DEVICE}" 2>/dev/null || true
         mount -t f2fs -o noatime "${DEVICE}" /data
         exit 0
     fi

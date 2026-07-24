@@ -87,5 +87,5 @@ def transliterate(text: str) -> str:
         "Chateau-d'OEx"
     """
     result = text.translate(_TRANSLITERATE_MAP)
-    # Strip any remaining non-ASCII characters
-    return "".join(ch for ch in result if 32 <= ord(ch) <= 126)
+    # Strip any remaining non-ASCII characters, but preserve newlines
+    return "".join(ch for ch in result if ch == "\n" or 32 <= ord(ch) <= 126)
