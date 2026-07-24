@@ -44,6 +44,9 @@ class DirectoryEntry:
 class GifPlugin(ClockPlugin):
     """Plays a random animated GIF from a directory on the DMD display."""
 
+    # Fraction of the GIF pool to remember as "recently played" (avoid repeats)
+    _HISTORY_RATIO = 0.3
+
     def __init__(self) -> None:
         """Initialize with empty state."""
         self._helpers = None
@@ -55,6 +58,8 @@ class GifPlugin(ClockPlugin):
         self._load_thread: Optional[threading.Thread] = None
         self._frames_lock = threading.Lock()
         self._load_done = False
+        # Recently played GIFs — avoid repeats within a sliding window
+        self._recent_gifs: List[Path] = []
 
     @property
     def name(self) -> str:
@@ -96,6 +101,9 @@ class GifPlugin(ClockPlugin):
         Filters to directories with at least one GIF. Selects a directory with probability
         proportional to its weight, then picks a random GIF from that directory.
 
+        Recently played GIFs are excluded from selection to reduce perceived repetition.
+        The history window is 30% of the pool size.
+
         Args:
             entries: List of validated DirectoryEntry objects.
 
@@ -125,7 +133,23 @@ class GifPlugin(ClockPlugin):
         chosen_idx = random.choices(range(len(pool)), weights=weights, k=1)[0]
         chosen_gifs = pool[chosen_idx][1]
 
-        return random.choice(chosen_gifs)
+        # Filter out recently played GIFs to reduce perceived repetition
+        recent_set = set(self._recent_gifs)
+        candidates = [g for g in chosen_gifs if g not in recent_set]
+        if not candidates:
+            # All GIFs in this directory were recently played — reset history
+            candidates = chosen_gifs
+
+        selected = random.choice(candidates)
+
+        # Update history — keep last N where N = 30% of total pool
+        total_gifs = sum(len(p[1]) for p in pool)
+        max_history = max(1, int(total_gifs * self._HISTORY_RATIO))
+        self._recent_gifs.append(selected)
+        if len(self._recent_gifs) > max_history:
+            self._recent_gifs = self._recent_gifs[-max_history:]
+
+        return selected
 
     @property
     def description(self) -> str:
