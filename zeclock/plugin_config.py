@@ -170,11 +170,15 @@ class PluginConfig:
         try:
             import yaml
 
+            from .atomic_write import atomic_write_text
+
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.path, "w") as f:
+            atomic_write_text(
+                self.path,
                 yaml.dump(
-                    self.DEFAULT_CONFIG, f, default_flow_style=False, sort_keys=False
-                )
+                    self.DEFAULT_CONFIG, default_flow_style=False, sort_keys=False
+                ),
+            )
             logger.info(f"Created default plugin config at {self.path}")
         except Exception as e:
             logger.warning(f"Could not create default config: {e}")

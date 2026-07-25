@@ -323,12 +323,14 @@ chmod 700 "${DATA}/ssh"
 find "${DATA}/ssh" -type f -exec chmod 600 {} \; 2>/dev/null || true
 
 # --- Persistent journal ---
-mkdir -p "${DATA}/log/journal"
+mkdir -p "${DATA}/log"
 cp /etc/machine-id "${DATA}/machine-id" 2>/dev/null || true
 
 cat > "${DATA}/bind-journal.sh" << 'JSCRIPT'
 #!/bin/bash
-# Mount persistent journal from /data so logs survive reboots (overlay wipes /var)
+# Configure journald for volatile (RAM) storage.
+# Logs do NOT survive reboots but this eliminates continuous writes to /data
+# which caused f2fs corruption on power loss.
 set -e
 DATA="/data"
 
@@ -337,25 +339,16 @@ if [ -f "${DATA}/machine-id" ]; then
     cp "${DATA}/machine-id" /etc/machine-id
 fi
 
-MACHINE_ID=$(cat /etc/machine-id)
-JOURNAL_DIR="${DATA}/log/journal/${MACHINE_ID}"
-mkdir -p "${JOURNAL_DIR}"
-chown root:systemd-journal "${JOURNAL_DIR}" 2>/dev/null || true
-chmod 2755 "${JOURNAL_DIR}"
-
-mkdir -p /var/log/journal
-mount --bind "${DATA}/log/journal" /var/log/journal
-
-# Configure journald for persistent storage with size cap
+# Configure journald for volatile (RAM-only) storage
 mkdir -p /etc/systemd/journald.conf.d
 cat > /etc/systemd/journald.conf.d/persistent.conf << 'JCONF'
 [Journal]
-Storage=persistent
-SystemMaxUse=10M
-SystemKeepFree=20M
+Storage=volatile
+RuntimeMaxUse=10M
+RuntimeKeepFree=20M
 JCONF
 
-# Restart journald to pick up new config and location
+# Restart journald to pick up new config
 systemctl restart systemd-journald 2>/dev/null || true
 JSCRIPT
 chmod +x "${DATA}/bind-journal.sh"

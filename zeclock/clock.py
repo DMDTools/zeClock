@@ -39,6 +39,8 @@ def _persist_wifi_addr(ip: str) -> None:
     """Save discovered WiFi address to zeclock.ini so it's used on next boot."""
     import configparser
 
+    from .atomic_write import atomic_write_text
+
     config_path = get_config_dir() / "zeclock.ini"
     parser = configparser.RawConfigParser()
     if config_path.exists():
@@ -47,8 +49,11 @@ def _persist_wifi_addr(ip: str) -> None:
         parser.add_section("zedmd")
     parser.set("zedmd", "wifi_addr", ip)
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(config_path, "w") as f:
-        parser.write(f)
+    import io
+
+    buf = io.StringIO()
+    parser.write(buf)
+    atomic_write_text(config_path, buf.getvalue())
     logger.info("Persisted wifi_addr=%s to %s", ip, config_path)
 
 
