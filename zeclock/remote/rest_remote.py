@@ -401,7 +401,9 @@ class RestRemote:
     def _persist_brightness(self, brightness: int) -> None:
         """Persist brightness value to zeclock.ini [zedmd] section."""
         import configparser
+        import io
 
+        from ..atomic_write import atomic_write_text
         from ..paths import get_config_dir
 
         config_path = get_config_dir() / "zeclock.ini"
@@ -412,8 +414,9 @@ class RestRemote:
             parser.add_section("zedmd")
         parser.set("zedmd", "brightness", str(brightness))
         config_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(config_path, "w") as f:
-            parser.write(f)
+        buf = io.StringIO()
+        parser.write(buf)
+        atomic_write_text(config_path, buf.getvalue())
 
     def _reload_brightness_scheduler(self, config_body: dict) -> None:
         """Rebuild the brightness scheduler from saved config without restart."""
@@ -638,6 +641,10 @@ class RestRemote:
 
         # Restore zeclock.ini
         if "config" in body and isinstance(body["config"], dict):
+            import io
+
+            from ..atomic_write import atomic_write_text
+
             ini_path = config_dir / "zeclock.ini"
             parser = configparser.RawConfigParser()
             for section, values in body["config"].items():
@@ -646,15 +653,20 @@ class RestRemote:
                 parser.add_section(section)
                 for key, value in values.items():
                     parser.set(section, str(key), str(value))
-            with open(ini_path, "w") as f:
-                parser.write(f)
+            buf = io.StringIO()
+            parser.write(buf)
+            atomic_write_text(ini_path, buf.getvalue())
             restored.append("zeclock.ini")
 
         # Restore plugins.yaml
         if "plugins" in body and isinstance(body["plugins"], dict):
+            from ..atomic_write import atomic_write_text as _atomic_write
+
             plugins_path = config_dir / "plugins.yaml"
-            with open(plugins_path, "w") as f:
-                yaml.dump(body["plugins"], f, default_flow_style=False, sort_keys=False)
+            _atomic_write(
+                plugins_path,
+                yaml.dump(body["plugins"], default_flow_style=False, sort_keys=False),
+            )
             restored.append("plugins.yaml")
 
             # Reload plugin config
@@ -1188,8 +1200,13 @@ class RestRemote:
             for key, value in values.items():
                 parser.set(section, str(key), str(value))
 
-        with open(config_path, "w") as f:
-            parser.write(f)
+        import io
+
+        from ..atomic_write import atomic_write_text
+
+        buf = io.StringIO()
+        parser.write(buf)
+        atomic_write_text(config_path, buf.getvalue())
 
         logger.info("Configuration saved to %s", config_path)
 
@@ -1248,8 +1265,11 @@ class RestRemote:
         config_path = get_config_dir() / "plugins.yaml"
         config_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(config_path, "w") as f:
-            yaml.dump(body, f, default_flow_style=False, sort_keys=False)
+        from ..atomic_write import atomic_write_text
+
+        atomic_write_text(
+            config_path, yaml.dump(body, default_flow_style=False, sort_keys=False)
+        )
 
         logger.info("Plugins configuration saved to %s", config_path)
 

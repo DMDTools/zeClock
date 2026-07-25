@@ -566,18 +566,18 @@ def _show_console_banner() -> None:
         "\033[2J\033[H"
         "\n"
         "\033[1;36m"
-        "  ╔════════════════════════════════════════╗\n"
-        "  ║        🕒 zeClock WiFi Setup          ║\n"
-        "  ╠════════════════════════════════════════╣\n"
-        "  ║                                        ║\n"
-        "  ║  1. Connect to WiFi:                   ║\n"
-        f"  ║     Network:  \033[1;33m{AP_SSID}\033[1;36m\n"
-        "  ║     Password: \033[1;33m" + AP_PASSWORD + "\033[1;36m\n"
-        "  ║                                        ║\n"
-        "  ║  2. Open in browser:                   ║\n"
-        f"  ║     \033[1;32mhttp://{AP_IP}\033[1;36m\n"
-        "  ║                                        ║\n"
-        "  ╚════════════════════════════════════════╝\n"
+        "  +========================================+\n"
+        "  |        zeClock WiFi Setup              |\n"
+        "  +========================================+\n"
+        "  |                                        |\n"
+        "  |  1. Connect to WiFi:                   |\n"
+        f"  |     Network:  \033[1;33m{AP_SSID}\033[1;36m\n"
+        "  |     Password: \033[1;33m" + AP_PASSWORD + "\033[1;36m\n"
+        "  |                                        |\n"
+        "  |  2. Open in browser:                   |\n"
+        f"  |     \033[1;32mhttp://{AP_IP}\033[1;36m\n"
+        "  |                                        |\n"
+        "  +========================================+\n"
         "\033[0m\n"
     )
     try:
@@ -601,25 +601,25 @@ def _show_connected_banner() -> None:
     except (subprocess.TimeoutExpired, FileNotFoundError):
         pass
 
-    ip_line = f"  ║     http://{ip_addr}:8080" if ip_addr else ""
+    ip_line = f"  |     http://{ip_addr}:8080" if ip_addr else ""
     # Pad to fit the box
-    ip_display = f"\033[1;32m{ip_line.ljust(42)}\033[1;36m║\n" if ip_addr else ""
+    ip_display = f"\033[1;32m{ip_line.ljust(42)}\033[1;36m|\n" if ip_addr else ""
 
     banner = (
         "\033[2J\033[H"
         "\n"
         "\033[1;36m"
-        "  ╔════════════════════════════════════════╗\n"
-        "  ║          🕒 zeClock Ready              ║\n"
-        "  ╠════════════════════════════════════════╣\n"
-        "  ║                                        ║\n"
-        "  ║  Connect to zeClock:                   ║\n"
-        "  ║                                        ║\n"
-        "  ║     \033[1;32mhttp://zeclock.local:8080\033[1;36m       ║\n"
-        "  ║                                        ║\n"
+        "  +========================================+\n"
+        "  |           zeClock Ready                |\n"
+        "  +========================================+\n"
+        "  |                                        |\n"
+        "  |  Connect to zeClock:                   |\n"
+        "  |                                        |\n"
+        "  |     \033[1;32mhttp://zeclock.local:8080\033[1;36m       |\n"
+        "  |                                        |\n"
         + (ip_display if ip_addr else "")
-        + "  ║                                        ║\n"
-        "  ╚════════════════════════════════════════╝\n"
+        + "  |                                        |\n"
+        "  +========================================+\n"
         "\033[0m\n"
     )
     try:
@@ -637,7 +637,7 @@ def main() -> None:
         datefmt="%H:%M:%S",
     )
 
-    print("🔍 Checking WiFi connection...")
+    print("Checking WiFi connection...")
 
     # Wait for NetworkManager to finish connecting (polls up to 30s).
     # On a Raspberry Pi, WiFi association + DHCP typically takes 8-15s;
@@ -647,21 +647,21 @@ def main() -> None:
         ssid = subprocess.run(
             ["iwgetid", "-r"], capture_output=True, text=True
         ).stdout.strip()
-        print(f"✅ Already connected to '{ssid}' — nothing to do")
+        print(f"Already connected to '{ssid}' -- nothing to do")
         _show_connected_banner()
         sys.exit(0)
 
-    print("📡 No WiFi connection — starting setup portal...")
+    print("No WiFi connection -- starting setup portal...")
 
     # Enable WiFi radio via NetworkManager
     subprocess.run(["nmcli", "r", "wifi", "on"], capture_output=True, timeout=10)
     time.sleep(2)
 
     if not create_hotspot():
-        print("❌ Failed to create hotspot AP")
+        print("ERROR: Failed to create hotspot AP")
         sys.exit(1)
 
-    print(f"📶 Connect to WiFi '{AP_SSID}' (password: {AP_PASSWORD})")
+    print(f"Connect to WiFi '{AP_SSID}' (password: {AP_PASSWORD})")
     print(f"   Then open http://{AP_IP} to configure your network")
 
     # Display banner on HDMI console (tty1) if available
@@ -678,7 +678,7 @@ def main() -> None:
 
     # WiFi is now connected — show the connected banner
     _show_connected_banner()
-    print("✅ WiFi setup complete")
+    print("WiFi setup complete")
 
 
 if __name__ == "__main__":

@@ -99,8 +99,10 @@ def _get_installed_version() -> str:
 
 def _save_installed_version(version: str) -> None:
     """Persist the installed version to /data."""
+    from .atomic_write import atomic_write_text
+
     UPDATE_STATE_DIR.mkdir(parents=True, exist_ok=True)
-    UPDATE_VERSION_FILE.write_text(version + "\n")
+    atomic_write_text(UPDATE_VERSION_FILE, version + "\n")
 
 
 def get_latest_release() -> dict:
@@ -473,7 +475,10 @@ def _log_update_event(
 
     # Keep only last 50 entries
     history = history[-50:]
-    history_file.write_text(json.dumps(history, indent=2))
+
+    from .atomic_write import atomic_write_text
+
+    atomic_write_text(history_file, json.dumps(history, indent=2))
 
 
 def main() -> None:
