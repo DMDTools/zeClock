@@ -391,7 +391,8 @@ nav {
 
 /* Inputs */
 input[type="text"],
-input[type="number"] {
+input[type="number"],
+input[type="password"] {
     background: var(--bg-input);
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -481,6 +482,7 @@ input:focus {
 
 .form-group input[type="text"],
 .form-group input[type="number"],
+.form-group input[type="password"],
 .form-group select {
     width: 100%;
     padding: 0.5rem 0.75rem;
@@ -569,7 +571,8 @@ input:focus {
 }
 
 .plugin-config-card .form-group input[type="text"],
-.plugin-config-card .form-group input[type="number"] {
+.plugin-config-card .form-group input[type="number"],
+.plugin-config-card .form-group input[type="password"] {
     width: 100%;
     padding: 0.5rem 0.75rem;
     background: var(--bg-input);

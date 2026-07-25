@@ -84,6 +84,19 @@ AI-based paragliding flyability forecast from [Paraglidable](https://paraglidabl
 
 ![Demo](docs/zeclock-paraglidable.gif)
 
+### Reolink Alert
+
+Real-time intrusion detection alerts from [Reolink](https://www.reolink.com/) cameras. Connects via the [Baichuan TCP push protocol](https://github.com/starkillerOG/reolink_aio) for instant event delivery — no polling. Displays a localized blinking alert when a person, vehicle, animal, or motion is detected:
+
+- 🔴 **Person** — red blinking border
+- 🟠 **Vehicle** — orange blinking border
+- 🟢 **Animal** — green blinking border
+- 🟡 **Motion** — yellow blinking border
+
+Messages are localized (en/fr/de/es) via the global `language` setting. The alert overrides whatever is currently displayed and disappears after a configurable duration.
+
+Requires: `uv sync --extra reolink`
+
 ## Plugin Configuration
 
 Plugins are configured in `~/.zeclock/config/plugins.yaml`:
@@ -201,6 +214,12 @@ The full guide covers multi-page plugins, config schemas (auto-generated web UI 
 | **paragliding** | `api_key` | Paraglidable API key (required, free from paraglidable.com) |
 | | `spots` | Comma-separated spot name filters (optional) |
 | | `page_duration_seconds` | Duration per page (default: 5) |
+| **reolink-alert** | `camera_host` | IP address or hostname of the Reolink camera (required) |
+| | `camera_user` | Camera login username (default: `admin`) |
+| | `camera_password` | Camera login password (required) |
+| | `camera_channel` | Camera channel, 0 for single cam (default: 0) |
+| | `alert_duration` | Display duration in seconds (default: 15) |
+| | `cooldown_seconds` | Minimum time between alerts (default: 10) |
 
 
 ## Installation

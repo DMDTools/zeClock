@@ -38,6 +38,9 @@ zedmd = [
 mqtt = [
     "aiomqtt>=2.0",
 ]
+reolink = [
+    "reolink-aio>=0.9",
+]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",

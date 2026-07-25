@@ -52,7 +52,7 @@ WHEELS="/tmp/zeclock-src/.wheels"
 if [ -d "${WHEELS}" ] && [ "$(ls ${WHEELS}/*.whl 2>/dev/null | wc -l)" -gt 0 ]; then
     echo "  Using pre-downloaded wheels from ${WHEELS}..."
     pip install --no-cache-dir --no-index --find-links "${WHEELS}" \
-        pillow colorama pyyaml aiohttp pyserial
+        pillow colorama pyyaml aiohttp pyserial reolink-aio
 else
     echo "  WARNING: No pre-downloaded wheels found, downloading from network..."
     pip install --no-cache-dir \
@@ -60,7 +60,8 @@ else
         colorama \
         pyyaml \
         aiohttp \
-        pyserial
+        pyserial \
+        reolink-aio
 fi
 
 deactivate

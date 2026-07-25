@@ -521,6 +521,10 @@ class ZeClock:
         # Initialize the default plugin (displayed between other plugins)
         await self._init_default_plugin()
 
+        # Initialize non-rotatable plugins that have configuration
+        # (they run background tasks like event listeners)
+        await self._init_background_plugins()
+
     async def _init_remote_control(self) -> None:
         """Initialize remote control services (MQTT and REST API).
 
@@ -741,6 +745,47 @@ class ZeClock:
                 e,
             )
             self._default_plugin_initialized = False
+
+    async def _init_background_plugins(self) -> None:
+        """Initialize non-rotatable plugins that have configuration.
+
+        Non-rotatable plugins (like reolink-alert) run background tasks
+        (event listeners, etc.) and need to be initialized at startup even
+        though they don't participate in the normal display rotation.
+        They are only initialized if they have a valid configuration.
+        """
+        if not self._plugin_manager:
+            return
+
+        for entry in self._plugin_manager.registry.get_all_plugins():
+            plugin = entry.plugin
+            # Skip rotatable plugins (handled by scheduler) and default plugin
+            if plugin.rotatable:
+                continue
+            if plugin.name == self._plugin_manager.config.default_plugin:
+                continue
+
+            # Only initialize if plugin has config entries
+            config = self._plugin_manager.get_plugin_config_with_helpers(plugin.name)
+            has_settings = any(
+                k for k in config if not k.startswith("_") and k != "language"
+            )
+            if not has_settings:
+                continue
+
+            try:
+                await asyncio.wait_for(
+                    plugin.initialize(config), timeout=self._plugin_manager.init_timeout
+                )
+                logger.info(
+                    "Background plugin '%s' initialized successfully", plugin.name
+                )
+            except Exception as e:
+                logger.warning(
+                    "Background plugin '%s' initialization failed: %s",
+                    plugin.name,
+                    e,
+                )
 
     async def _render_default_plugin_frame(self) -> Image.Image:
         """Render a frame using the default plugin.
