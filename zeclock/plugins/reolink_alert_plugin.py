@@ -24,7 +24,7 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import aiohttp
-from PIL import Image, ImageDraw
+from PIL import Image
 
 from .base import ClockPlugin, ConfigField, PluginNotConfiguredError
 
@@ -434,43 +434,17 @@ class ReolinkAlertPlugin(ClockPlugin):
         )
         message = self._get_message(self._alert_type)
 
-        # Create frame
-        frame = Image.new("RGB", (width, height), (0, 0, 0))
-        draw = ImageDraw.Draw(frame)
-
-        # Blinking border
-        blink_on = (self._frame_count // BLINK_INTERVAL_FRAMES) % 2 == 0
-        border_color = border_color_rgb if blink_on else (0, 0, 0)
-
-        # Draw thick border (2px for 128x32, 4px for 256x64)
-        border_width = max(2, min(width, height) // 16)
-        for i in range(border_width):
-            draw.rectangle(
-                [i, i, width - 1 - i, height - 1 - i],
-                outline=border_color,
-            )
-
-        # Render text centered inside the border
+        # Use the render_alert helper for consistent alert rendering
         if self._helpers:
-            text_frame = self._helpers.render_text(
-                message,
-                color=(255, 255, 255),
-                centered=True,
+            return self._helpers.render_alert(
+                text=message,
+                frame_index=self._frame_count,
+                border_color=border_color_rgb,
+                text_color=(255, 255, 255),
             )
-            # Composite text onto frame (inside the border)
-            inner_x = border_width + 1
-            inner_y = border_width + 1
-            inner_w = width - 2 * (border_width + 1)
-            inner_h = height - 2 * (border_width + 1)
 
-            if inner_w > 0 and inner_h > 0:
-                # Crop center of text frame to fit inside border
-                text_crop = text_frame.crop(
-                    (inner_x, inner_y, inner_x + inner_w, inner_y + inner_h)
-                )
-                frame.paste(text_crop, (inner_x, inner_y))
-
-        return frame
+        # Fallback if helpers not available
+        return Image.new("RGB", (width, height), (0, 0, 0))
 
     def _render_status(self, width: int, height: int) -> Image.Image:
         """Render a status screen when no alert is active."""

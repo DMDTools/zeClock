@@ -569,6 +569,130 @@ class PluginHelpers:
         """
         draw_staleness_indicator(frame, current_frame, frame_delay_ms)
 
+    def render_alert(
+        self,
+        text: str,
+        frame_index: int,
+        border_color: Tuple[int, int, int] = (255, 0, 0),
+        text_color: Tuple[int, int, int] = (255, 255, 255),
+        font_name: Optional[str] = None,
+        border_width: int = 3,
+        blink_interval_frames: int = 5,
+    ) -> Image.Image:
+        """Render an alert frame with blinking border and auto-wrapped text.
+
+        Draws a blinking colored border around the display, with the alert
+        text centered inside. Text is automatically word-wrapped to fit
+        within the bordered area.
+
+        Args:
+            text: Alert message to display (auto-wrapped to fit).
+            frame_index: Current frame counter (for blink timing).
+            border_color: RGB tuple for the border color (default: red).
+            text_color: RGB tuple for the text color (default: white).
+            font_name: Font to use (default: plugin helpers default font).
+            border_width: Border thickness in pixels (default: 3).
+            blink_interval_frames: Toggle border every N frames (default: 5).
+
+        Returns:
+            PIL Image in RGB mode with the alert rendered.
+        """
+        from PIL import ImageDraw
+
+        frame = self.create_frame()
+        draw = ImageDraw.Draw(frame)
+
+        # Blinking border
+        blink_on = (frame_index // blink_interval_frames) % 2 == 0
+        draw_color = border_color if blink_on else (0, 0, 0)
+
+        for i in range(border_width):
+            draw.rectangle(
+                [i, i, self.width - 1 - i, self.height - 1 - i],
+                outline=draw_color,
+            )
+
+        # Inner area for text (inside the border)
+        inner_x = border_width + 1
+        inner_y = border_width + 1
+        inner_w = self.width - 2 * (border_width + 1)
+        inner_h = self.height - 2 * (border_width + 1)
+
+        if inner_w <= 0 or inner_h <= 0:
+            return frame
+
+        # Word-wrap text to fit inner width
+        font_name = self._resolve_font_name(font_name)
+        wrapped_text = self._word_wrap(text, inner_w, font_name)
+
+        # Render wrapped text centered in the inner area
+        text_frame = self.render_text(
+            wrapped_text, color=text_color, centered=True, font_name=font_name
+        )
+
+        # Crop the inner region from the text frame and paste into alert frame
+        text_crop = text_frame.crop(
+            (inner_x, inner_y, inner_x + inner_w, inner_y + inner_h)
+        )
+        frame.paste(text_crop, (inner_x, inner_y))
+
+        return frame
+
+    def _word_wrap(self, text: str, max_width: int, font_name: str) -> str:
+        """Wrap text to fit within a given pixel width.
+
+        Splits on spaces and joins with newlines so each line fits
+        within max_width pixels using the specified font. Words that
+        are individually wider than max_width are kept on their own line.
+
+        Args:
+            text: Input text (may already contain newlines).
+            max_width: Maximum line width in pixels.
+            font_name: Font name for width measurement.
+
+        Returns:
+            Text with newlines inserted for wrapping.
+        """
+        font = self._get_font(font_name)
+        if font is None:
+            return text
+
+        # Transliterate for accurate width measurement
+        text = transliterate(text)
+
+        # Process each existing line separately
+        result_lines = []
+        for paragraph in text.split("\n"):
+            words = paragraph.split()
+            if not words:
+                result_lines.append("")
+                continue
+
+            current_line = ""
+            for word in words:
+                if not current_line:
+                    # First word on line
+                    current_line = word
+                else:
+                    # Try adding word to current line
+                    test_line = current_line + " " + word
+                    test_width = font.get_text_width(test_line)
+                    # Account for font scale in HD mode
+                    is_hd_font = font.name.endswith("_HD") if font.name else False
+                    if self._font_scale > 1 and not is_hd_font:
+                        test_width *= self._font_scale
+
+                    if test_width <= max_width:
+                        current_line = test_line
+                    else:
+                        result_lines.append(current_line)
+                        current_line = word
+
+            if current_line:
+                result_lines.append(current_line)
+
+        return "\n".join(result_lines)
+
     def resolve_color(
         self, color_name: str, default: str = "orange"
     ) -> Tuple[int, int, int]:
