@@ -58,6 +58,7 @@ This document details the technologies, libraries, protocols, and tools that mak
   - **Plugin list** (`GET /api/plugins`): Returns all registered plugins with state, frequency, source, active/forced status, and optional `web_controls` metadata exposed by plugins via `get_web_controls()`.
   - **Brightness** (`/api/brightness`): `GET` returns current brightness state (override, SW dimming, time-only flag, auto/manual mode). `POST {"brightness": 0-15}` sets manual brightness override. `POST /api/brightness/auto` clears the override and resumes automatic scheduling.
   - **Speaker Timer sub-API** (`/api/speaker-timer/`): Dedicated REST endpoints for the conference timer plugin — `GET status`, `POST start` (also forces the speaker-timer plugin active), `POST pause`, `POST reset` (also resumes normal plugin rotation), `POST set` (accepts `{"seconds": N}` or `{"minutes": N}`).
+  - **Alert** (`POST /api/alert`): Displays a rich alert with blinking border, auto-wrapped text, and optional icon. Body: `{"text": "...", "duration": 15, "icon": "person", "color": [255,0,0]}`. Duration clamped to 1–300s. Available icons: `beacon`, `person`, `vehicle`, `animal`, `motion`, `warning`, `camera`, `info`.
 
 - **TCP Sockets (standard `socket` module)**: Alternative communication via `DMDServerBackend` for development.
   - **DMDStream network header** (big-endian):

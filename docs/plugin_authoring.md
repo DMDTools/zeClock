@@ -311,6 +311,41 @@ if self._is_cache_stale():
     self._helpers.draw_staleness_indicator(frame, total_frames, self._frame_delay_ms)
 ```
 
+#### `render_alert(text, frame_index, border_color=(255, 0, 0), text_color=(255, 255, 255), font_name=None, border_width=3, blink_interval_frames=5) -> Image.Image`
+
+Renders a complete alert frame with a blinking colored border and auto-wrapped centered text. Handles word-wrapping automatically so the message fits inside the bordered area. Useful for notification or alarm plugins that need to draw attention.
+
+```python
+# Render an alert with a red blinking border
+frame = self._helpers.render_alert(
+    "PERSON DETECTED",
+    frame_index=self._frame_count,
+    border_color=(255, 0, 0),
+    text_color=(255, 255, 255),
+    font_name="MENU",
+)
+
+# Render an alert with an icon
+frame = self._helpers.render_alert(
+    "PERSON DETECTED",
+    frame_index=self._frame_count,
+    border_color=(255, 0, 0),
+    icon="person",
+)
+```
+
+**Parameters:**
+- `text`: Alert message to display (automatically word-wrapped to fit)
+- `frame_index`: Current frame counter (used for blink timing)
+- `border_color`: RGB tuple for the border color (default: red)
+- `text_color`: RGB tuple for the text color (default: white)
+- `font_name`: Font to use (default: plugin helpers default font)
+- `border_width`: Border thickness in pixels (default: 3)
+- `blink_interval_frames`: Toggle border visibility every N frames (default: 5)
+- `icon`: Optional alert icon name to display left of the text. Available icons: `"beacon"`, `"person"`, `"vehicle"`, `"animal"`, `"motion"`, `"warning"`, `"camera"`, `"info"`. Icons are rendered at 16x16 (SD) or 32x32 (HD) automatically.
+
+The border blinks by alternating between the specified color and black. Text is automatically uppercased (for DMD font compatibility) and centered both horizontally and vertically within the inner area. When an icon is specified, it is displayed vertically centered on the left side and the text area is reduced accordingly.
+
 ---
 
 ## Using ConfettiAnimation

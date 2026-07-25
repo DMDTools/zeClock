@@ -350,6 +350,7 @@ Enable in config, then control via HTTP:
 | `POST` | `/api/plugin/force` | Force plugin `{"plugin": "name"}` |
 | `POST` | `/api/plugin/resume` | Resume normal rotation |
 | `POST` | `/api/text` | Display text `{"text": "...", "duration": 10}` |
+| `POST` | `/api/alert` | Rich alert with blinking border `{"text": "...", "duration": 15, "icon": "person", "color": [255,0,0]}` |
 | `POST` | `/api/speaker-timer/set` | Set timer `{"seconds": 300}` |
 | `POST` | `/api/speaker-timer/start` | Start/resume timer |
 | `POST` | `/api/speaker-timer/pause` | Pause timer |
