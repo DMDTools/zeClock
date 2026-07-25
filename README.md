@@ -16,6 +16,10 @@ You can configure zeClock through configuration files or a dedicated web UI.
 
 ![Web UI](docs/zeclock-web-ui.jpg)
 
+And also configure how often a given plugin will appear, and even de-activate it.
+
+![Plugins mix](docs/zeclock-web-plugins.jpg)
+
 ## Quick Start
 
 **No hardware required** — try zeClock in your browser in seconds:
