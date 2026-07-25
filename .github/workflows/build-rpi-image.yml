@@ -101,6 +101,7 @@ jobs:
               build rpi-zeclock.pkr.hcl
 
       - name: Compress image
+        if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main')
         run: |
           cd deploy/rpi
           ls -lh "${OUTPUT_IMG}"
