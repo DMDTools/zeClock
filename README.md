@@ -1,6 +1,6 @@
 # zeClock
 
-> 🕒 A smart DMD clock with a plugin system, for [ZeDMD](https://github.com/PPUC/ZeDMD), [Pixelcade](https://pixelcade.org/), and [PIN2DMD](https://pin2dmd.com/) displays
+> 🕒 A smart DMD clock with a plugin system, for [ZeDMD](https://github.com/PPUC/ZeDMD), [Pixelcade](https://pixelcade.org/), and [PIN2DMD](https://pin2dmd.com/) displays.
 
 Tired of simple DMD clocks that only show time and maybe a GIF? zeClock is a full-featured DMD clock with built-in plugins (pinball animations, weather, stocks, pong, speaker timer and more), a plugin system to create your own, and connectivity to your ecosystem via REST API, MQTT, and Home Assistant.
 
@@ -25,6 +25,8 @@ make dev-start-virtual
 ```
 
 Open **http://localhost:3000** — the clock is running with a WebGL DMD shader in your browser!
+
+![virtual DMD](docs/zeclock-virtual-dmd.jpg)
 
 For HD mode (256x64): `make dev-start-virtual-hd` · To stop: `make dev-stop` or `Ctrl+C`
 

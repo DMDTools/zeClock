@@ -209,6 +209,7 @@ Module providing external control of the running zeClock instance via network pr
   - **Plugin list endpoint** (`GET /api/plugins`): Returns all registered plugins with their state, frequency, source, active/forced status, and optional `web_controls` metadata.
   - **Brightness sub-API** (`/api/brightness`): `GET` returns current brightness state (override value, SW dimming level, time-only mode, auto/manual mode). `POST` sets manual brightness (0–15). `POST /api/brightness/auto` resumes automatic brightness scheduling.
   - **Speaker Timer sub-API** (`/api/speaker-timer/*`): Dedicated endpoints for controlling the SpeakerTimerPlugin remotely — status, start (also forces the plugin active), pause, reset (also resumes normal rotation), and set duration.
+  - **Alert endpoint** (`POST /api/alert`): Displays a rich alert with blinking border, auto-wrapped text, and optional icon on the DMD. Accepts `{"text": "...", "duration": 15, "icon": "person", "color": [255,0,0]}`. Duration clamped to 1–300s.
 
 ```mermaid
 graph LR
