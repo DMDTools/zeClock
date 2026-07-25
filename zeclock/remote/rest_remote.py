@@ -98,6 +98,7 @@ class RestRemote:
         self._app.router.add_get("/api/plugins", self._handle_list_plugins)
         self._app.router.add_get("/api/text", self._handle_display_text)
         self._app.router.add_post("/api/text", self._handle_display_text)
+        self._app.router.add_post("/api/alert", self._handle_alert)
 
         # Brightness API routes
         self._app.router.add_get("/api/brightness", self._handle_get_brightness)
@@ -323,6 +324,72 @@ class RestRemote:
         )
         result = await self._handler.execute(cmd)
         return self._json_response(result)
+
+    async def _handle_alert(self, request: web.Request) -> web.Response:
+        """POST /api/alert — Display a rich alert with blinking border and icon.
+
+        POST: {"text": "Person detected!", "duration": 15, "icon": "person", "color": [255,0,0]}
+
+        Parameters:
+            text (str): Alert message (auto-wrapped to fit display).
+            duration (int): Display duration in seconds (1-300, default 15).
+            icon (str): Optional icon name ("beacon", "person", "vehicle",
+                        "animal", "motion", "warning", "camera").
+            color (list): Optional border color as [R, G, B] (default: [255, 0, 0] red).
+        """
+        try:
+            body = await request.json()
+        except (json.JSONDecodeError, Exception):
+            return web.json_response(
+                {"success": False, "message": "Invalid JSON body"},
+                status=400,
+            )
+
+        text = body.get("text")
+        if not isinstance(text, str) or not text.strip():
+            return web.json_response(
+                {"success": False, "message": "Missing 'text' field"},
+                status=400,
+            )
+
+        duration = body.get("duration", 15)
+        try:
+            duration = max(1, min(300, int(duration)))
+        except (ValueError, TypeError):
+            duration = 15
+
+        icon = body.get("icon")
+        if icon is not None and not isinstance(icon, str):
+            icon = None
+
+        color = body.get("color")
+        if isinstance(color, (list, tuple)) and len(color) == 3:
+            try:
+                color = tuple(int(c) for c in color)
+            except (ValueError, TypeError):
+                color = (255, 0, 0)
+        else:
+            color = (255, 0, 0)
+
+        # Set alert state on the command handler
+        import time as _time
+
+        self._handler._alert_text = text.strip()
+        self._handler._alert_expires = _time.time() + duration
+        self._handler._alert_icon = icon
+        self._handler._alert_color = color
+        self._handler._alert_frame_count = 0
+
+        logger.info(
+            "Alert displayed: '%s' for %ds (icon=%s)", text.strip(), duration, icon
+        )
+        return web.json_response(
+            {
+                "success": True,
+                "message": f"Alert displayed for {duration}s",
+                "data": {"text": text.strip(), "duration": duration, "icon": icon},
+            }
+        )
 
     # --- Brightness handlers ---
 

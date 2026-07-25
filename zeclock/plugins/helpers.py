@@ -569,6 +569,234 @@ class PluginHelpers:
         """
         draw_staleness_indicator(frame, current_frame, frame_delay_ms)
 
+    def render_alert(
+        self,
+        text: str,
+        frame_index: int,
+        border_color: Tuple[int, int, int] = (255, 0, 0),
+        text_color: Tuple[int, int, int] = (255, 255, 255),
+        font_name: Optional[str] = None,
+        border_width: int = 3,
+        blink_interval_frames: int = 5,
+        icon: Optional[str] = None,
+    ) -> Image.Image:
+        """Render an alert frame with blinking border and auto-wrapped text.
+
+        Draws a blinking colored border around the display, with the alert
+        text centered inside. Text is automatically word-wrapped to fit
+        within the bordered area. An optional icon is displayed to the left
+        of the text.
+
+        Args:
+            text: Alert message to display (auto-wrapped to fit).
+            frame_index: Current frame counter (for blink timing).
+            border_color: RGB tuple for the border color (default: red).
+            text_color: RGB tuple for the text color (default: white).
+            font_name: Font to use (default: plugin helpers default font).
+            border_width: Border thickness in pixels (default: 3).
+            blink_interval_frames: Toggle border every N frames (default: 5).
+            icon: Optional alert icon name (e.g. "beacon", "person", "vehicle",
+                  "animal", "motion", "warning", "camera"). Displayed left of text.
+
+        Returns:
+            PIL Image in RGB mode with the alert rendered.
+        """
+        from PIL import ImageDraw
+
+        frame = self.create_frame()
+        draw = ImageDraw.Draw(frame)
+
+        # Blinking border
+        blink_on = (frame_index // blink_interval_frames) % 2 == 0
+        draw_color = border_color if blink_on else (0, 0, 0)
+
+        for i in range(border_width):
+            draw.rectangle(
+                [i, i, self.width - 1 - i, self.height - 1 - i],
+                outline=draw_color,
+            )
+
+        # Inner area for text (inside the border)
+        inner_x = border_width + 1
+        inner_y = border_width + 1
+        inner_w = self.width - 2 * (border_width + 1)
+        inner_h = self.height - 2 * (border_width + 1)
+
+        if inner_w <= 0 or inner_h <= 0:
+            return frame
+
+        # Try to load icon if requested
+        icon_img = None
+        icon_size = 0
+        if icon:
+            icon_img = self._get_alert_icon(icon)
+            if icon_img:
+                icon_size = icon_img.width
+
+        # Calculate text area (reduced by icon width + gap)
+        icon_gap = 2 if icon_img else 0
+        text_area_x = inner_x + icon_size + icon_gap
+        text_area_w = inner_w - icon_size - icon_gap
+
+        if text_area_w <= 0:
+            text_area_w = inner_w
+            text_area_x = inner_x
+            icon_img = None  # No room for icon
+
+        # Word-wrap text to fit text area width (uppercase for DMD fonts)
+        # Use MENU font for alerts (smaller, fits better with border+icon)
+        alert_font = "MENU"
+        wrapped_text = self._word_wrap(text.upper(), text_area_w, alert_font)
+
+        # Render wrapped text centered in the text area
+        # Create a sub-frame for the text area
+        text_frame = Image.new("RGB", (self.width, self.height), (0, 0, 0))
+        font = self._get_font(alert_font)
+        if font and wrapped_text:
+            lines = wrapped_text.split("\n")
+            char_h = font.char_height
+            num_lines = min(len(lines), max(1, inner_h // char_h))
+            lines = lines[:num_lines]
+
+            # Vertical centering within inner area
+            total_text_h = char_h * num_lines
+            line_gap = 0
+            if num_lines > 1:
+                remaining = inner_h - total_text_h
+                line_gap = min(remaining // (num_lines + 1), char_h // 2)
+            total_h = total_text_h + line_gap * (num_lines - 1)
+            y_start = inner_y + max(0, (inner_h - total_h) // 2)
+
+            rgb_data = bytearray(self.width * self.height * 3)
+            for line_idx, line in enumerate(lines):
+                if not line:
+                    continue
+                # Render text left-aligned in a buffer sized to the text width
+                line_width = font.get_text_width(line)
+                buf_width = max(line_width, 1)
+                grayscale = font.render_text(line, buf_width, char_h)
+                gray_data = grayscale.tobytes()
+                line_y = y_start + line_idx * (char_h + line_gap)
+
+                # Horizontal centering within text area
+                line_x = text_area_x + max(0, (text_area_w - line_width) // 2)
+
+                for row in range(grayscale.height):
+                    fy = line_y + row
+                    if fy >= self.height or fy < 0:
+                        continue
+                    for col in range(min(grayscale.width, self.width)):
+                        pixel = gray_data[row * grayscale.width + col]
+                        if pixel > 0:
+                            px = line_x + col
+                            if 0 <= px < self.width:
+                                offset = (fy * self.width + px) * 3
+                                rgb_data[offset] = (text_color[0] * pixel) // 255
+                                rgb_data[offset + 1] = (text_color[1] * pixel) // 255
+                                rgb_data[offset + 2] = (text_color[2] * pixel) // 255
+
+            text_frame = Image.frombytes(
+                "RGB", (self.width, self.height), bytes(rgb_data)
+            )
+
+        # Composite text onto the bordered frame
+        # Use text pixels as mask (non-black = text)
+        from PIL import ImageChops
+
+        r, g, b = text_frame.split()
+        mask = ImageChops.lighter(ImageChops.lighter(r, g), b)
+        frame = Image.composite(text_frame, frame, mask)
+
+        # Paste icon vertically centered in the inner area, left side
+        if icon_img:
+            icon_y = inner_y + max(0, (inner_h - icon_img.height) // 2)
+            icon_x = inner_x
+            # Paste icon onto frame using non-black as mask
+            from PIL import ImageChops as _IC
+
+            r_ch, g_ch, b_ch = icon_img.split()
+            icon_mask = _IC.lighter(_IC.lighter(r_ch, g_ch), b_ch)
+            # Create a temporary frame-sized image with the icon positioned
+            icon_canvas = Image.new("RGB", (self.width, self.height), (0, 0, 0))
+            icon_canvas.paste(icon_img, (icon_x, icon_y))
+            mask_canvas = Image.new("L", (self.width, self.height), 0)
+            mask_canvas.paste(icon_mask, (icon_x, icon_y))
+            frame = Image.composite(icon_canvas, frame, mask_canvas)
+
+        return frame
+
+    def _get_alert_icon(self, name: str) -> Optional[Image.Image]:
+        """Get an alert icon image by name.
+
+        Args:
+            name: Icon name (e.g. "beacon", "person", "vehicle").
+
+        Returns:
+            PIL Image or None if the icon module is not available.
+        """
+        try:
+            from .alert_icons import get_alert_icon
+
+            hd = self._font_scale > 1
+            return get_alert_icon(name, hd=hd)
+        except ImportError:
+            return None
+
+    def _word_wrap(self, text: str, max_width: int, font_name: str) -> str:
+        """Wrap text to fit within a given pixel width.
+
+        Splits on spaces and joins with newlines so each line fits
+        within max_width pixels using the specified font. Words that
+        are individually wider than max_width are kept on their own line.
+
+        Args:
+            text: Input text (may already contain newlines).
+            max_width: Maximum line width in pixels.
+            font_name: Font name for width measurement.
+
+        Returns:
+            Text with newlines inserted for wrapping.
+        """
+        font = self._get_font(font_name)
+        if font is None:
+            return text
+
+        # Transliterate for accurate width measurement
+        text = transliterate(text)
+
+        # Process each existing line separately
+        result_lines = []
+        for paragraph in text.split("\n"):
+            words = paragraph.split()
+            if not words:
+                result_lines.append("")
+                continue
+
+            current_line = ""
+            for word in words:
+                if not current_line:
+                    # First word on line
+                    current_line = word
+                else:
+                    # Try adding word to current line
+                    test_line = current_line + " " + word
+                    test_width = font.get_text_width(test_line)
+                    # Account for font scale in HD mode
+                    is_hd_font = font.name.endswith("_HD") if font.name else False
+                    if self._font_scale > 1 and not is_hd_font:
+                        test_width *= self._font_scale
+
+                    if test_width <= max_width:
+                        current_line = test_line
+                    else:
+                        result_lines.append(current_line)
+                        current_line = word
+
+            if current_line:
+                result_lines.append(current_line)
+
+        return "\n".join(result_lines)
+
     def resolve_color(
         self, color_name: str, default: str = "orange"
     ) -> Tuple[int, int, int]:

@@ -101,6 +101,7 @@ jobs:
               build rpi-zeclock.pkr.hcl
 
       - name: Compress image
+        if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main')
         run: |
           cd deploy/rpi
           ls -lh "${OUTPUT_IMG}"
@@ -110,8 +111,8 @@ jobs:
           echo "IMAGE_FILE=${OUTPUT_IMG}.gz" >> $GITHUB_ENV
           echo "IMAGE_PATH=deploy/rpi/${OUTPUT_IMG}.gz" >> $GITHUB_ENV
 
-      - name: Upload artifact (PR and feature branch builds)
-        if: github.event_name == 'pull_request' || (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/') && github.ref != 'refs/heads/main')
+      - name: Upload artifact (main and tag builds only)
+        if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main')
         uses: actions/upload-artifact@v4
         with:
           name: zeclock-rpi-image

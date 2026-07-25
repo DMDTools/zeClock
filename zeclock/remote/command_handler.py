@@ -58,6 +58,12 @@ class CommandHandler:
         # Text overlay state
         self._text_overlay: Optional[str] = None
         self._text_overlay_expires: float = 0.0
+        # Alert overlay state (rich alert with blinking border + icon)
+        self._alert_text: Optional[str] = None
+        self._alert_expires: float = 0.0
+        self._alert_icon: Optional[str] = None
+        self._alert_color: Optional[tuple] = None
+        self._alert_frame_count: int = 0
         # Forced plugin name (None = normal rotation)
         self._forced_plugin: Optional[str] = None
         # Brightness override (None = use scheduler, 0-15 = manual HW brightness)
@@ -75,6 +81,16 @@ class CommandHandler:
             return False
         if time.time() >= self._text_overlay_expires:
             self._text_overlay = None
+            return False
+        return True
+
+    @property
+    def has_alert(self) -> bool:
+        """Whether a rich alert overlay is currently active."""
+        if self._alert_text is None:
+            return False
+        if time.time() >= self._alert_expires:
+            self._alert_text = None
             return False
         return True
 

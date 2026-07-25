@@ -24,7 +24,7 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import aiohttp
-from PIL import Image, ImageDraw
+from PIL import Image
 
 from .base import ClockPlugin, ConfigField, PluginNotConfiguredError
 
@@ -81,12 +81,12 @@ class ReolinkAlertPlugin(ClockPlugin):
     """Reolink camera intrusion alert plugin.
 
     Connects to a Reolink camera using the Baichuan protocol for
-    real-time push event detection. Displays blinking alert messages
-    on the DMD when person, vehicle, animal, or motion is detected.
+    real-time push event detection. When a person, vehicle, animal,
+    or motion is detected, triggers a rich alert via /api/alert
+    (blinking border + icon + wrapped text).
 
-    This plugin is non-rotatable — it only activates when an alert
-    is triggered and deactivates after the alert duration expires.
-    The alert is displayed immediately via the REST API text overlay.
+    This plugin is non-rotatable — it runs as a background listener
+    and never participates in display rotation.
     """
 
     def __init__(self) -> None:
@@ -94,11 +94,6 @@ class ReolinkAlertPlugin(ClockPlugin):
         self._helpers: Any = None
         self._host: Any = None  # reolink_aio Host instance
         self._listener_task: Optional[asyncio.Task] = None
-        self._alert_active: bool = False
-        self._alert_type: str = "motion"
-        self._alert_start_time: float = 0.0
-        self._alert_duration: int = DEFAULT_ALERT_DURATION
-        self._frame_count: int = 0
         self._camera_host: str = ""
         self._camera_user: str = ""
         self._camera_password: str = ""
@@ -106,6 +101,7 @@ class ReolinkAlertPlugin(ClockPlugin):
         self._connected: bool = False
         self._rest_port: int = 8080
         self._language: str = "en"
+        self._alert_duration: int = DEFAULT_ALERT_DURATION
         # Keep track of last alert to avoid re-triggering too fast
         self._last_alert_time: float = 0.0
         self._cooldown_seconds: int = 10
@@ -241,17 +237,9 @@ class ReolinkAlertPlugin(ClockPlugin):
         except (ValueError, TypeError):
             self._rest_port = 8080
 
-        # Cancel any existing listener task before starting a new one
-        if self._listener_task and not self._listener_task.done():
-            self._connected = False
-            self._listener_task.cancel()
-            try:
-                await self._listener_task
-            except asyncio.CancelledError:
-                pass
-
-        # Start background connection and event listener
-        self._listener_task = asyncio.create_task(self._run_listener())
+        # Start background connection and event listener (only if not already running)
+        if self._listener_task is None or self._listener_task.done():
+            self._listener_task = asyncio.create_task(self._run_listener())
 
     async def _run_listener(self) -> None:
         """Background task: connect to camera and listen for events."""
@@ -371,11 +359,7 @@ class ReolinkAlertPlugin(ClockPlugin):
             return
 
         logger.info("Reolink alert triggered: %s detected", detected_type)
-        self._alert_active = True
-        self._alert_type = detected_type
-        self._alert_start_time = now
         self._last_alert_time = now
-        self._frame_count = 0
 
         # Schedule async alert trigger on the running event loop
         try:
@@ -385,95 +369,47 @@ class ReolinkAlertPlugin(ClockPlugin):
             logger.debug("No running event loop for alert trigger")
 
     async def _trigger_alert_display(self, detected_type: str) -> None:
-        """Trigger the text overlay display via the local REST API.
+        """Trigger a rich alert display via the /api/alert endpoint.
 
-        This sends an HTTP request to the zeClock REST API to display
-        the alert text immediately, regardless of which plugin is active.
+        Sends an HTTP request to display the alert with blinking border,
+        detection-specific icon, and localized text.
         """
         text = self._get_message(detected_type).replace("\n", " ")
+        icon_map = {
+            "person": "person",
+            "vehicle": "vehicle",
+            "dog_cat": "animal",
+            "motion": "motion",
+        }
+        icon = icon_map.get(detected_type, "beacon")
+        color = list(_BORDER_COLORS.get(detected_type, (255, 0, 0)))
 
         try:
-            url = f"http://127.0.0.1:{self._rest_port}/api/text"
+            url = f"http://127.0.0.1:{self._rest_port}/api/alert"
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     url,
-                    json={"text": text, "duration": self._alert_duration},
+                    json={
+                        "text": text,
+                        "duration": self._alert_duration,
+                        "icon": icon,
+                        "color": color,
+                    },
                     timeout=aiohttp.ClientTimeout(total=5),
                 ) as resp:
                     if resp.status == 200:
-                        logger.debug("Alert text overlay triggered: %s", text)
+                        logger.debug("Alert triggered: %s (%s)", text, icon)
                     else:
-                        logger.warning(
-                            "Failed to trigger alert overlay: HTTP %d", resp.status
-                        )
+                        logger.warning("Failed to trigger alert: HTTP %d", resp.status)
         except Exception as e:
             logger.warning("Could not trigger alert via REST API: %s", e)
 
     async def render_frame(self, width: int, height: int) -> Optional[Image.Image]:
-        """Render the alert frame with blinking border.
+        """Render a status screen (plugin is background-only).
 
-        This is called when the plugin is force-activated via the web UI.
-        Normally the alert is displayed via the text overlay mechanism for
-        immediate response, but this provides a richer visual with a
-        blinking colored border if the plugin is force-activated.
+        This is only called if the plugin is force-activated via the Web UI.
+        Since the plugin is a background listener, just show connection status.
         """
-        if not self._alert_active:
-            # No active alert — render a status screen
-            return self._render_status(width, height)
-
-        # Check if alert has expired
-        elapsed = time.time() - self._alert_start_time
-        if elapsed >= self._alert_duration:
-            self._alert_active = False
-            return None  # Signal completion, resume normal rotation
-
-        self._frame_count += 1
-
-        border_color_rgb = _BORDER_COLORS.get(
-            self._alert_type, _BORDER_COLORS["motion"]
-        )
-        message = self._get_message(self._alert_type)
-
-        # Create frame
-        frame = Image.new("RGB", (width, height), (0, 0, 0))
-        draw = ImageDraw.Draw(frame)
-
-        # Blinking border
-        blink_on = (self._frame_count // BLINK_INTERVAL_FRAMES) % 2 == 0
-        border_color = border_color_rgb if blink_on else (0, 0, 0)
-
-        # Draw thick border (2px for 128x32, 4px for 256x64)
-        border_width = max(2, min(width, height) // 16)
-        for i in range(border_width):
-            draw.rectangle(
-                [i, i, width - 1 - i, height - 1 - i],
-                outline=border_color,
-            )
-
-        # Render text centered inside the border
-        if self._helpers:
-            text_frame = self._helpers.render_text(
-                message,
-                color=(255, 255, 255),
-                centered=True,
-            )
-            # Composite text onto frame (inside the border)
-            inner_x = border_width + 1
-            inner_y = border_width + 1
-            inner_w = width - 2 * (border_width + 1)
-            inner_h = height - 2 * (border_width + 1)
-
-            if inner_w > 0 and inner_h > 0:
-                # Crop center of text frame to fit inside border
-                text_crop = text_frame.crop(
-                    (inner_x, inner_y, inner_x + inner_w, inner_y + inner_h)
-                )
-                frame.paste(text_crop, (inner_x, inner_y))
-
-        return frame
-
-    def _render_status(self, width: int, height: int) -> Image.Image:
-        """Render a status screen when no alert is active."""
         if self._helpers:
             status = "CONNECTED" if self._connected else "CONNECTING..."
             return self._helpers.render_text(
@@ -484,26 +420,5 @@ class ReolinkAlertPlugin(ClockPlugin):
         return Image.new("RGB", (width, height), (0, 0, 0))
 
     async def cleanup(self) -> None:
-        """Disconnect from camera and cancel listener task."""
-        self._connected = False
-
-        if self._listener_task and not self._listener_task.done():
-            self._listener_task.cancel()
-            try:
-                await self._listener_task
-            except asyncio.CancelledError:
-                pass
-
-        if self._host:
-            try:
-                await self._host.baichuan.unsubscribe_events()
-            except Exception as e:
-                logger.debug("Error unsubscribing from events: %s", e)
-            try:
-                await self._host.logout()
-            except Exception as e:
-                logger.debug("Error logging out from camera: %s", e)
-            self._host = None
-
-        self._alert_active = False
-        logger.info("Reolink alert plugin cleaned up")
+        """No-op: the background listener keeps running independently."""
+        pass
