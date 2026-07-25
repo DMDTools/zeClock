@@ -202,3 +202,58 @@ class TestWordWrap:
         # No fonts loaded — _get_font returns None
         result = h._word_wrap("HELLO WORLD", 60, "NONEXISTENT")
         assert result == "HELLO WORLD"
+
+
+class TestRenderAlertWithIcon:
+    """Tests for render_alert with icon parameter."""
+
+    def test_icon_parameter_accepted(self, helpers):
+        """render_alert accepts icon parameter without error."""
+        frame = helpers.render_alert("ALERT", frame_index=0, icon="beacon")
+        assert frame.size == (128, 32)
+
+    def test_unknown_icon_does_not_crash(self, helpers):
+        """Unknown icon name doesn't crash (gracefully ignored)."""
+        frame = helpers.render_alert("ALERT", frame_index=0, icon="nonexistent")
+        assert frame.size == (128, 32)
+
+    def test_none_icon_same_as_no_icon(self, helpers):
+        """icon=None produces same result as no icon parameter."""
+        frame_no_icon = helpers.render_alert("ALERT", frame_index=0)
+        frame_none = helpers.render_alert("ALERT", frame_index=0, icon=None)
+        assert frame_no_icon.tobytes() == frame_none.tobytes()
+
+    def test_icon_with_real_alert_icons_module(self, helpers):
+        """Test with the actual alert_icons module (if available)."""
+        try:
+            from zeclock.plugins.alert_icons import get_alert_icon
+
+            icon = get_alert_icon("beacon", hd=False)
+            assert icon is not None
+            assert icon.size == (16, 16)
+            assert icon.mode == "RGB"
+        except ImportError:
+            pytest.skip("alert_icons module not generated")
+
+    def test_all_detection_icons_available(self):
+        """All detection type icons exist in the alert_icons module."""
+        try:
+            from zeclock.plugins.alert_icons import get_alert_icon
+
+            for name in ("beacon", "person", "vehicle", "animal", "motion", "warning"):
+                icon = get_alert_icon(name, hd=False)
+                assert icon is not None, f"Icon '{name}' not found"
+                assert icon.size == (16, 16)
+        except ImportError:
+            pytest.skip("alert_icons module not generated")
+
+    def test_hd_icons_are_32x32(self):
+        """HD icons are 32x32."""
+        try:
+            from zeclock.plugins.alert_icons import get_alert_icon
+
+            icon = get_alert_icon("beacon", hd=True)
+            assert icon is not None
+            assert icon.size == (32, 32)
+        except ImportError:
+            pytest.skip("alert_icons module not generated")

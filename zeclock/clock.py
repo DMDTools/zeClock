@@ -261,8 +261,13 @@ class ZeClock:
                     self.color = COLOR_LIST[int(now // 60) % len(COLOR_LIST)]
                     self.last_color_change = now
 
+                # Remote control: check for alert overlay (rich: border + icon)
+                if self._command_handler and self._command_handler.has_alert:
+                    frame = self._render_alert_overlay()
+                    frame_time = 0.1  # 10 FPS for smooth blink
+
                 # Remote control: check for text overlay
-                if self._command_handler and self._command_handler.has_text_overlay:
+                elif self._command_handler and self._command_handler.has_text_overlay:
                     frame = self._render_text_overlay()
                     frame_time = 0.5
 
@@ -570,6 +575,32 @@ class ZeClock:
             )
             self._rest_remote = RestRemote(rest_cfg, self._command_handler)
             asyncio.create_task(self._rest_remote.run())
+
+    def _render_alert_overlay(self) -> Image.Image:
+        """Render a rich alert overlay using the PluginHelpers.render_alert method.
+
+        Displays a blinking border with optional icon and auto-wrapped text.
+        """
+        if not self._command_handler:
+            return Image.new("RGB", (self.width, self.height), (0, 0, 0))
+
+        text = self._command_handler._alert_text or ""
+        icon = self._command_handler._alert_icon
+        color = self._command_handler._alert_color or (255, 0, 0)
+        self._command_handler._alert_frame_count += 1
+        frame_index = self._command_handler._alert_frame_count
+
+        if self._plugin_manager:
+            return self._plugin_manager._helpers.render_alert(
+                text=text,
+                frame_index=frame_index,
+                border_color=color,
+                text_color=(255, 255, 255),
+                icon=icon,
+            )
+
+        # Fallback: simple text
+        return Image.new("RGB", (self.width, self.height), (0, 0, 0))
 
     def _render_text_overlay(self) -> Image.Image:
         """Render a text overlay frame centered on screen.
