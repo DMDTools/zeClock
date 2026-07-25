@@ -12,6 +12,10 @@ For an autonomous setup, install zeClock on a **Raspberry Pi** — ZeDMD is auto
 
 ![Demo](docs/zeclock-demo.gif)
 
+You can configure zeClock through configuration files or a dedicated web UI.
+
+![Web UI](docs/zeclock-web-ui.jpg)
+
 ## Quick Start
 
 **No hardware required** — try zeClock in your browser in seconds:
@@ -97,7 +101,7 @@ Real-time intrusion detection alerts from [Reolink](https://www.reolink.com/) ca
 
 Messages are localized (en/fr/de/es) via the global `language` setting. The alert overrides whatever is currently displayed and disappears after a configurable duration.
 
-Requires: `uv sync --extra reolink`
+![Demo](docs/zeclock-reolink.gif)
 
 ## Plugin Configuration
 
