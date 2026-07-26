@@ -124,11 +124,13 @@ class TestPinballPluginInitialize:
         assert plugin._animation_color == COLOR_MAP["red"]
 
     @pytest.mark.asyncio
-    async def test_animation_color_defaults_to_color(self):
-        """When animation_color is not set, it defaults to the clock color.
+    async def test_animation_color_defaults_to_complementary(self):
+        """When animation_color is not set, it defaults to the complementary color.
 
         **Validates: Requirements 5.1**
         """
+        from zeclock.colors import complementary_color
+
         plugin = PinballPlugin()
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -138,7 +140,7 @@ class TestPinballPluginInitialize:
             }
             await plugin.initialize(config)
 
-        assert plugin._animation_color == COLOR_MAP["green"]
+        assert plugin._animation_color == complementary_color(COLOR_MAP["green"])
 
     @pytest.mark.asyncio
     async def test_invalid_color_falls_back_to_default(self):

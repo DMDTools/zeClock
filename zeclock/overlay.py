@@ -643,3 +643,50 @@ def overlay_or_rgb(
     else:
         # No mask: overlay replaces everything
         return overlay_rgb
+
+
+# Threshold for font outline pixels (nibble 0 maps to gray value 2)
+_FONT_OUTLINE_THRESHOLD = 2
+
+
+def overlay_clock_above(
+    base: Image.Image,
+    overlay: Image.Image,
+    base_color: Tuple[int, int, int],
+    overlay_color: Tuple[int, int, int],
+) -> Image.Image:
+    """Composite clock overlay above animation using pixel-based transparency.
+
+    Used when frame_layer=1 (clock drawn on top of animation). Unlike
+    overlay_or_rgb which uses the DotBlt bit-mask, this function treats
+    overlay pixels with value <= _FONT_OUTLINE_THRESHOLD as transparent,
+    letting the base (animation) show through everywhere the clock has no
+    visible content.
+
+    This fixes scenes where the clock's DotBlt mask only marks outline
+    pixels as transparent, leaving the black background opaque and
+    incorrectly erasing the animation underneath.
+
+    Args:
+        base: Grayscale animation frame (mode 'L').
+        overlay: Grayscale clock frame (mode 'L').
+        base_color: RGB color for the animation.
+        overlay_color: RGB color for the clock text.
+
+    Returns:
+        Merged RGB PIL Image with clock digits over animation.
+    """
+    width, height = base.size
+
+    # Build transparency mask from overlay pixel values:
+    # mask=255 (transparent, show base) where overlay pixel <= threshold
+    # mask=0 (opaque, show overlay) where overlay pixel > threshold
+    overlay_bytes = overlay.tobytes()
+    threshold = _FONT_OUTLINE_THRESHOLD
+    mask_data = bytes(255 if p <= threshold else 0 for p in overlay_bytes)
+    mask_img = Image.frombytes("L", (width, height), mask_data)
+
+    base_rgb = colorize_grayscale(base, base_color)
+    overlay_rgb = colorize_grayscale(overlay, overlay_color)
+
+    return Image.composite(base_rgb, overlay_rgb, mask_img)

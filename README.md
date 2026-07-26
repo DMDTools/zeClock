@@ -220,7 +220,7 @@ The full guide covers multi-page plugins, config schemas (auto-generated web UI 
 | **speaker-timer** | `yellow_threshold` | % remaining to switch to orange (default: 20) |
 | | `red_threshold` | % remaining to switch to red (default: 10) |
 | **pinball** | `color` | Animation color name (default: `orange`) |
-| | `animation_color` | Separate animation color (default: same as `color`) |
+| | `animation_color` | Separate animation color (default: complementary of `color`) |
 | **pong** | `color` | Game color name (default: `orange`) |
 | **eyes** | `color` | Eyes color name (default: `cyan`) |
 | **paragliding** | `api_key` | Paraglidable API key (required, free from paraglidable.com) |
