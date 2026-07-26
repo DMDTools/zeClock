@@ -149,7 +149,7 @@ class ZeClock:
                 hasattr(self.dmd_client, "_wifi_addr")
                 and not self.dmd_client._wifi_addr
             ):
-                print("⚠️ ZeDMD not found via USB — starting network discovery...")
+                logger.info("ZeDMD not found via USB -- starting network discovery...")
                 self._discovery_state.update(
                     "scanning", "ZeDMD not found via USB, starting network discovery..."
                 )
@@ -161,23 +161,28 @@ class ZeClock:
 
                 if result:
                     # Found via discovery — reconfigure the backend with the discovered IP
-                    print(
-                        f"✅ ZeDMD discovered at {result.ip}:{result.port} (v{result.version})"
+                    logger.info(
+                        "ZeDMD discovered at %s:%d (v%s)",
+                        result.ip,
+                        result.port,
+                        result.version,
                     )
                     self.dmd_client._wifi_addr = result.ip
                     if self.dmd_client.connect():
-                        print("✅ ZeDMD connected via WiFi")
+                        logger.info("ZeDMD connected via WiFi")
                         _persist_wifi_addr(result.ip)
                     else:
-                        print(
-                            "⚠️ Discovery found ZeDMD but connection failed — retrying..."
+                        logger.warning(
+                            "Discovery found ZeDMD but connection failed -- retrying..."
                         )
                 else:
-                    print("⚠️ ZeDMD not found on network — waiting for device...")
+                    logger.warning(
+                        "ZeDMD not found on network -- waiting for device..."
+                    )
 
             if not self.dmd_client.connected:
-                print(
-                    "👉 Check your backend configuration (--backend, --wifi-addr, --device)"
+                logger.warning(
+                    "Check your backend configuration (--backend, --wifi-addr, --device)"
                 )
                 self._discovery_state.update("waiting", "Waiting for ZeDMD...")
                 delay = 3.0
@@ -186,42 +191,61 @@ class ZeClock:
                     await asyncio.sleep(delay)
                     attempt += 1
 
-                    # Alternate: odd attempts try USB, even attempts try mDNS
+                    # Alternate: odd attempts try USB, even attempts try WiFi/mDNS
                     if attempt % 2 == 1:
-                        # Try USB
+                        # Try USB (auto-detect)
+                        logger.debug("Retry #%d: trying USB...", attempt)
+                        saved_wifi = self.dmd_client._wifi_addr  # type: ignore[attr-defined]
+                        self.dmd_client._wifi_addr = None  # type: ignore[attr-defined]
                         if self.dmd_client.connect():
-                            print("✅ DMD backend connected (USB)")
-                            self._discovery_state.update("found", "ZeDMD connected")
-                            break
-                    else:
-                        # Try mDNS discovery
-                        if not self.dmd_client._wifi_addr:  # type: ignore[attr-defined]
+                            logger.info("✅ DMD backend connected (USB)")
                             self._discovery_state.update(
-                                "scanning", "Retrying network discovery..."
+                                "found", "ZeDMD connected (USB)"
                             )
-                            result = await asyncio.get_event_loop().run_in_executor(
-                                None, discover_zedmd, self._discovery_state
+                            break
+                        # Restore wifi_addr for next WiFi attempt
+                        self.dmd_client._wifi_addr = saved_wifi  # type: ignore[attr-defined]
+                    else:
+                        # Try WiFi: re-resolve mDNS in case IP changed,
+                        # Resolve zedmd-wifi.local via mDNS — always use the
+                        # freshly resolved IP (it may have changed after a
+                        # network outage / DHCP renewal)
+                        from .discovery import resolve_mdns, ZEDMD_MDNS_HOSTNAME
+
+                        new_ip = await asyncio.get_event_loop().run_in_executor(
+                            None, resolve_mdns, ZEDMD_MDNS_HOSTNAME
+                        )
+                        if new_ip:
+                            if (
+                                new_ip
+                                != self.dmd_client._wifi_addr  # type: ignore[attr-defined]
+                            ):
+                                logger.info(
+                                    "ZeDMD IP changed: %s -> %s (via mDNS)",
+                                    self.dmd_client._wifi_addr,  # type: ignore[attr-defined]
+                                    new_ip,
+                                )
+                                _persist_wifi_addr(new_ip)
+                            self.dmd_client._wifi_addr = new_ip  # type: ignore[attr-defined]
+                            logger.debug(
+                                "Retry #%d: trying WiFi via zedmd-wifi.local"
+                                " (resolved=%s)...",
+                                attempt,
+                                new_ip,
                             )
-                            if result:
-                                self.dmd_client._wifi_addr = result.ip  # type: ignore[attr-defined]
-                                if self.dmd_client.connect():
-                                    print(
-                                        f"✅ ZeDMD discovered and connected at {result.ip}"
-                                    )
-                                    self._discovery_state.update(
-                                        "found", f"ZeDMD connected at {result.ip}"
-                                    )
-                                    _persist_wifi_addr(result.ip)
-                                    break
-                        else:
-                            # WiFi addr known but connection failed — retry connect
                             if self.dmd_client.connect():
-                                print("✅ DMD backend connected (WiFi)")
-                                self._discovery_state.update("found", "ZeDMD connected")
+                                logger.info("✅ DMD backend connected (WiFi)")
+                                self._discovery_state.update(
+                                    "found", "ZeDMD connected (WiFi)"
+                                )
                                 break
+                        else:
+                            logger.debug(
+                                "Retry #%d: zedmd-wifi.local not resolvable", attempt
+                            )
 
                     delay = min(delay * 1.3, 10.0)
-                    logger.info("DMD still unavailable — next retry in %.0fs", delay)
+                    logger.info("DMD still unavailable -- next retry in %.0fs", delay)
                 if not self.running:
                     return
         else:
@@ -249,7 +273,7 @@ class ZeClock:
             await self._brightness_scheduler.update_sun_data()
 
         frame_time = 1 / self.fps
-        print(f"🕒 Starting zeClock at {self.fps} FPS")
+        print(f"Starting zeClock at {self.fps} FPS")
 
         try:
             while self.running:
@@ -431,12 +455,33 @@ class ZeClock:
                 # Handle connection loss — wait with backoff, then reconnect
                 if not success:
                     if not self._reconnect_logged:
-                        print("⚠️ ZeDMD disconnected — waiting to reconnect...")
+                        logger.warning("ZeDMD disconnected -- waiting to reconnect...")
                         self._reconnect_logged = True
                     await asyncio.sleep(self._reconnect_delay)
+
+                    # Always re-resolve zedmd-wifi.local to get current IP
+                    if (
+                        hasattr(self.dmd_client, "_wifi_addr")
+                        and self.dmd_client._wifi_addr
+                    ):
+                        from .discovery import resolve_mdns, ZEDMD_MDNS_HOSTNAME
+
+                        new_ip = await asyncio.get_event_loop().run_in_executor(
+                            None, resolve_mdns, ZEDMD_MDNS_HOSTNAME
+                        )
+                        if new_ip:
+                            if new_ip != self.dmd_client._wifi_addr:
+                                logger.info(
+                                    "ZeDMD IP changed: %s -> %s (via mDNS)",
+                                    self.dmd_client._wifi_addr,
+                                    new_ip,
+                                )
+                                _persist_wifi_addr(new_ip)
+                            self.dmd_client._wifi_addr = new_ip
+
                     # Try to reconnect
                     if self.dmd_client.connect():
-                        print("✅ ZeDMD reconnected — resuming display")
+                        logger.info("✅ ZeDMD reconnected -- resuming display")
                         self._reconnect_logged = False
                         self._reconnect_delay = 2.0  # Reset backoff
                     else:
@@ -444,7 +489,7 @@ class ZeClock:
                         self._reconnect_delay = min(self._reconnect_delay * 1.5, 30.0)
                     continue
                 elif self._reconnect_logged:
-                    print("✅ ZeDMD reconnected — resuming display")
+                    logger.info("✅ ZeDMD reconnected -- resuming display")
                     self._reconnect_logged = False
                     self._reconnect_delay = 2.0
 
@@ -455,9 +500,9 @@ class ZeClock:
                     await asyncio.sleep(sleep_time)
 
         except KeyboardInterrupt:
-            print("\n🛑 Stopping zeClock...")
+            print("\nStopping zeClock...")
         except asyncio.CancelledError:
-            print("\n🛑 Stopping zeClock...")
+            print("\nStopping zeClock...")
         finally:
             # Stop remote control services
             if self._mqtt_remote:
@@ -468,7 +513,7 @@ class ZeClock:
             if self._plugin_manager and self._plugin_manager.is_plugin_active():
                 await self._plugin_manager.deactivate_plugin()
             self.dmd_client.disconnect()
-            print("✅ ZeDMD disconnected")
+            print("ZeDMD disconnected")
 
     async def _init_plugin_system(self) -> None:
         """Initialize the PluginManager, discover and load plugins."""
@@ -1225,7 +1270,7 @@ def main() -> None:
         # was skipped due to aggressive cancellation, disconnect here as a safety net.
         if clock.dmd_client.connected:
             clock.dmd_client.disconnect()
-            print("✅ ZeDMD disconnected")
+            print("ZeDMD disconnected")
 
 
 def _handle_list_plugins(args: Any) -> None:

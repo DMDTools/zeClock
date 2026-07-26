@@ -244,6 +244,7 @@ id={ssid}
 type=wifi
 interface-name={AP_INTERFACE}
 autoconnect=true
+autoconnect-retries=0
 
 [wifi]
 mode=infrastructure
