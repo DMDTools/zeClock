@@ -8,9 +8,11 @@ zeClock can drive ZeDMD hardware directly via `libzedmd`, or output to **any dev
 
 It comes with a **web interface** for easy configuration, and a **browser-based virtual renderer** so you can try everything before buying [ZeDMD-compatible hardware](https://github.com/PPUC/ZeDMD#which-led-panels-are-lcd-screens-are-supported).
 
-For an autonomous setup, install zeClock on a **Raspberry Pi** — ZeDMD is auto-detected via USB or WiFi. Just power the Pi and get going with a 24/7 clock.
+For an autonomous setup, install zeClock on a **Raspberry Pi** - ZeDMD is auto-detected via USB or WiFi. Just power the Pi and get going with a 24/7 clock.
 
 ![Demo](docs/zeclock-demo.gif)
+
+Full length video: [📺 www.youtube.com/watch?v=YdpWlg71KtM](https://www.youtube.com/watch?v=YdpWlg71KtM)
 
 You can configure zeClock through configuration files or a dedicated web UI.
 
