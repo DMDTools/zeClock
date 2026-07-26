@@ -65,9 +65,6 @@ class PluginManager:
         self.plugin_start_time: float = 0.0
         self.last_good_frame: Optional[Image.Image] = None
         self.init_timeout: float = 10.0  # seconds, configurable for testing
-        # Current clock color (RGB tuple), updated by ZeClock on each color change.
-        # Injected into plugin configs as "color" when not explicitly set.
-        self.current_color: Optional[Tuple[int, int, int]] = None
 
         # Set up resources path for PluginHelpers
         if resources_path is None:
@@ -331,7 +328,6 @@ class PluginManager:
         """Get the current color from the default plugin (clock).
 
         Reads _current_color from the default plugin instance if available.
-        Falls back to self.current_color (set by ZeClock).
 
         Returns:
             RGB tuple or None if unavailable.
@@ -339,7 +335,7 @@ class PluginManager:
         plugin = self.get_default_plugin()
         if plugin and hasattr(plugin, "_current_color"):
             return plugin._current_color
-        return self.current_color
+        return None
 
     def _validate_config_schema(self, plugin: ClockPlugin) -> "Optional[str]":
         """Validate plugin config against its schema.
