@@ -310,8 +310,10 @@ class PluginManager:
         user_settings = dict(config)
 
         # Inject current clock color when no explicit color is configured
-        if self.current_color and "color" not in config:
-            config["_current_color"] = self.current_color
+        if "color" not in config:
+            color = self._get_default_plugin_color()
+            if color:
+                config["_current_color"] = color
 
         config["_helpers"] = self._helpers
         config["_upscale_mode"] = self.upscale_mode
@@ -324,6 +326,20 @@ class PluginManager:
             settings=user_settings,
         )
         return config
+
+    def _get_default_plugin_color(self) -> Optional[Tuple[int, int, int]]:
+        """Get the current color from the default plugin (clock).
+
+        Reads _current_color from the default plugin instance if available.
+        Falls back to self.current_color (set by ZeClock).
+
+        Returns:
+            RGB tuple or None if unavailable.
+        """
+        plugin = self.get_default_plugin()
+        if plugin and hasattr(plugin, "_current_color"):
+            return plugin._current_color
+        return self.current_color
 
     def _validate_config_schema(self, plugin: ClockPlugin) -> "Optional[str]":
         """Validate plugin config against its schema.
