@@ -105,6 +105,12 @@ class ZeDMDBackend(DMDBackend):
         self._stream_error_flag = False
         self._error_lock = threading.Lock()
 
+        # WiFi health check state (periodic HTTP probe)
+        import time as _time
+
+        self._last_health_check = _time.monotonic()
+        self._health_check_interval = 10.0  # seconds between probes
+
         # Load library — raises ImportError if not found
         lib_path = _find_library()
         try:
@@ -283,15 +289,21 @@ class ZeDMDBackend(DMDBackend):
 
         # Connect via WiFi or USB
         if self._wifi_addr:
+            logger.info("Connecting to ZeDMD via WiFi (host=%s)...", self._wifi_addr)
             ok = self._lib.ZeDMD_OpenWiFi(self._instance, self._wifi_addr.encode())
         elif self._device:
+            logger.info("Connecting to ZeDMD via USB (device=%s)...", self._device)
             self._lib.ZeDMD_SetDevice(self._instance, self._device.encode())
             ok = self._lib.ZeDMD_Open(self._instance)
         else:
+            logger.info("Connecting to ZeDMD via USB (auto-detect)...")
             ok = self._lib.ZeDMD_Open(self._instance)
 
         if not ok:
-            logger.warning("Failed to connect to ZeDMD")
+            if self._wifi_addr:
+                logger.warning("Failed to connect to ZeDMD at %s", self._wifi_addr)
+            else:
+                logger.warning("Failed to connect to ZeDMD via USB")
             self._instance = None
             self._log_callback_ref = None
             return False
@@ -333,6 +345,9 @@ class ZeDMDBackend(DMDBackend):
         marks as disconnected, closes the instance, and returns False.
         The caller (clock.py main loop) handles the wait and retry.
 
+        For WiFi connections, periodically probes the device via HTTP
+        to detect silent disconnections (UDP sends won't fail on their own).
+
         Args:
             image: PIL Image to send (any mode, will be converted to RGB).
             buffered: Unused, kept for interface compatibility.
@@ -357,6 +372,22 @@ class ZeDMDBackend(DMDBackend):
             self._close_instance()
             return False
 
+        # WiFi health check: probe device every ~10s to detect silent loss
+        if self._wifi_addr:
+            import time
+
+            now = time.monotonic()
+            if now - self._last_health_check >= self._health_check_interval:
+                self._last_health_check = now
+                if not self._probe_device():
+                    logger.warning(
+                        "ZeDMD health check failed (host=%s) — marking disconnected",
+                        self._wifi_addr,
+                    )
+                    self._connected = False
+                    self._close_instance()
+                    return False
+
         # Colorize grayscale if needed
         if image.mode != "RGB":
             image = colorize_grayscale(image, color)
@@ -377,6 +408,25 @@ class ZeDMDBackend(DMDBackend):
             return False
 
         return True
+
+    def _probe_device(self) -> bool:
+        """Quick HTTP probe to check if the ZeDMD is still reachable.
+
+        Returns True if the device responds, False otherwise.
+        Uses a very short timeout (2s) to avoid blocking the render loop.
+        """
+        import urllib.request
+
+        try:
+            req = urllib.request.Request(
+                f"http://{self._wifi_addr}/get_version",
+                headers={"User-Agent": "zeClock"},
+            )
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                resp.read()
+            return True
+        except Exception:
+            return False
 
     def _close_instance(self) -> None:
         """Close the current ZeDMD instance (best effort).
