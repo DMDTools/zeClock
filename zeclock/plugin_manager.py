@@ -9,7 +9,7 @@ import random
 import sys
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 from PIL import Image
 
@@ -306,6 +306,12 @@ class PluginManager:
         # Snapshot user settings before adding infrastructure keys
         user_settings = dict(config)
 
+        # Inject current clock color when no explicit color is configured
+        if "color" not in config:
+            color = self._get_default_plugin_color()
+            if color:
+                config["_current_color"] = color
+
         config["_helpers"] = self._helpers
         config["_upscale_mode"] = self.upscale_mode
         config["_font"] = self.font_name
@@ -317,6 +323,19 @@ class PluginManager:
             settings=user_settings,
         )
         return config
+
+    def _get_default_plugin_color(self) -> Optional[Tuple[int, int, int]]:
+        """Get the current color from the default plugin (clock).
+
+        Reads _current_color from the default plugin instance if available.
+
+        Returns:
+            RGB tuple or None if unavailable.
+        """
+        plugin = self.get_default_plugin()
+        if plugin and hasattr(plugin, "_current_color"):
+            return plugin._current_color
+        return None
 
     def _validate_config_schema(self, plugin: ClockPlugin) -> "Optional[str]":
         """Validate plugin config against its schema.

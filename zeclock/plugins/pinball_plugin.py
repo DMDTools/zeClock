@@ -17,8 +17,8 @@ from typing import Any, List, Optional, Tuple
 from PIL import Image
 
 from .base import ClockPlugin
-from ..colors import COLOR_MAP
-from ..overlay import overlay_or_rgb, upscale_2x
+from ..colors import COLOR_MAP, complementary_color
+from ..overlay import overlay_or_rgb, overlay_clock_above, upscale_2x
 from ..readers import BitmapFont, Scene, load_font, load_scene
 
 logger = logging.getLogger(__name__)
@@ -69,7 +69,7 @@ class PinballPlugin(ClockPlugin):
 
         Config keys:
             color (str): Clock color name (default: "orange")
-            animation_color (str): Animation color name (default: same as color)
+            animation_color (str): Animation color name (default: complementary)
             animations_dir (str|Path): Override animations directory path
             width (int): Display width (default: 128)
             height (int): Display height (default: 32)
@@ -78,11 +78,22 @@ class PinballPlugin(ClockPlugin):
             config: Plugin-specific settings from plugins.yaml.
         """
         # Parse color settings
-        color_name = config.get("color", DEFAULT_COLOR)
-        self._color = COLOR_MAP.get(color_name, COLOR_MAP[DEFAULT_COLOR])
+        color_name = config.get("color")
+        if color_name and color_name != "auto":
+            # Explicit color configured in plugins.yaml
+            self._color = COLOR_MAP.get(color_name, COLOR_MAP[DEFAULT_COLOR])
+        elif "_current_color" in config:
+            # Use the clock's current color (passed by PluginManager)
+            self._color = config["_current_color"]
+        else:
+            self._color = COLOR_MAP[DEFAULT_COLOR]
 
-        animation_color_name = config.get("animation_color", color_name)
-        self._animation_color = COLOR_MAP.get(animation_color_name, self._color)
+        animation_color_name = config.get("animation_color")
+        if animation_color_name:
+            self._animation_color = COLOR_MAP.get(animation_color_name, self._color)
+        else:
+            # Default: complementary palette color for visual contrast
+            self._animation_color = complementary_color(self._color)
 
         # Allow overriding animations directory (useful for testing)
         animations_dir = config.get("animations_dir")
@@ -220,15 +231,24 @@ class PinballPlugin(ClockPlugin):
             scene.frame_delay_ms if scene.frame_delay_ms > 0 else DEFAULT_FRAME_DELAY_MS
         )
 
+        # Colon blink: toggle every ~500ms (same cadence as the main clock)
+        blink_period_frames = max(1, int(500 / frame_delay))
+
         needs_upscale = scene.width != width or scene.height != height
         computed_frames: List[Image.Image] = []
 
-        for animation_frame in scene.frames:
+        for frame_idx, animation_frame in enumerate(scene.frames):
             if needs_upscale:
                 animation_frame = upscale_2x(animation_frame, mode=self._upscale_mode)
 
+            # Alternate colon visibility: ":" shown, then " " hidden
+            colon_visible = (frame_idx // blink_period_frames) % 2 == 0
+            current_time = (
+                display_time if colon_visible else display_time.replace(":", " ")
+            )
+
             merged = self._create_merged_frame(
-                animation_frame, display_time, scene, width, height
+                animation_frame, current_time, scene, width, height
             )
             computed_frames.append(merged)
 
@@ -309,8 +329,9 @@ class PinballPlugin(ClockPlugin):
 
         # Apply DotBlt overlay with dual colors based on frame_layer
         if scene.frame_layer == 1:
-            # Clock above animation: animation is base, clock is overlay
-            merged = overlay_or_rgb(
+            # Clock above animation: use pixel-based transparency so the
+            # clock's black background doesn't erase the animation.
+            merged = overlay_clock_above(
                 animation_frame, clock_frame, self._animation_color, self._color
             )
         else:
