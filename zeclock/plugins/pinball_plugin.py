@@ -78,8 +78,15 @@ class PinballPlugin(ClockPlugin):
             config: Plugin-specific settings from plugins.yaml.
         """
         # Parse color settings
-        color_name = config.get("color", DEFAULT_COLOR)
-        self._color = COLOR_MAP.get(color_name, COLOR_MAP[DEFAULT_COLOR])
+        color_name = config.get("color")
+        if color_name and color_name != "auto":
+            # Explicit color configured in plugins.yaml
+            self._color = COLOR_MAP.get(color_name, COLOR_MAP[DEFAULT_COLOR])
+        elif "_current_color" in config:
+            # Use the clock's current color (passed by PluginManager)
+            self._color = config["_current_color"]
+        else:
+            self._color = COLOR_MAP[DEFAULT_COLOR]
 
         animation_color_name = config.get("animation_color")
         if animation_color_name:

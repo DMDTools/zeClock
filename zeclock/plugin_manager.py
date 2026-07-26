@@ -9,7 +9,7 @@ import random
 import sys
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 from PIL import Image
 
@@ -65,6 +65,9 @@ class PluginManager:
         self.plugin_start_time: float = 0.0
         self.last_good_frame: Optional[Image.Image] = None
         self.init_timeout: float = 10.0  # seconds, configurable for testing
+        # Current clock color (RGB tuple), updated by ZeClock on each color change.
+        # Injected into plugin configs as "color" when not explicitly set.
+        self.current_color: Optional[Tuple[int, int, int]] = None
 
         # Set up resources path for PluginHelpers
         if resources_path is None:
@@ -305,6 +308,10 @@ class PluginManager:
         config = self.config.get_plugin_config(plugin_name)
         # Snapshot user settings before adding infrastructure keys
         user_settings = dict(config)
+
+        # Inject current clock color when no explicit color is configured
+        if self.current_color and "color" not in config:
+            config["_current_color"] = self.current_color
 
         config["_helpers"] = self._helpers
         config["_upscale_mode"] = self.upscale_mode

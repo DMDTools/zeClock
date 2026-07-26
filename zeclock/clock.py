@@ -284,6 +284,8 @@ class ZeClock:
                 if self.color_mode == "auto" and now - self.last_color_change >= 60:
                     self.color = COLOR_LIST[int(now // 60) % len(COLOR_LIST)]
                     self.last_color_change = now
+                    if self._plugin_manager:
+                        self._plugin_manager.current_color = self.color
 
                 # Remote control: check for alert overlay (rich: border + icon)
                 if self._command_handler and self._command_handler.has_alert:
@@ -524,6 +526,7 @@ class ZeClock:
             upscale_mode=self.upscale_mode,
             font=self.font_name,
         )
+        self._plugin_manager.current_color = self.color
 
         try:
             await self._plugin_manager.discover_and_load()
