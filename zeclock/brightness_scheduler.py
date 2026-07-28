@@ -110,6 +110,7 @@ class BrightnessScheduler:
         sunrise_brightness: Optional[int] = None,
         sunset_brightness: Optional[int] = None,
         time_only: Optional[str] = None,
+        sun_transition_minutes: int = 30,
     ):
         """Initialize the brightness scheduler.
 
@@ -121,6 +122,10 @@ class BrightnessScheduler:
             sunrise_brightness: Brightness % to use at sunrise (ramp up).
             sunset_brightness: Brightness % to use at sunset (ramp down).
             time_only: Time range "HH:MM-HH:MM" for time-only mode.
+            sun_transition_minutes: Duration of the gradual brightness transition
+                around sunrise/sunset in minutes (default: 30). The transition is
+                centered on the sunrise/sunset time (half before, half after).
+                Uses a cosine curve for a natural, imperceptible change.
         """
         self._max_brightness = max(1, min(15, max_brightness))
         self._schedule = schedule or {}
@@ -129,6 +134,7 @@ class BrightnessScheduler:
         self._sunrise_brightness = sunrise_brightness
         self._sunset_brightness = sunset_brightness
         self._time_only_start, self._time_only_end = _parse_time_range_str(time_only)
+        self._sun_transition_minutes = max(0, sun_transition_minutes)
 
         # Cached state
         self._sun_data: Optional[SunData] = None
@@ -280,12 +286,18 @@ class BrightnessScheduler:
             return (hw, 0)
 
     def _compute_sun_brightness(self, hour: int, minute: int) -> Optional[int]:
-        """Compute brightness based on sunrise/sunset times.
+        """Compute brightness based on sunrise/sunset with gradual transitions.
 
-        Simple model:
-        - Before sunrise: sunset_brightness (night)
-        - After sunrise: sunrise_brightness (day)
-        - After sunset: sunset_brightness (night)
+        Uses a cosine curve centered on sunrise/sunset to produce a smooth,
+        natural-looking brightness ramp. The transition duration is configurable
+        (default 30 minutes, centered: 15 min before and 15 min after).
+
+        Timeline:
+            ... night ... [transition↑] ... day ... [transition↓] ... night ...
+                          ←─ sunrise ─→             ←─ sunset ──→
+
+        The cosine curve ensures the change is barely perceptible at the start
+        and end of the transition, with the fastest change in the middle.
 
         Args:
             hour: Current hour.
@@ -294,6 +306,8 @@ class BrightnessScheduler:
         Returns:
             Brightness percentage, or None if sun data unavailable.
         """
+        import math
+
         if not self._sun_data:
             return None
 
@@ -301,15 +315,48 @@ class BrightnessScheduler:
         sunrise = self._sun_data.sunrise_hour * 60 + self._sun_data.sunrise_minute
         sunset = self._sun_data.sunset_hour * 60 + self._sun_data.sunset_minute
 
-        if current < sunrise:
-            # Before sunrise — night brightness
-            return self._sunset_brightness
-        elif current < sunset:
-            # Daytime — day brightness
-            return self._sunrise_brightness
+        day_brightness = self._sunrise_brightness or 100
+        night_brightness = self._sunset_brightness or 30
+        half_transition = self._sun_transition_minutes / 2.0
+
+        # No transition configured — use instant switch (legacy behavior)
+        if self._sun_transition_minutes == 0:
+            if current < sunrise:
+                return night_brightness
+            elif current < sunset:
+                return day_brightness
+            else:
+                return night_brightness
+
+        # Sunrise transition: night → day
+        sunrise_start = sunrise - half_transition
+        sunrise_end = sunrise + half_transition
+
+        # Sunset transition: day → night
+        sunset_start = sunset - half_transition
+        sunset_end = sunset + half_transition
+
+        if current < sunrise_start:
+            # Deep night (before sunrise transition)
+            return night_brightness
+        elif current < sunrise_end:
+            # Sunrise transition: cosine interpolation night → day
+            progress = (current - sunrise_start) / self._sun_transition_minutes
+            # Cosine: 0→1 mapped as (1 - cos(π * progress)) / 2
+            factor = (1.0 - math.cos(math.pi * progress)) / 2.0
+            return int(night_brightness + factor * (day_brightness - night_brightness))
+        elif current < sunset_start:
+            # Full daytime
+            return day_brightness
+        elif current < sunset_end:
+            # Sunset transition: cosine interpolation day → night
+            progress = (current - sunset_start) / self._sun_transition_minutes
+            # Cosine: 0→1 mapped as (1 - cos(π * progress)) / 2
+            factor = (1.0 - math.cos(math.pi * progress)) / 2.0
+            return int(day_brightness + factor * (night_brightness - day_brightness))
         else:
-            # After sunset — night brightness
-            return self._sunset_brightness
+            # Night (after sunset transition)
+            return night_brightness
 
     async def update_sun_data(self) -> None:
         """Fetch sunrise/sunset times from the sunrise-sunset.org API.

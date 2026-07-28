@@ -538,6 +538,15 @@ class RestRemote:
         except (ValueError, TypeError):
             pass
 
+        # Parse sun transition duration
+        sun_transition = 30
+        try:
+            st = bs_section.get("sun_transition_minutes", "30")
+            if st:
+                sun_transition = max(0, min(120, int(st)))
+        except (ValueError, TypeError):
+            pass
+
         # Rebuild scheduler
         clock._brightness_scheduler = BrightnessScheduler(
             max_brightness=max_br,
@@ -546,6 +555,7 @@ class RestRemote:
             longitude=lng,
             sunrise_brightness=sunrise_br,
             sunset_brightness=sunset_br,
+            sun_transition_minutes=sun_transition,
         )
         # Reset check timer so it applies immediately
         clock._last_brightness_check = 0.0
