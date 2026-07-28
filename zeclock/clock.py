@@ -1242,6 +1242,7 @@ def main() -> None:
         sunrise_brightness=bs_config.sunrise_brightness,
         sunset_brightness=bs_config.sunset_brightness,
         time_only=bs_config.time_only,
+        sun_transition_minutes=bs_config.sun_transition_minutes,
     )
 
     if scheduler.has_schedule:

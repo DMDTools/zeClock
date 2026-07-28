@@ -49,6 +49,7 @@ class BrightnessScheduleConfig:
     sunrise_brightness: Optional[int] = None  # Brightness % during daytime
     sunset_brightness: Optional[int] = None  # Brightness % during nighttime
     time_only: Optional[str] = None  # "HH:MM-HH:MM" — time-only mode range
+    sun_transition_minutes: int = 30  # Gradual transition duration (minutes)
 
 
 @dataclass
@@ -334,6 +335,14 @@ def _parse_config_file(config_path: Path) -> dict:
 
         if parser.has_option("brightness_schedule", "time_only"):
             bs.time_only = parser.get("brightness_schedule", "time_only").strip()
+
+        if parser.has_option("brightness_schedule", "sun_transition_minutes"):
+            val = parser.get("brightness_schedule", "sun_transition_minutes").strip()
+            if val:
+                try:
+                    bs.sun_transition_minutes = max(0, min(120, int(val)))
+                except ValueError:
+                    logger.warning(f"Invalid sun_transition_minutes '{val}'")
 
         # Parse day-of-week schedule lines
         schedule_lines = {}
